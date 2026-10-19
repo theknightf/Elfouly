@@ -1,0 +1,307 @@
+{
+  "screenshot": {
+    "name": "projects/10186668790648659374/screens/92d5a49d3f114036907d8deba3a99e00/fileEntries/screenshot",
+    "downloadUrl": "https://lh3.googleusercontent.com/aida/AEtjO1XwO0PE1OM-jpIxwnM83gh0HNSekyOoqOxYlr3QdqUkQP6cbHRaDyYkwSa9f59Y28vD7TYMD5KBJaM2qyBPlJPZD200XdkZXGsbsPJ0lmdaoYmpKK1YMHxV30Zgd09BVmsNP0f45zKGmXThcnMuPjZ3frHseHKP09EgS12XNcmD6PZXygEJ7K6MUDUuwlrBSgF-laPf91_8ouGqByVaaqRH_dV--QLzSh6maood28eP3lvQZGTGMhNwamE"
+  },
+  "htmlCode": {
+    "name": "projects/10186668790648659374/screens/92d5a49d3f114036907d8deba3a99e00/fileEntries/html",
+    "downloadUrl": "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ8Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpbCiVodG1sXzAwMDY1ZTM3Zjc5YWE2NTQwNDRmNmNmM2YwMjdiZmY1EgsSBxDNxbj52REYAZIBJAoKcHJvamVjdF9pZBIWQhQxMDE4NjY2ODc5MDY0ODY1OTM3NA&filename=&opi=89354086",
+    "mimeType": "text/html"
+  },
+  "id": "92d5a49d3f114036907d8deba3a99e00",
+  "generatedBy": "figaro_agent",
+  "width": "780",
+  "height": "2430",
+  "title": "اديني في سري - Password Challenge",
+  "prompt": "Cohesive, high-energy Egyptian pop cartoon mobile game UI for \"QUIZ ARENA\" - Screen 2: \"اديني في سري (Ediny Fe Sery)\" [Password / Taboo Challenge].\nStyling: 2D/3D hybrid cartoonish Egyptian street-smart aesthetic (روش ومصري), bold comic outlines, glossy tactile buttons, playful Arabic typography, deep purple gaming background.\nTop Bar:\n- Mode title banner: \"اديني في سري 🤫\" in playful distorted cartoon font, round timer \"00:45\", turn indicator \"دور الشارحين\".\nClue-Giver Secret Panel (لوحة الشارحين السرية):\n- Dedicated secret card visible to the clue givers:\n  * Target Secret Word in massive bold red comic banner: \"برج القاهرة 🗼\"\n  * Warning hazard border \"ممنوع تقول (Forbidden Taboo Words) ⚠️\": high contrast red pills for \"طويل 🚫\", \"سياحة 🚫\", \"جزيرة 🚫\", \"تلفزيون 🚫\".\nCenter Stage Caricature Duel:\n- Expressive funny Egyptian cartoon illustrations: teammate scratching his head in sweat-dropping confusion with spinning stars, facing his partner yelling passionately with comic speech bubble: \"انطق يا لوح! 📢\".\n- Clue counter: \"التلميحات: 2/3\".\nHost Control Console (لوحة تحكم الحكم الرئيسي):\n- Floating tactile control bar reserved for the host/referee:\n  * Green button: \"نقطة لفريق أ (Team A Point) 🟢\"\n  * Blue button: \"نقطة لفريق ب (Team B Point) 🔵\"\n  * Hazard orange-red button: \"مخالفة / كلمة ممنوعة (Foul) 🛑\"\n  * Countdown hourglass display.\n- Floating confetti, authentic Cairo ahwa pop details, bottom navigation bar.",
+  "name": "projects/10186668790648659374/screens/92d5a49d3f114036907d8deba3a99e00",
+  "theme": {
+    "colorMode": "DARK",
+    "font": "RUBIK",
+    "roundness": "ROUND_FULL",
+    "customColor": "#ffb800",
+    "headlineFont": "RUBIK",
+    "bodyFont": "RUBIK",
+    "labelFont": "RUBIK",
+    "namedColors": {
+      "surface_container_low": "#1d1830",
+      "on_primary_fixed_variant": "#5e4200",
+      "secondary": "#bdf4ff",
+      "primary_fixed": "#ffdea8",
+      "surface_container_high": "#2c2640",
+      "secondary_container": "#00e3fd",
+      "on_tertiary_fixed": "#40000c",
+      "surface_container_highest": "#37314b",
+      "outline_variant": "#514532",
+      "background": "#151028",
+      "inverse_surface": "#e7deff",
+      "error": "#ffb4ab",
+      "on_surface_variant": "#d5c4ab",
+      "on_secondary_container": "#00616d",
+      "on_secondary_fixed": "#001f24",
+      "surface_variant": "#37314b",
+      "surface_container_lowest": "#0f0a22",
+      "tertiary_fixed_dim": "#ffb3b6",
+      "tertiary_container": "#ffb0b3",
+      "tertiary_fixed": "#ffdada",
+      "on_tertiary": "#68001a",
+      "inverse_on_surface": "#322d46",
+      "outline": "#9e8f78",
+      "on_secondary": "#00363d",
+      "surface_tint": "#ffba20",
+      "primary": "#ffdca1",
+      "on_primary": "#412d00",
+      "on_primary_fixed": "#271900",
+      "on_primary_container": "#6b4c00",
+      "surface": "#151028",
+      "secondary_fixed_dim": "#00daf3",
+      "on_error_container": "#ffdad6",
+      "inverse_primary": "#7c5800",
+      "on_tertiary_fixed_variant": "#920028",
+      "tertiary": "#ffd7d8",
+      "on_error": "#690005",
+      "surface_bright": "#3b3650",
+      "on_surface": "#e7deff",
+      "surface_dim": "#151028",
+      "error_container": "#93000a",
+      "on_secondary_fixed_variant": "#004f58",
+      "primary_container": "#ffb800",
+      "on_background": "#e7deff",
+      "secondary_fixed": "#9cf0ff",
+      "primary_fixed_dim": "#ffba20",
+      "on_tertiary_container": "#a6002e",
+      "surface_container": "#211c35"
+    },
+    "colorVariant": "FIDELITY",
+    "overridePrimaryColor": "#ffb800",
+    "overrideSecondaryColor": "#00e5ff",
+    "overrideTertiaryColor": "#ff2a55",
+    "overrideNeutralColor": "#130e26",
+    "spacingScale": 2,
+    "typography": {
+      "label-numeric": {
+        "fontFamily": "Rubik",
+        "fontSize": "20px",
+        "fontWeight": "900",
+        "lineHeight": "24px"
+      },
+      "label-badge": {
+        "fontFamily": "Rubik",
+        "fontSize": "12px",
+        "fontWeight": "800",
+        "lineHeight": "16px",
+        "letterSpacing": "0.05em"
+      },
+      "headline-sm": {
+        "fontFamily": "Rubik",
+        "fontSize": "18px",
+        "fontWeight": "700",
+        "lineHeight": "24px"
+      },
+      "display-hero": {
+        "fontFamily": "Rubik",
+        "fontSize": "44px",
+        "fontWeight": "900",
+        "lineHeight": "52px",
+        "letterSpacing": "-0.02em"
+      },
+      "display-hero-mobile": {
+        "fontFamily": "Rubik",
+        "fontSize": "34px",
+        "fontWeight": "900",
+        "lineHeight": "40px",
+        "letterSpacing": "-0.01em"
+      },
+      "headline-md": {
+        "fontFamily": "Rubik",
+        "fontSize": "22px",
+        "fontWeight": "800",
+        "lineHeight": "28px"
+      },
+      "headline-lg": {
+        "fontFamily": "Rubik",
+        "fontSize": "28px",
+        "fontWeight": "800",
+        "lineHeight": "36px"
+      },
+      "body-lg": {
+        "fontFamily": "Rubik",
+        "fontSize": "16px",
+        "fontWeight": "600",
+        "lineHeight": "24px"
+      },
+      "body-md": {
+        "fontFamily": "Rubik",
+        "fontSize": "14px",
+        "fontWeight": "500",
+        "lineHeight": "20px"
+      }
+    },
+    "spacing": {
+      "space-md": "1rem",
+      "space-lg": "1.5rem",
+      "space-xs": "0.25rem",
+      "gutter": "1rem",
+      "space-xl": "2.25rem",
+      "margin": "1.5rem",
+      "gutter-mobile": "0.75rem",
+      "space-sm": "0.5rem",
+      "margin-mobile": "1rem"
+    },
+    "headlineFontFamily": "Rubik",
+    "bodyFontFamily": "Rubik",
+    "labelFontFamily": "Rubik"
+  },
+  "deviceType": "MOBILE",
+  "screenType": "DESIGN",
+  "screenMetadata": {
+    "agentType": "PRO_AGENT",
+    "status": "COMPLETE"
+  },
+  "designSystem": {
+    "name": "assets/10bd755996b443c389f670a821c7fd56",
+    "designSystem": {
+      "displayName": "Egyptian Arcade Pop",
+      "styleGuidelines": "### 🎨 Visual Identity: Safe\n- **Palette & Typography:** Captures the standard high-energy mobile arcade trivia look using accessible pillowy curves, bright Egyptian sun gold, and friendly rounded geometry.\n\n## Brand & Style\n\nThis design system channels the electrifying energy of Egyptian street pop culture, vibrant comic strips, and high-stakes mobile gaming arcades. It marries playful, tactile 3D elements with bold cartoon outlines, puffy inflated modules, and dynamic folk-comic burst motifs. \n\nThe aesthetic is loud, confident, and joyful. It captures the spirit of Cairo's street signage, neon-lit gaming cafés, and kinetic festival banners, translated into an interactive mobile experience. Visual components feel physically stampable, bouncy, and hyper-responsive, inducing an instant rush of adrenaline, celebration, and friendly rivalry.\n\n## Layout & Spacing\n\nThe design system operates on an inflated, responsive 4-column layout on mobile, scaling to 8 columns on tablets. Spacing is tight and chunky to keep visual rhythm condensed and tactile. Elements hug each other with comfortable paddings, preserving game-board density without crowding vital tap zones. Touch targets prioritize thumb reach in the bottom two-thirds of the viewport, with status displays and timers pinned to the upper HUD apron.\n\n## Elevation & Depth\n\nDepth is tactile, chunky, and skeuomorphic-cartoonish:\n- **Chunky 3D Bevels**: Rather than diffuse feathered shadows, visual depth relies on solid, offset bottom-edge extrusions (e.g., a 0px horizontal, 4px to 6px vertical drop with 0px blur using an ink border shade of `#090614`).\n- **Puffy Pillow Volumes**: Inner top highlights (`inset 0 3px 0 rgba(255, 255, 255, 0.4)`) create a glossy, inflated dome effect across cards, buttons, and HUD chips.\n- **Comic Outlines**: Surfaces are encased in thick dark borders (2.5px to 3.5px solid `#090614`), establishing immediate separation against colored arcade backgrounds.\n- **Active / Pressed State**: Active elements physically compress downward by 3px–4px, collapsing their bottom extrusion to simulate an authentic mechanical arcade push button.\n\n## Components\n\n### Action Buttons\n- **Primary Gold Button**: Golden sun gradient (`#FFC800` to `#FF9100`), encapsulated in a 3px dark stroke (`#090614`) with a solid 5px bottom drop bevel (`#C67000`), topped with an inflated internal gloss highlight.\n- **Secondary Cyan Button**: Electric cyan gradient (`#33ECFF` to `#00A3FF`) with a dark border and deep indigo bottom extrusion.\n- **Haptic Bounce**: Upon touch, buttons translate downward `4px` along the Y-axis with a zeroed-out shadow to reinforce an arcade cabinet feel.\n\n### Inflated Quiz Cards\n- Cards feature bulbous corners (`rounded-lg`), an ink border, and deep plum-indigo fill (`#1E1638`).\n- Active trivia options trigger a thick golden outline with neon yellow back-glow; correct answers flash vibrant emerald with celebratory star-burst particle overlays.\n\n### HUD Badges & Score Counters\n- Pill-shaped counters featuring high-contrast glossy icons (gems, lightning bolts, falcons, coins) clipped in raised circular bevels.\n- Numeric text features high-contrast white glyphs backed by subtle dark outlines for maximum rapid legibility.\n\n### Choice / Multi-Select Chips\n- Pillowy choice pills that bob slightly when tapped.\n- Selected state turns the background into radiant Electric Nile Cyan with inset white radial shine and dark bold typography.\n\n### Input Fields\n- Plump, sunken fields with an inset bottom-edge shadow (`inset 0 4px 4px rgba(0,0,0,0.4)`), surrounded by a solid 2px ink perimeter. \n- Focused inputs pop outward with a bright Cairo Gold rim.\n\n### Comic Burst Banners & Streaks\n- Dynamic angled ribbons with dual-tone zagged edges for combo alerts (\"ممتاز!\", \"كومبو!\"), backed by rotating comic starburst rays.",
+      "theme": {
+        "colorMode": "DARK",
+        "font": "RUBIK",
+        "roundness": "ROUND_FULL",
+        "customColor": "#ffb800",
+        "headlineFont": "RUBIK",
+        "bodyFont": "RUBIK",
+        "labelFont": "RUBIK",
+        "namedColors": {
+          "on_secondary_fixed": "#001f24",
+          "on_surface_variant": "#d5c4ab",
+          "on_primary_fixed": "#271900",
+          "inverse_primary": "#7c5800",
+          "on_secondary_container": "#00616d",
+          "surface_container_low": "#1d1830",
+          "surface_container_lowest": "#0f0a22",
+          "surface_container_highest": "#37314b",
+          "tertiary_container": "#ffb0b3",
+          "tertiary_fixed_dim": "#ffb3b6",
+          "background": "#151028",
+          "on_primary_fixed_variant": "#5e4200",
+          "secondary_fixed": "#9cf0ff",
+          "secondary_container": "#00e3fd",
+          "on_tertiary_fixed": "#40000c",
+          "surface_container_high": "#2c2640",
+          "primary_fixed": "#ffdea8",
+          "error_container": "#93000a",
+          "primary": "#ffdca1",
+          "on_background": "#e7deff",
+          "inverse_surface": "#e7deff",
+          "outline": "#9e8f78",
+          "outline_variant": "#514532",
+          "on_primary": "#412d00",
+          "primary_container": "#ffb800",
+          "error": "#ffb4ab",
+          "on_tertiary_fixed_variant": "#920028",
+          "on_error": "#690005",
+          "tertiary_fixed": "#ffdada",
+          "surface_dim": "#151028",
+          "surface_container": "#211c35",
+          "surface": "#151028",
+          "on_secondary_fixed_variant": "#004f58",
+          "primary_fixed_dim": "#ffba20",
+          "surface_variant": "#37314b",
+          "inverse_on_surface": "#322d46",
+          "on_surface": "#e7deff",
+          "on_tertiary_container": "#a6002e",
+          "tertiary": "#ffd7d8",
+          "secondary": "#bdf4ff",
+          "secondary_fixed_dim": "#00daf3",
+          "on_error_container": "#ffdad6",
+          "surface_tint": "#ffba20",
+          "on_tertiary": "#68001a",
+          "on_secondary": "#00363d",
+          "on_primary_container": "#6b4c00",
+          "surface_bright": "#3b3650"
+        },
+        "designMd": "---\nname: Egyptian Arcade Pop\ncolors:\n  surface: '#151028'\n  surface-dim: '#151028'\n  surface-bright: '#3b3650'\n  surface-container-lowest: '#0f0a22'\n  surface-container-low: '#1d1830'\n  surface-container: '#211c35'\n  surface-container-high: '#2c2640'\n  surface-container-highest: '#37314b'\n  on-surface: '#e7deff'\n  on-surface-variant: '#d5c4ab'\n  inverse-surface: '#e7deff'\n  inverse-on-surface: '#322d46'\n  outline: '#9e8f78'\n  outline-variant: '#514532'\n  surface-tint: '#ffba20'\n  primary: '#ffdca1'\n  on-primary: '#412d00'\n  primary-container: '#ffb800'\n  on-primary-container: '#6b4c00'\n  inverse-primary: '#7c5800'\n  secondary: '#bdf4ff'\n  on-secondary: '#00363d'\n  secondary-container: '#00e3fd'\n  on-secondary-container: '#00616d'\n  tertiary: '#ffd7d8'\n  on-tertiary: '#68001a'\n  tertiary-container: '#ffb0b3'\n  on-tertiary-container: '#a6002e'\n  error: '#ffb4ab'\n  on-error: '#690005'\n  error-container: '#93000a'\n  on-error-container: '#ffdad6'\n  primary-fixed: '#ffdea8'\n  primary-fixed-dim: '#ffba20'\n  on-primary-fixed: '#271900'\n  on-primary-fixed-variant: '#5e4200'\n  secondary-fixed: '#9cf0ff'\n  secondary-fixed-dim: '#00daf3'\n  on-secondary-fixed: '#001f24'\n  on-secondary-fixed-variant: '#004f58'\n  tertiary-fixed: '#ffdada'\n  tertiary-fixed-dim: '#ffb3b6'\n  on-tertiary-fixed: '#40000c'\n  on-tertiary-fixed-variant: '#920028'\n  background: '#151028'\n  on-background: '#e7deff'\n  surface-variant: '#37314b'\ntypography:\n  display-hero:\n    fontFamily: Rubik\n    fontSize: 44px\n    fontWeight: '900'\n    lineHeight: 52px\n    letterSpacing: -0.02em\n  display-hero-mobile:\n    fontFamily: Rubik\n    fontSize: 34px\n    fontWeight: '900'\n    lineHeight: 40px\n    letterSpacing: -0.01em\n  headline-lg:\n    fontFamily: Rubik\n    fontSize: 28px\n    fontWeight: '800'\n    lineHeight: 36px\n  headline-md:\n    fontFamily: Rubik\n    fontSize: 22px\n    fontWeight: '800'\n    lineHeight: 28px\n  headline-sm:\n    fontFamily: Rubik\n    fontSize: 18px\n    fontWeight: '700'\n    lineHeight: 24px\n  body-lg:\n    fontFamily: Rubik\n    fontSize: 16px\n    fontWeight: '600'\n    lineHeight: 24px\n  body-md:\n    fontFamily: Rubik\n    fontSize: 14px\n    fontWeight: '500'\n    lineHeight: 20px\n  label-badge:\n    fontFamily: Rubik\n    fontSize: 12px\n    fontWeight: '800'\n    lineHeight: 16px\n    letterSpacing: 0.05em\n  label-numeric:\n    fontFamily: Rubik\n    fontSize: 20px\n    fontWeight: '900'\n    lineHeight: 24px\nrounded:\n  sm: 0.5rem\n  DEFAULT: 1rem\n  md: 1.5rem\n  lg: 2rem\n  xl: 3rem\n  full: 9999px\nspacing:\n  gutter: 1rem\n  gutter-mobile: 0.75rem\n  margin: 1.5rem\n  margin-mobile: 1rem\n  space-xs: 0.25rem\n  space-sm: 0.5rem\n  space-md: 1rem\n  space-lg: 1.5rem\n  space-xl: 2.25rem\n---\n\n## Brand & Style\n\nThis design system channels the electrifying energy of Egyptian street pop culture, vibrant comic strips, and high-stakes mobile gaming arcades. It marries playful, tactile 3D elements with bold cartoon outlines, puffy inflated modules, and dynamic folk-comic burst motifs. \n\nThe aesthetic is loud, confident, and joyful. It captures the spirit of Cairo's street signage, neon-lit gaming cafés, and kinetic festival banners, translated into an interactive mobile experience. Visual components feel physically stampable, bouncy, and hyper-responsive, inducing an instant rush of adrenaline, celebration, and friendly rivalry.\n\n## Colors\n\nThe palette is anchored in an electric night carnival atmosphere:\n- **Primary (`#FFB800`)**: Cairo Solar Gold. High-impact, celebratory, used for winning states, primary actions, coin counters, and glowing comic starbursts.\n- **Secondary (`#00E5FF`)**: Electric Nile Cyan. Expressive counter-action color, used for secondary interactions, player badges, trivia power-ups, and speed boosts.\n- **Tertiary (`#FF2A55`)**: Hot Harissa Red. Urgent, competitive, used for countdown timers, duel challenges, and critical strike multipliers.\n- **Accent Emerald (`#00E676`)**: Neon Oasis Green. Reserved for correct answers, streak increments, and ready-states.\n- **Neutral Base (`#130E26`)**: Deep Indigo Arcade. An ink-dark backdrop with subtle royal violet warmth, allowing neon saturated highlights, extruded borders, and comic-book rim lights to pop without ocular fatigue.\n\n## Typography\n\nThe typography leverages Rubik across display, body, and UI labels. With its softly rounded corners, stout vertical stems, and organic geometric balance, Rubik channels the chunky punchiness of modern Arabic-Latin hybrid signage and pop headlines. \n\n- **Display & Headlines**: Heavy weights (800–900) paired with tight line heights mimic hand-painted street placards, bumper stickers, and comic dialog screams.\n- **Body & Captions**: Medium to Semi-Bold weights (500–600) maintain legibility against dark, high-contrast surfaces during quick game rounds.\n- **Numbers & HUD Scores**: Rendered extra-bold to mimic arcade score reels and arcade physical counters.\n\n## Layout & Spacing\n\nThe design system operates on an inflated, responsive 4-column layout on mobile, scaling to 8 columns on tablets. Spacing is tight and chunky to keep visual rhythm condensed and tactile. Elements hug each other with comfortable paddings, preserving game-board density without crowding vital tap zones. Touch targets prioritize thumb reach in the bottom two-thirds of the viewport, with status displays and timers pinned to the upper HUD apron.\n\n## Elevation & Depth\n\nDepth is tactile, chunky, and skeuomorphic-cartoonish:\n- **Chunky 3D Bevels**: Rather than diffuse feathered shadows, visual depth relies on solid, offset bottom-edge extrusions (e.g., a 0px horizontal, 4px to 6px vertical drop with 0px blur using an ink border shade of `#090614`).\n- **Puffy Pillow Volumes**: Inner top highlights (`inset 0 3px 0 rgba(255, 255, 255, 0.4)`) create a glossy, inflated dome effect across cards, buttons, and HUD chips.\n- **Comic Outlines**: Surfaces are encased in thick dark borders (2.5px to 3.5px solid `#090614`), establishing immediate separation against colored arcade backgrounds.\n- **Active / Pressed State**: Active elements physically compress downward by 3px–4px, collapsing their bottom extrusion to simulate an authentic mechanical arcade push button.\n\n## Shapes\n\nThe shape language is bulbous, friendly, and hyper-pillowy (Level 3 roundedness). Sharp corners are strictly avoided to retain the inflatable toy feel:\n- **Base Components**: Outer radiuses default to soft pill formations (`1rem` to `2rem`).\n- **Capsules & HUD Containers**: Pure stadium capsules (`9999px`) for game timers, player lives, coin counts, and streak pills.\n- **Comic Splashes & Flares**: Starburst speech bubbles, action bursts, and question milestone cards utilize rounded polygon points combined with bulbous curve peaks.\n\n## Components\n\n### Action Buttons\n- **Primary Gold Button**: Golden sun gradient (`#FFC800` to `#FF9100`), encapsulated in a 3px dark stroke (`#090614`) with a solid 5px bottom drop bevel (`#C67000`), topped with an inflated internal gloss highlight.\n- **Secondary Cyan Button**: Electric cyan gradient (`#33ECFF` to `#00A3FF`) with a dark border and deep indigo bottom extrusion.\n- **Haptic Bounce**: Upon touch, buttons translate downward `4px` along the Y-axis with a zeroed-out shadow to reinforce an arcade cabinet feel.\n\n### Inflated Quiz Cards\n- Cards feature bulbous corners (`rounded-lg`), an ink border, and deep plum-indigo fill (`#1E1638`).\n- Active trivia options trigger a thick golden outline with neon yellow back-glow; correct answers flash vibrant emerald with celebratory star-burst particle overlays.\n\n### HUD Badges & Score Counters\n- Pill-shaped counters featuring high-contrast glossy icons (gems, lightning bolts, falcons, coins) clipped in raised circular bevels.\n- Numeric text features high-contrast white glyphs backed by subtle dark outlines for maximum rapid legibility.\n\n### Choice / Multi-Select Chips\n- Pillowy choice pills that bob slightly when tapped.\n- Selected state turns the background into radiant Electric Nile Cyan with inset white radial shine and dark bold typography.\n\n### Input Fields\n- Plump, sunken fields with an inset bottom-edge shadow (`inset 0 4px 4px rgba(0,0,0,0.4)`), surrounded by a solid 2px ink perimeter. \n- Focused inputs pop outward with a bright Cairo Gold rim.\n\n### Comic Burst Banners & Streaks\n- Dynamic angled ribbons with dual-tone zagged edges for combo alerts (\"ممتاز!\", \"كومبو!\"), backed by rotating comic starburst rays.",
+        "colorVariant": "FIDELITY",
+        "overridePrimaryColor": "#ffb800",
+        "overrideSecondaryColor": "#00e5ff",
+        "overrideTertiaryColor": "#ff2a55",
+        "overrideNeutralColor": "#130e26",
+        "spacingScale": 2,
+        "typography": {
+          "label-badge": {
+            "fontFamily": "Rubik",
+            "fontSize": "12px",
+            "fontWeight": "800",
+            "lineHeight": "16px",
+            "letterSpacing": "0.05em"
+          },
+          "label-numeric": {
+            "fontFamily": "Rubik",
+            "fontSize": "20px",
+            "fontWeight": "900",
+            "lineHeight": "24px"
+          },
+          "display-hero": {
+            "fontFamily": "Rubik",
+            "fontSize": "44px",
+            "fontWeight": "900",
+            "lineHeight": "52px",
+            "letterSpacing": "-0.02em"
+          },
+          "body-md": {
+            "fontFamily": "Rubik",
+            "fontSize": "14px",
+            "fontWeight": "500",
+            "lineHeight": "20px"
+          },
+          "display-hero-mobile": {
+            "fontFamily": "Rubik",
+            "fontSize": "34px",
+            "fontWeight": "900",
+            "lineHeight": "40px",
+            "letterSpacing": "-0.01em"
+          },
+          "body-lg": {
+            "fontFamily": "Rubik",
+            "fontSize": "16px",
+            "fontWeight": "600",
+            "lineHeight": "24px"
+          },
+          "headline-sm": {
+            "fontFamily": "Rubik",
+            "fontSize": "18px",
+            "fontWeight": "700",
+            "lineHeight": "24px"
+          },
+          "headline-lg": {
+            "fontFamily": "Rubik",
+            "fontSize": "28px",
+            "fontWeight": "800",
+            "lineHeight": "36px"
+          },
+          "headline-md": {
+            "fontFamily": "Rubik",
+            "fontSize": "22px",
+            "fontWeight": "800",
+            "lineHeight": "28px"
+          }
+        },
+        "spacing": {
+          "margin": "1.5rem",
+          "gutter": "1rem",
+          "space-xs": "0.25rem",
+          "space-md": "1rem",
+          "space-lg": "1.5rem",
+          "gutter-mobile": "0.75rem",
+          "space-sm": "0.5rem",
+          "margin-mobile": "1rem",
+          "space-xl": "2.25rem"
+        },
+        "headlineFontFamily": "Rubik",
+        "bodyFontFamily": "Rubik",
+        "labelFontFamily": "Rubik"
+      }
+    },
+    "version": "1"
+  }
+}

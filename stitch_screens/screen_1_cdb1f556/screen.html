@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+
+<html class="dark" dir="rtl" lang="ar"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>QUIZ ARENA - مين يزوّد؟</title>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts: Rubik for typography token requirements -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS v3 -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "inverse-surface": "#e7deff",
+            "on-primary": "#412d00",
+            "on-tertiary-fixed": "#40000c",
+            "surface-container-high": "#2c2640",
+            "on-error": "#690005",
+            "on-surface": "#e7deff",
+            "primary": "#ffdca1",
+            "inverse-on-surface": "#322d46",
+            "tertiary": "#ffd7d8",
+            "secondary": "#bdf4ff",
+            "secondary-fixed": "#9cf0ff",
+            "on-secondary-container": "#00616d",
+            "surface-bright": "#3b3650",
+            "outline": "#9e8f78",
+            "on-secondary-fixed-variant": "#004f58",
+            "on-primary-container": "#6b4c00",
+            "surface-dim": "#151028",
+            "on-tertiary-fixed-variant": "#920028",
+            "on-background": "#e7deff",
+            "on-primary-fixed": "#271900",
+            "background": "#151028",
+            "secondary-container": "#00e3fd",
+            "surface-variant": "#37314b",
+            "surface-container-low": "#1d1830",
+            "primary-container": "#ffb800",
+            "inverse-primary": "#7c5800",
+            "outline-variant": "#514532",
+            "on-secondary": "#00363d",
+            "surface-tint": "#ffba20",
+            "error": "#ffb4ab",
+            "on-tertiary": "#68001a",
+            "primary-fixed-dim": "#ffba20",
+            "surface": "#151028",
+            "tertiary-container": "#ffb0b3",
+            "on-error-container": "#ffdad6",
+            "on-tertiary-container": "#a6002e",
+            "tertiary-fixed-dim": "#ffb3b6",
+            "surface-container-lowest": "#0f0a22",
+            "tertiary-fixed": "#ffdada",
+            "error-container": "#93000a",
+            "surface-container-highest": "#37314b",
+            "on-surface-variant": "#d5c4ab",
+            "primary-fixed": "#ffdea8",
+            "secondary-fixed-dim": "#00daf3",
+            "on-secondary-fixed": "#001f24",
+            "on-primary-fixed-variant": "#5e4200",
+            "surface-container": "#211c35"
+          },
+          "borderRadius": {
+            "DEFAULT": "1rem",
+            "lg": "2rem",
+            "xl": "3rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "margin": "1.5rem",
+            "space-md": "1rem",
+            "space-lg": "1.5rem",
+            "margin-mobile": "1rem",
+            "gutter": "1rem",
+            "space-sm": "0.5rem",
+            "space-xs": "0.25rem",
+            "space-xl": "2.25rem",
+            "gutter-mobile": "0.75rem"
+          },
+          "fontFamily": {
+            "headline-sm": ["Rubik"],
+            "body-lg": ["Rubik"],
+            "label-numeric": ["Rubik"],
+            "headline-lg": ["Rubik"],
+            "label-badge": ["Rubik"],
+            "display-hero-mobile": ["Rubik"],
+            "display-hero": ["Rubik"],
+            "headline-md": ["Rubik"],
+            "body-md": ["Rubik"]
+          },
+          "fontSize": {
+            "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "700" }],
+            "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "600" }],
+            "label-numeric": ["20px", { "lineHeight": "24px", "fontWeight": "900" }],
+            "headline-lg": ["28px", { "lineHeight": "36px", "fontWeight": "800" }],
+            "label-badge": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "800" }],
+            "display-hero-mobile": ["34px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "900" }],
+            "display-hero": ["44px", { "lineHeight": "52px", "letterSpacing": "-0.02em", "fontWeight": "900" }],
+            "headline-md": ["22px", { "lineHeight": "28px", "fontWeight": "800" }],
+            "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "500" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 600, 'GRAD' 0, 'opsz' 24;
+      display: inline-block;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    /* Pulsing & Comic Micro-Interactions */
+    @keyframes flame-pulse {
+      0%, 100% { transform: scale(1); filter: drop-shadow(0 0 4px #ffb800); }
+      50% { transform: scale(1.08); filter: drop-shadow(0 0 14px #ffb0b3); }
+    }
+    .animate-flame {
+      animation: flame-pulse 1.2s infinite ease-in-out;
+    }
+    @keyframes float-confetti {
+      0% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-8px) rotate(10deg); }
+      100% { transform: translateY(0px) rotate(0deg); }
+    }
+    .confetti-piece {
+      animation: float-confetti 3s ease-in-out infinite;
+    }
+    /* Baladi Pattern Overlay */
+    .bg-egypt-stars {
+      background-image: radial-gradient(#37314b 1.5px, transparent 1.5px);
+      background-size: 18px 18px;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md text-body-md min-h-screen overflow-x-hidden selection:bg-primary-container selection:text-on-primary-container pb-28 pt-20">
+<!-- ================= TOP APP BAR (Shared Component Anchor) ================= -->
+<!-- Mapped styles from JSON: style_shell_layout, style_component_shape, style_shadows_and_elevation -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-space-md py-space-sm bg-surface-container dark:bg-surface-container docked full-width rounded-b-lg border-b-[3px] border-surface-container-lowest shadow-[0_4px_0_0_#090614]">
+<!-- Leading: Pharaoh Mascot Icon / Profile -->
+<div class="flex items-center gap-2">
+<div class="w-10 h-10 rounded-full border-[2.5px] border-surface-container-lowest bg-primary-container flex items-center justify-center shadow-[0_2px_0_0_#090614] overflow-hidden">
+<span class="material-symbols-outlined text-on-primary-container text-[24px]" style="font-variation-settings: 'FILL' 1;">theater_comedy</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-badge text-label-badge text-secondary-container">فريق الفراعنة</span>
+<div class="flex items-center gap-1">
+<span class="font-label-numeric text-label-numeric text-primary-fixed">1,480</span>
+<span class="material-symbols-outlined text-primary-container text-[16px]" style="font-variation-settings: 'FILL' 1;">monetization_on</span>
+</div>
+</div>
+</div>
+<!-- Center Brand Headline Anchor -->
+<div class="text-center">
+<h1 class="font-display-hero-mobile text-display-hero-mobile text-primary dark:text-primary tracking-tight drop-shadow-[0_2px_0_#090614]">
+        QUIZ ARENA
+      </h1>
+<span class="font-label-badge text-label-badge text-secondary bg-surface-container-lowest px-2 py-0.5 rounded-full border border-secondary-container/30">
+        المزاد السري ⚡
+      </span>
+</div>
+<!-- Trailing Settings / Sound Icon -->
+<div class="flex items-center gap-1">
+<button class="w-10 h-10 rounded-full bg-surface-container-high border-[2px] border-surface-container-lowest flex items-center justify-center text-on-surface-variant hover:brightness-110 active:translate-y-1 active:shadow-none shadow-[0_3px_0_0_#090614] transition-transform">
+<span class="material-symbols-outlined text-[20px]" data-icon="settings">settings</span>
+</button>
+</div>
+</header>
+<!-- ================= MAIN CONTENT CANVAS ================= -->
+<main class="max-w-md mx-auto px-space-md space-y-4 bg-egypt-stars relative">
+<!-- Floating Egyptian Folk Confetti & Lantern Vignettes -->
+<div class="absolute -top-3 left-4 text-primary-container text-xs confetti-piece select-none pointer-events-none">✨</div>
+<div class="absolute top-24 right-2 text-secondary-container text-sm confetti-piece select-none pointer-events-none" style="animation-delay: 1.5s;">🎉</div>
+<div class="absolute top-72 left-2 text-tertiary text-xs confetti-piece select-none pointer-events-none" style="animation-delay: 0.8s;">⭐</div>
+<!-- ================= AUCTION BANNER & TIMER HUD ================= -->
+<section class="relative bg-surface-container-high rounded-lg border-[3px] border-surface-container-lowest p-space-sm shadow-[0_5px_0_0_#090614]">
+<!-- Ahwa Baladi Striped Trim Roof Accent -->
+<div class="flex justify-between items-center bg-surface-container-lowest px-space-sm py-1.5 rounded-md border border-outline-variant/40 mb-3">
+<!-- Auction Gavel Title -->
+<div class="flex items-center gap-1.5">
+<span class="text-2xl animate-bounce">🔨</span>
+<span class="font-headline-md text-headline-md text-primary font-black drop-shadow-[0_2px_0_#090614]">
+            مين يزوّد؟ 📢
+          </span>
+</div>
+<!-- 60-second Turn Timer with Flame Pulse -->
+<div class="flex items-center gap-1.5 bg-error-container/90 px-3 py-1 rounded-full border-[2px] border-surface-container-lowest shadow-[0_2px_0_0_#090614] animate-flame">
+<span class="font-label-numeric text-label-numeric text-on-error-container tracking-wider" id="countdown-timer">00:48</span>
+<span class="material-symbols-outlined text-primary-container text-[20px]" style="font-variation-settings: 'FILL' 1;">local_fire_department</span>
+</div>
+</div>
+<!-- Wooden Sign Board Header (Ahwa Theme) -->
+<div class="bg-gradient-to-r from-surface-container via-surface-container-highest to-surface-container p-2.5 rounded-md border-2 border-[#5e4200] flex items-center justify-between shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)]">
+<div class="flex items-center gap-2">
+<span class="w-7 h-7 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-bold text-xs border border-surface-container-lowest">
+            م 4
+          </span>
+<span class="font-body-md text-body-md text-primary-fixed">سوق المزايدات المصري الأصيل</span>
+</div>
+<span class="font-label-badge text-label-badge bg-primary text-on-primary px-2 py-0.5 rounded-full font-black">
+          مباشر 🔴
+        </span>
+</div>
+</section>
+<!-- ================= TOPIC CHALLENGE CARD (Inflated Quiz Card) ================= -->
+<section class="bg-[#1E1638] rounded-lg border-[3.5px] border-surface-container-lowest p-space-md shadow-[0_6px_0_0_#090614] relative overflow-hidden">
+<!-- Glossy Pillow Inset Reflection -->
+<div class="absolute inset-x-0 top-0 h-2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none"></div>
+<!-- Bonus Badge Flag -->
+<div class="flex justify-between items-start mb-2">
+<span class="font-label-badge text-label-badge bg-tertiary-container text-on-tertiary-container border-[2px] border-surface-container-lowest px-3 py-1 rounded-full shadow-[0_3px_0_0_#090614] flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">bolt</span>
+          تحدي خارج التخصص (Bonus +2)
+        </span>
+<span class="font-label-badge text-label-badge text-on-surface-variant bg-surface-container-lowest/80 px-2.5 py-1 rounded-md border border-outline-variant/30">
+          كرويات ⚽
+        </span>
+</div>
+<!-- Main Challenge Subject -->
+<div class="text-center py-2">
+<p class="font-body-md text-body-md text-secondary mb-1">المطلوب ذكر أسماء وتفاصيل:</p>
+<h2 class="font-headline-lg text-headline-lg text-primary drop-shadow-[0_2px_0_#090614] leading-tight">
+          أندية حققت دوري أبطال أوروبا 🏆
+        </h2>
+</div>
+<!-- Opponent Attribute Match Warning Pill -->
+<div class="bg-surface-container-low/90 rounded-md p-2 border border-outline-variant/40 flex items-center justify-center gap-2 mt-2">
+<span class="material-symbols-outlined text-secondary-container text-[18px]">sports_soccer</span>
+<span class="font-label-badge text-label-badge text-on-surface">
+          المنافس: <strong class="text-primary-fixed">كابتن حودة (خبير الكرة)</strong>
+</span>
+</div>
+</section>
+<!-- ================= BIDDING DASHBOARD (Tactile & Bouncy) ================= -->
+<section class="bg-surface-container rounded-lg border-[3.5px] border-surface-container-lowest p-space-md shadow-[0_6px_0_0_#090614] space-y-4">
+<!-- Current Highest Bid Display -->
+<div class="bg-surface-container-lowest rounded-lg p-space-sm border-[2.5px] border-[#6b4c00] text-center relative shadow-[inset_0_4px_6px_rgba(0,0,0,0.6)]">
+<span class="font-label-badge text-label-badge text-on-surface-variant block mb-1">
+          أعلى مزايدة حالية في الصوان 🏛️
+        </span>
+<!-- Giant Counter Value -->
+<div class="flex items-center justify-center gap-2 py-1">
+<span class="text-4xl">📢</span>
+<span class="font-display-hero-mobile text-display-hero-mobile text-primary-container font-black drop-shadow-[0_3px_0_#6b4c00]" id="current-bid">
+            15
+          </span>
+<span class="font-headline-md text-headline-md text-on-surface">إجابة صريحة!</span>
+</div>
+<div class="flex items-center justify-center gap-2 mt-1">
+<span class="font-label-badge text-label-badge bg-secondary text-on-secondary px-2.5 py-0.5 rounded-full font-bold">
+            يعادل 3 نقاط 🌟
+          </span>
+<span class="text-xs text-outline-variant">|</span>
+<span class="font-label-badge text-label-badge text-secondary-fixed">
+            بواسطة: فريق الفراعنة 👑
+          </span>
+</div>
+</div>
+<!-- Wooden Bidding Increment Buttons (+1, +2, +5) -->
+<div>
+<p class="font-label-badge text-label-badge text-on-surface-variant text-center mb-2">
+          زوّد المزاد وخطف الكلمة:
+        </p>
+<div class="grid grid-cols-3 gap-2.5">
+<!-- +1 Wooden Button -->
+<button class="group bg-gradient-to-b from-[#8C5824] to-[#59330E] hover:brightness-110 active:translate-y-1 active:shadow-none transition-all duration-100 ease-out border-[3px] border-surface-container-lowest rounded-lg py-2.5 shadow-[0_4px_0_0_#2b1704] flex flex-col items-center justify-center" onclick="increaseBid(1)">
+<span class="font-headline-md text-headline-md text-primary font-black drop-shadow-[0_1px_0_#000]">+1</span>
+<span class="font-label-badge text-label-badge text-[#ffdea8]">نفس</span>
+</button>
+<!-- +2 Wooden Button -->
+<button class="group bg-gradient-to-b from-[#A3662A] to-[#683C11] hover:brightness-110 active:translate-y-1 active:shadow-none transition-all duration-100 ease-out border-[3px] border-surface-container-lowest rounded-lg py-2.5 shadow-[0_4px_0_0_#2b1704] flex flex-col items-center justify-center relative overflow-hidden" onclick="increaseBid(2)">
+<div class="absolute top-0 right-0 bg-primary text-on-primary font-bold text-[9px] px-1 rounded-bl">شائع</div>
+<span class="font-headline-md text-headline-md text-primary font-black drop-shadow-[0_1px_0_#000]">+2</span>
+<span class="font-label-badge text-label-badge text-[#ffdea8]">تحدي</span>
+</button>
+<!-- +5 Wooden Button -->
+<button class="group bg-gradient-to-b from-[#C47D33] to-[#7B4614] hover:brightness-110 active:translate-y-1 active:shadow-none transition-all duration-100 ease-out border-[3px] border-surface-container-lowest rounded-lg py-2.5 shadow-[0_4px_0_0_#2b1704] flex flex-col items-center justify-center" onclick="increaseBid(5)">
+<span class="font-headline-md text-headline-md text-primary font-black drop-shadow-[0_1px_0_#000]">+5</span>
+<span class="font-label-badge text-label-badge text-[#ffdea8]">معلّم!</span>
+</button>
+</div>
+</div>
+<!-- Action Hero Buttons (Bet vs Fold) -->
+<div class="space-y-2.5 pt-1">
+<!-- Emerald Green "أنا قدها" Button -->
+<button class="w-full bg-gradient-to-r from-[#00C853] via-[#00E676] to-[#00C853] text-surface-container-lowest font-headline-md text-headline-md py-3.5 rounded-lg border-[3px] border-surface-container-lowest shadow-[0_5px_0_0_#006024] hover:brightness-110 active:translate-y-1 active:shadow-none transition-all duration-100 ease-out flex items-center justify-center gap-2 group">
+<span class="material-symbols-outlined text-[28px] text-surface-container-lowest" style="font-variation-settings: 'FILL' 1;">verified</span>
+<span class="tracking-wide font-black">أنا قدها! (Take the Bet) ⚡</span>
+</button>
+<!-- Red Folded Banner Button -->
+<button class="w-full bg-gradient-to-r from-error-container via-[#B71C1C] to-error-container text-on-surface font-headline-sm text-headline-sm py-2.5 rounded-lg border-[2.5px] border-surface-container-lowest shadow-[0_4px_0_0_#4a0005] hover:brightness-110 active:translate-y-1 active:shadow-none transition-all duration-100 ease-out flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[22px] text-tertiary">back_hand</span>
+<span>انسحب وريّح (Fold) ✋</span>
+</button>
+</div>
+</section>
+<!-- ================= LIFELINES PANEL (وسائل المساعدة) ================= -->
+<section class="bg-surface-container-low rounded-lg border-[2.5px] border-surface-container-lowest p-space-sm shadow-[0_4px_0_0_#090614]">
+<div class="flex items-center justify-between mb-2">
+<h3 class="font-headline-sm text-headline-sm text-primary flex items-center gap-1.5">
+<span class="material-symbols-outlined text-secondary-container text-[20px]" style="font-variation-settings: 'FILL' 1;">help</span>
+          وسائل المساعدة (شايات القهوة) ☕
+        </h3>
+<span class="font-label-badge text-label-badge text-on-surface-variant">متبقي 2</span>
+</div>
+<!-- Power-Up Badges Grid -->
+<div class="grid grid-cols-3 gap-2">
+<!-- Phone Friend -->
+<button class="bg-surface-container rounded-md border-[2px] border-surface-container-lowest p-2 flex flex-col items-center text-center shadow-[0_3px_0_0_#090614] hover:border-primary-container active:translate-y-0.5 active:shadow-none transition-all">
+<div class="w-8 h-8 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center mb-1">
+<span class="material-symbols-outlined text-[18px]">call</span>
+</div>
+<span class="font-label-badge text-label-badge text-on-surface font-bold">اتصل بصديق</span>
+<span class="text-[10px] text-secondary">📞 متاح</span>
+</button>
+<!-- Rival Hint -->
+<button class="bg-surface-container rounded-md border-[2px] border-surface-container-lowest p-2 flex flex-col items-center text-center shadow-[0_3px_0_0_#090614] hover:border-primary-container active:translate-y-0.5 active:shadow-none transition-all">
+<div class="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center mb-1">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">lightbulb</span>
+</div>
+<span class="font-label-badge text-label-badge text-on-surface font-bold">هينت الخصم</span>
+<span class="text-[10px] text-primary">💡 متاح</span>
+</button>
+<!-- Swap with Rival -->
+<button class="bg-surface-container/50 opacity-60 rounded-md border-[2px] border-surface-container-lowest p-2 flex flex-col items-center text-center shadow-[0_2px_0_0_#090614] cursor-not-allowed">
+<div class="w-8 h-8 rounded-full bg-surface-variant text-on-surface-variant flex items-center justify-center mb-1">
+<span class="material-symbols-outlined text-[18px]">swap_horiz</span>
+</div>
+<span class="font-label-badge text-label-badge text-on-surface-variant font-bold">استعين بالخصم</span>
+<span class="text-[10px] text-error">🚫 مستخدم</span>
+</button>
+</div>
+</section>
+<!-- Spectators Cheering Strip -->
+<div class="bg-surface-container-lowest/80 rounded-md p-2 border border-outline-variant/30 flex items-center justify-between text-xs">
+<div class="flex items-center gap-1 text-on-surface-variant">
+<span>جمهور القهوة:</span>
+<span class="text-primary font-bold">42 متفرّج بيشجّع</span>
+</div>
+<div class="flex -space-x-1.5 space-x-reverse overflow-hidden">
+<div class="inline-block h-6 w-6 rounded-full ring-2 ring-surface-container-lowest bg-primary text-on-primary text-center font-bold text-[10px] leading-6">ع</div>
+<div class="inline-block h-6 w-6 rounded-full ring-2 ring-surface-container-lowest bg-secondary text-on-secondary text-center font-bold text-[10px] leading-6">س</div>
+<div class="inline-block h-6 w-6 rounded-full ring-2 ring-surface-container-lowest bg-tertiary text-on-tertiary text-center font-bold text-[10px] leading-6">م</div>
+</div>
+</div>
+</main>
+<!-- ================= BOTTOM NAVIGATION BAR (Shared Component Anchor) ================= -->
+<!-- Mapped styles from JSON: style_shell_layout, style_component_shape, style_shadows_and_elevation -->
+<!-- Active state set to 'Arena' (swords icon) as this screen is an active live battle challenge -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-space-md py-space-xs bg-surface-container-low dark:bg-surface-container-low docked full-width rounded-t-lg border-t-[3px] border-surface-container-lowest shadow-[0_-4px_0_0_#090614]">
+<!-- Item 1: Battle (Inactive) -->
+<button class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none">
+<span class="material-symbols-outlined text-[24px]" data-icon="sports_esports">sports_esports</span>
+<span class="font-label-badge text-label-badge mt-0.5">Battle</span>
+</button>
+<!-- Item 2: Arena (ACTIVE MAPPING - Live Auction Arena) -->
+<!-- Executing style_active_navigation instructions from JSON -->
+<button class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-lg px-space-md py-space-xs border-[2.5px] border-surface-container-lowest shadow-[0_3px_0_0_#6b4c00] active:translate-y-0.5 active:shadow-none">
+<span class="material-symbols-outlined text-[24px]" data-icon="swords" style="font-variation-settings: 'FILL' 1;">swords</span>
+<span class="font-label-badge text-label-badge mt-0.5 font-black">Arena</span>
+</button>
+<!-- Item 3: Rankings (Inactive) -->
+<button class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none">
+<span class="material-symbols-outlined text-[24px]" data-icon="leaderboard">leaderboard</span>
+<span class="font-label-badge text-label-badge mt-0.5">Rankings</span>
+</button>
+<!-- Item 4: Shop (Inactive) -->
+<button class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none">
+<span class="material-symbols-outlined text-[24px]" data-icon="storefront">storefront</span>
+<span class="font-label-badge text-label-badge mt-0.5">Shop</span>
+</button>
+</nav>
+<!-- ================= INLINE JS FOR INTERACTIVE AUCTION BIDDING ================= -->
+<script>
+    let currentBidValue = 15;
+    const bidElement = document.getElementById('current-bid');
+
+    function increaseBid(amount) {
+      currentBidValue += amount;
+      if (bidElement) {
+        bidElement.innerText = currentBidValue;
+        // Bouncy pulse reaction
+        bidElement.classList.add('scale-125', 'text-secondary-container');
+        setTimeout(() => {
+          bidElement.classList.remove('scale-125', 'text-secondary-container');
+        }, 180);
+      }
+    }
+
+    // Gentle countdown simulation
+    let secondsLeft = 48;
+    const timerElement = document.getElementById('countdown-timer');
+    setInterval(() => {
+      if (secondsLeft > 0) {
+        secondsLeft--;
+        const formatted = secondsLeft < 10 ? `00:0${secondsLeft}` : `00:${secondsLeft}`;
+        if (timerElement) timerElement.innerText = formatted;
+      }
+    }, 1000);
+  </script>
+</body></html>

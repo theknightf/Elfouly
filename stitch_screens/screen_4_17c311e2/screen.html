@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+
+<html class="dark" dir="rtl" lang="ar"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>QUIZ ARENA - 1 تو (One-Two)</title>
+<!-- Google Fonts: Rubik -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,400..900;1,400..900&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "inverse-surface": "#e7deff",
+            "on-primary": "#412d00",
+            "on-tertiary-fixed": "#40000c",
+            "surface-container-high": "#2c2640",
+            "on-error": "#690005",
+            "on-surface": "#e7deff",
+            "primary": "#ffdca1",
+            "inverse-on-surface": "#322d46",
+            "tertiary": "#ffd7d8",
+            "secondary": "#bdf4ff",
+            "secondary-fixed": "#9cf0ff",
+            "on-secondary-container": "#00616d",
+            "surface-bright": "#3b3650",
+            "outline": "#9e8f78",
+            "on-secondary-fixed-variant": "#004f58",
+            "on-primary-container": "#6b4c00",
+            "surface-dim": "#151028",
+            "on-tertiary-fixed-variant": "#920028",
+            "on-background": "#e7deff",
+            "on-primary-fixed": "#271900",
+            "background": "#151028",
+            "secondary-container": "#00e3fd",
+            "surface-variant": "#37314b",
+            "surface-container-low": "#1d1830",
+            "primary-container": "#ffb800",
+            "inverse-primary": "#7c5800",
+            "outline-variant": "#514532",
+            "on-secondary": "#00363d",
+            "surface-tint": "#ffba20",
+            "error": "#ffb4ab",
+            "on-tertiary": "#68001a",
+            "primary-fixed-dim": "#ffba20",
+            "surface": "#151028",
+            "tertiary-container": "#ffb0b3",
+            "on-error-container": "#ffdad6",
+            "on-tertiary-container": "#a6002e",
+            "tertiary-fixed-dim": "#ffb3b6",
+            "surface-container-lowest": "#0f0a22",
+            "tertiary-fixed": "#ffdada",
+            "error-container": "#93000a",
+            "surface-container-highest": "#37314b",
+            "on-surface-variant": "#d5c4ab",
+            "primary-fixed": "#ffdea8",
+            "secondary-fixed-dim": "#00daf3",
+            "on-secondary-fixed": "#001f24",
+            "on-primary-fixed-variant": "#5e4200",
+            "surface-container": "#211c35"
+          },
+          "borderRadius": {
+            "DEFAULT": "1rem",
+            "lg": "2rem",
+            "xl": "3rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "margin": "1.5rem",
+            "space-md": "1rem",
+            "space-lg": "1.5rem",
+            "margin-mobile": "1rem",
+            "gutter": "1rem",
+            "space-sm": "0.5rem",
+            "space-xs": "0.25rem",
+            "space-xl": "2.25rem",
+            "gutter-mobile": "0.75rem"
+          },
+          "fontFamily": {
+            "headline-sm": ["Rubik"],
+            "body-lg": ["Rubik"],
+            "label-numeric": ["Rubik"],
+            "headline-lg": ["Rubik"],
+            "label-badge": ["Rubik"],
+            "display-hero-mobile": ["Rubik"],
+            "display-hero": ["Rubik"],
+            "headline-md": ["Rubik"],
+            "body-md": ["Rubik"]
+          },
+          "fontSize": {
+            "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "700" }],
+            "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "600" }],
+            "label-numeric": ["20px", { "lineHeight": "24px", "fontWeight": "900" }],
+            "headline-lg": ["28px", { "lineHeight": "36px", "fontWeight": "800" }],
+            "label-badge": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "800" }],
+            "display-hero-mobile": ["34px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "900" }],
+            "display-hero": ["44px", { "lineHeight": "52px", "letterSpacing": "-0.02em", "fontWeight": "900" }],
+            "headline-md": ["22px", { "lineHeight": "28px", "fontWeight": "800" }],
+            "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "500" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* Tactile Cartoon Keyframes & Utilities */
+    @keyframes flameFlicker {
+      0%, 100% { transform: scale(1) rotate(-1deg); }
+      50% { transform: scale(1.15) rotate(2deg); filter: drop-shadow(0 0 8px #ffb800); }
+    }
+    .flame-pulse {
+      animation: flameFlicker 1.4s ease-in-out infinite;
+    }
+    @keyframes pulseRing {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.04); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .pulse-badge {
+      animation: pulseRing 2s infinite ease-in-out;
+    }
+    /* Pattern overlay for baladi Egyptian arcade vibes */
+    .bg-baladi-pattern {
+      background-image: radial-gradient(circle at 50% 50%, #2c2640 10%, transparent 11%), radial-gradient(circle at 0% 0%, #37314b 15%, transparent 16%);
+      background-size: 24px 24px;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md text-body-md antialiased min-h-screen relative overflow-x-hidden selection:bg-primary-container selection:text-on-primary-container">
+<!-- TOP APP BAR (Shared Component Anchor) -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-space-md py-space-sm bg-surface-container dark:bg-surface-container rounded-b-lg border-b-[3px] border-surface-container-lowest shadow-[0_4px_0_0_#090614]">
+<!-- Leading: Pharaoh Mascot Avatar -->
+<div class="flex items-center gap-2">
+<div class="relative w-11 h-11 rounded-full border-[2.5px] border-surface-container-lowest bg-primary-container flex items-center justify-center shadow-[0_3px_0_0_#090614] overflow-hidden active:translate-y-0.5 transition-transform cursor-pointer">
+<!-- Pharaoh cartoon avatar visual -->
+<div class="w-full h-full flex items-center justify-center bg-gradient-to-tr from-amber-600 via-primary-container to-yellow-200">
+<span class="material-symbols-outlined text-on-primary-container text-2xl font-bold" style="font-variation-settings: 'FILL' 1;">face_6</span>
+</div>
+<div class="absolute -bottom-1 -right-1 bg-surface-container-lowest rounded-full p-0.5 border border-primary text-[10px]">
+          👑
+        </div>
+</div>
+<div class="flex flex-col">
+<span class="font-label-badge text-label-badge text-primary-container leading-none">موسم الفراعنة</span>
+<span class="font-headline-sm text-headline-sm text-on-surface leading-tight">كابتن حورس</span>
+</div>
+</div>
+<!-- Center Headline: QUIZ ARENA (Strict Identity Anchor) -->
+<div class="flex flex-col items-center justify-center">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary-container text-xl flame-pulse" style="font-variation-settings: 'FILL' 1;">emoji_events</span>
+<h1 class="font-display-hero-mobile text-display-hero-mobile text-primary dark:text-primary tracking-tight drop-shadow-[0_2px_0_#090614] font-black">
+          QUIZ ARENA
+        </h1>
+</div>
+<span class="bg-surface-container-highest px-2 py-0.5 rounded-full border border-surface-container-lowest font-label-badge text-label-badge text-secondary font-black tracking-widest text-[10px] -mt-1 shadow-[0_1.5px_0_0_#090614]">
+        LIVE ARCADE
+      </span>
+</div>
+<!-- Trailing: Settings Icon (Strict Component Anchor) -->
+<button aria-label="Settings" class="w-10 h-10 rounded-xl bg-surface-container-high border-[2.5px] border-surface-container-lowest text-on-surface flex items-center justify-center shadow-[0_3px_0_0_#090614] hover:brightness-110 active:translate-y-1 active:shadow-none transition-all duration-100 ease-out">
+<span class="material-symbols-outlined text-2xl text-on-surface-variant">settings</span>
+</button>
+</header>
+<!-- MAIN VIEWPORT CANVAS -->
+<main class="pt-24 pb-28 px-space-md max-w-xl mx-auto flex flex-col gap-4 relative z-10">
+<!-- Egyptian Baladi Garland / Trims & Confetti Micro-decorations -->
+<div class="absolute -top-6 left-4 text-xs opacity-60 select-none">✨</div>
+<div class="absolute top-28 right-2 text-xs opacity-70 select-none rotate-12">🎉</div>
+<div class="absolute top-72 left-2 text-sm opacity-50 select-none -rotate-12">⚡</div>
+<!-- SUB-HUD: DIGITAL ROUND TIMER + GAME MODE GRAFFITI BANNER -->
+<div class="flex items-center justify-between gap-2 mt-1">
+<!-- Mode Badge: "1 تو (One-Two) ⚡" -->
+<div class="relative bg-gradient-to-r from-primary-container via-amber-400 to-amber-500 text-on-primary-container border-[3px] border-surface-container-lowest rounded-xl px-3.5 py-1.5 shadow-[0_4px_0_0_#090614] flex items-center gap-2 transform -rotate-1 hover:rotate-0 transition-transform">
+<span class="bg-surface-container-lowest text-primary-container rounded-full p-1 flex items-center justify-center shadow-inner">
+<span class="material-symbols-outlined text-base font-black leading-none" style="font-variation-settings: 'FILL' 1;">bolt</span>
+</span>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm font-black leading-none text-on-primary-fixed drop-shadow-[0_1px_0_rgba(255,255,255,0.4)]">
+            1 تو (One-Two) ⚡
+          </span>
+<span class="text-[10px] font-label-badge font-extrabold text-on-primary-fixed-variant leading-none">مود البنك والريسك</span>
+</div>
+</div>
+<!-- Round Timer Pill: "03:42" with Hourglass -->
+<div class="bg-surface-container-high border-[2.5px] border-surface-container-lowest rounded-full px-3.5 py-1.5 shadow-[0_3px_0_0_#090614] flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary-container text-lg flame-pulse" style="font-variation-settings: 'FILL' 1;">hourglass_top</span>
+<span class="font-label-numeric text-label-numeric text-secondary font-black tracking-wider">03:42</span>
+</div>
+</div>
+<!-- SCOREBOARD HUD: Team A vs Team B (Bento-style Inflated Cards) -->
+<div class="grid grid-cols-2 gap-3">
+<!-- Team A (Active Playing Team) -->
+<div class="relative bg-surface-container rounded-lg border-[3px] border-primary-container p-3 shadow-[0_5px_0_0_#090614] flex flex-col justify-between overflow-hidden">
+<div class="absolute -top-5 -left-5 w-14 h-14 bg-primary-container/20 rounded-full blur-md"></div>
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-1.5">
+<div class="w-8 h-8 rounded-full bg-primary-container border-2 border-surface-container-lowest flex items-center justify-center text-on-primary-container font-black text-sm shadow-[0_2px_0_0_#090614]">
+              🇪🇬
+            </div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-primary leading-tight">فريق أ</span>
+<span class="font-label-badge text-label-badge text-on-surface-variant text-[10px]">الملوك (المجيب)</span>
+</div>
+</div>
+<span class="bg-secondary-container text-on-secondary-container font-label-badge text-[10px] px-1.5 py-0.5 rounded-full border border-surface-container-lowest font-black uppercase pulse-badge">
+            دوره
+          </span>
+</div>
+<div class="flex items-baseline justify-between bg-surface-container-lowest/80 rounded-xl px-2.5 py-1.5 border border-outline-variant">
+<span class="font-label-badge text-label-badge text-on-surface-variant">النقاط:</span>
+<span class="font-display-hero-mobile text-display-hero-mobile text-primary-container font-black leading-none drop-shadow-[0_2px_0_#090614]">24</span>
+</div>
+</div>
+<!-- Team B (Challenger / Host Referee Team) -->
+<div class="relative bg-surface-container-low rounded-lg border-[3px] border-surface-container-lowest p-3 shadow-[0_5px_0_0_#090614] flex flex-col justify-between opacity-95">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-1.5">
+<div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-700 to-red-600 border-2 border-surface-container-lowest flex items-center justify-center text-white font-black text-xs shadow-[0_2px_0_0_#090614]" title="FCB Crest Badge">
+              ⚽
+            </div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface leading-tight">فريق ب</span>
+<span class="font-label-badge text-label-badge text-on-surface-variant text-[10px]">برشلونة (الحكم)</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline text-base" style="font-variation-settings: 'FILL' 1;">gavel</span>
+</div>
+<div class="flex items-baseline justify-between bg-surface-container-lowest/80 rounded-xl px-2.5 py-1.5 border border-outline-variant">
+<span class="font-label-badge text-label-badge text-on-surface-variant">النقاط:</span>
+<span class="font-display-hero-mobile text-display-hero-mobile text-on-surface font-black leading-none">18</span>
+</div>
+</div>
+</div>
+<!-- STREAK MULTIPLIER LADDER (Dynamic Fire Meter) -->
+<div class="bg-surface-container-high rounded-xl border-[3px] border-surface-container-lowest p-3 shadow-[0_4px_0_0_#090614] flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="text-xl flame-pulse">🔥</span>
+<span class="font-headline-sm text-headline-sm text-primary font-black">
+            السلسلة الحالية: <span class="text-secondary-container">×5</span>
+</span>
+</div>
+<span class="font-label-badge text-label-badge bg-surface-container-lowest px-2 py-0.5 rounded-full border border-primary/30 text-primary">
+          قيمة السؤال: 160 نقطة
+        </span>
+</div>
+<!-- Segmented Multiplier Fire Gauge -->
+<div class="grid grid-cols-6 gap-1.5 items-center bg-surface-container-lowest p-1.5 rounded-xl border border-outline-variant">
+<div class="h-3 rounded-lg bg-primary-container border border-surface-container-lowest shadow-[0_1px_0_#090614] flex items-center justify-center text-[8px] font-black text-on-primary-container">×1</div>
+<div class="h-3 rounded-lg bg-primary-container border border-surface-container-lowest shadow-[0_1px_0_#090614] flex items-center justify-center text-[8px] font-black text-on-primary-container">×2</div>
+<div class="h-3 rounded-lg bg-primary-container border border-surface-container-lowest shadow-[0_1px_0_#090614] flex items-center justify-center text-[8px] font-black text-on-primary-container">×3</div>
+<div class="h-3 rounded-lg bg-primary-container border border-surface-container-lowest shadow-[0_1px_0_#090614] flex items-center justify-center text-[8px] font-black text-on-primary-container">×4</div>
+<div class="h-3.5 rounded-lg bg-gradient-to-r from-amber-400 to-red-500 border-2 border-surface-container-lowest shadow-[0_1px_0_#090614] flex items-center justify-center text-[9px] font-black text-white animate-pulse">×5 🔥</div>
+<div class="h-3 rounded-lg bg-surface-variant border border-surface-container-lowest flex items-center justify-center text-[8px] font-bold text-on-surface-variant">×10</div>
+</div>
+</div>
+<!-- CENTER QUESTION CARD (Golden Comic Inflated Card) -->
+<div class="relative bg-gradient-to-b from-surface-container to-surface-container-low rounded-lg border-[3.5px] border-primary p-5 shadow-[0_7px_0_0_#090614] flex flex-col gap-3 overflow-hidden">
+<!-- Glow & baladi backdrop accent -->
+<div class="absolute -right-12 -bottom-12 w-32 h-32 bg-primary-container/15 rounded-full blur-xl pointer-events-none"></div>
+<!-- Category Tag & Speaker Tag -->
+<div class="flex items-center justify-between">
+<div class="inline-flex items-center gap-1.5 bg-primary-container text-on-primary-container px-3 py-1 rounded-full border-2 border-surface-container-lowest shadow-[0_2px_0_0_#090614]">
+<span class="material-symbols-outlined text-base font-black" style="font-variation-settings: 'FILL' 1;">public</span>
+<span class="font-label-badge text-label-badge font-extrabold tracking-wide">عواصم وأعلام 🌍</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant font-label-badge text-[11px] bg-surface-container-lowest px-2 py-0.5 rounded-md border border-outline-variant">
+<span>سؤال رقم ٨</span>
+</div>
+</div>
+<!-- Question Text Prompt -->
+<div class="my-2 py-1">
+<h2 class="font-headline-lg text-headline-lg text-on-surface leading-snug font-black text-center drop-shadow-[0_2px_0_#090614]">
+          ما هي عاصمة كرواتيا؟
+        </h2>
+</div>
+<!-- Quick Answer Clue / Status Ribbon -->
+<div class="bg-surface-container-highest/80 border-2 border-dashed border-outline rounded-xl p-2.5 flex items-center justify-center gap-2 text-center">
+<span class="material-symbols-outlined text-secondary-container text-lg">psychology</span>
+<span class="font-body-md text-body-md text-secondary font-bold">
+          المجيب: <span class="text-primary underline decoration-2">أحمد من فريق أ</span> (أمامك ٥ ثوانٍ للإجابة الشفهية!)
+        </span>
+</div>
+</div>
+<!-- HOST / REFEREE CONTROL BOX (لوحة تحكم الحكم / القارئ من الفريق المنافس) -->
+<div class="bg-surface-container rounded-lg border-[3px] border-surface-container-lowest p-3.5 shadow-[0_5px_0_0_#090614] flex flex-col gap-2.5">
+<div class="flex items-center justify-between border-b border-outline-variant pb-1.5">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings: 'FILL' 1;">shield_person</span>
+<span class="font-headline-sm text-headline-sm text-primary font-extrabold">لوحة تحكم الحكم (فريق ب)</span>
+</div>
+<span class="text-[11px] font-label-badge bg-surface-container-lowest px-2 py-0.5 rounded-full text-on-surface-variant border border-outline-variant">
+          كن عادلاً يا كابتن ⚖️
+        </span>
+</div>
+<!-- Referee Quick Feedback Buttons -->
+<div class="grid grid-cols-2 gap-3 pt-1">
+<!-- Score: Green Tactile Button -->
+<button class="flex items-center justify-center gap-2 py-3 px-3 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 text-surface-container-lowest font-headline-sm text-headline-sm font-black border-[3px] border-surface-container-lowest shadow-[0_5px_0_0_#064e3b] hover:brightness-110 active:translate-y-1 active:shadow-none transition-all duration-100 ease-out cursor-pointer">
+<span class="material-symbols-outlined text-2xl font-black" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<div class="flex flex-col text-right leading-tight">
+<span>صح (+نقطة)</span>
+<span class="text-[10px] font-label-badge font-bold opacity-90">Score / كمل</span>
+</div>
+</button>
+<!-- Break Streak: Crimson Red Tactile Button -->
+<button class="flex items-center justify-center gap-2 py-3 px-3 rounded-xl bg-gradient-to-b from-rose-500 to-red-700 text-white font-headline-sm text-headline-sm font-black border-[3px] border-surface-container-lowest shadow-[0_5px_0_0_#4c0519] hover:brightness-110 active:translate-y-1 active:shadow-none transition-all duration-100 ease-out cursor-pointer">
+<span class="material-symbols-outlined text-2xl font-black" style="font-variation-settings: 'FILL' 1;">cancel</span>
+<div class="flex flex-col text-right leading-tight">
+<span>غلط (تصفير)</span>
+<span class="text-[10px] font-label-badge font-bold opacity-90">Break Streak</span>
+</div>
+</button>
+</div>
+</div>
+<!-- TACTILE CARTOON ACTION AREA (BANK vs RISK for the Playing Team) -->
+<div class="grid grid-cols-12 gap-3 mt-1">
+<!-- BANK! (أمّن) Button with Mini Safe Box (7 Cols) -->
+<button class="col-span-7 relative group overflow-hidden bg-gradient-to-b from-emerald-300 via-teal-400 to-emerald-600 border-[3.5px] border-surface-container-lowest rounded-xl p-3.5 shadow-[0_6px_0_0_#064e3b] active:translate-y-1.5 active:shadow-none transition-all duration-100 ease-bounce flex flex-col justify-center items-center text-surface-container-lowest">
+<!-- Top shine highlight -->
+<div class="absolute inset-x-0 top-0 h-2 bg-white/40 rounded-t-lg pointer-events-none"></div>
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-2xl font-black" style="font-variation-settings: 'FILL' 1;">lock</span>
+<span class="font-display-hero-mobile text-display-hero-mobile font-black tracking-tight leading-none text-surface-container-lowest drop-shadow-[0_1px_0_rgba(255,255,255,0.7)]">
+            BANK!
+          </span>
+</div>
+<div class="bg-surface-container-lowest/90 px-3 py-1 rounded-full border border-surface-container-lowest flex items-center gap-1.5 shadow-inner">
+<span class="text-xs">💰</span>
+<span class="font-headline-sm text-headline-sm text-primary font-black leading-none">
+            أمّن (+500)
+          </span>
+</div>
+<span class="text-[10px] font-label-badge font-extrabold text-surface-container-lowest mt-1">احفظ رصيد السلسلة في الخزينة</span>
+</button>
+<!-- RISK / CONTINUE Button: "دبّل / كمل (Risk 🔥)" (5 Cols) -->
+<button class="col-span-5 relative group overflow-hidden bg-gradient-to-b from-amber-400 via-orange-500 to-red-600 border-[3.5px] border-surface-container-lowest rounded-xl p-3.5 shadow-[0_6px_0_0_#7c2d12] active:translate-y-1.5 active:shadow-none transition-all duration-100 ease-bounce flex flex-col justify-center items-center text-white">
+<!-- Top shine highlight -->
+<div class="absolute inset-x-0 top-0 h-2 bg-white/40 rounded-t-lg pointer-events-none"></div>
+<span class="text-2xl flame-pulse mb-0.5">🔥</span>
+<span class="font-headline-md text-headline-md font-black leading-tight text-white drop-shadow-[0_2px_0_#090614]">
+          دبّل / كمل
+        </span>
+<span class="bg-surface-container-lowest/80 text-primary-container px-2 py-0.5 rounded-md font-label-badge text-[11px] font-black mt-1">
+          خاطر ×2
+        </span>
+</button>
+</div>
+</main>
+<!-- BOTTOM NAVIGATION BAR (Shared Component Anchor) -->
+<!-- Screen is "Battle / Arena" so 'Battle' or 'Arena' tab takes style_active_navigation -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-space-md py-space-xs bg-surface-container-low dark:bg-surface-container-low rounded-t-lg border-t-[3px] border-surface-container-lowest shadow-[0_-4px_0_0_#090614]">
+<!-- Tab 1: Battle (Active: Closest match to current live match) -->
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-lg px-space-md py-space-xs border-[2.5px] border-surface-container-lowest shadow-[0_3px_0_0_#6b4c00] active:translate-y-0.5 active:shadow-none hover:brightness-110 transition-all duration-100 ease-bounce" href="#battle">
+<span class="material-symbols-outlined text-2xl font-bold" style="font-variation-settings: 'FILL' 1;">sports_esports</span>
+<span class="font-label-badge text-label-badge font-black">Battle</span>
+</a>
+<!-- Tab 2: Arena -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary dark:hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none" href="#arena">
+<span class="material-symbols-outlined text-2xl">swords</span>
+<span class="font-label-badge text-label-badge font-bold">Arena</span>
+</a>
+<!-- Tab 3: Rankings -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary dark:hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none" href="#rankings">
+<span class="material-symbols-outlined text-2xl">leaderboard</span>
+<span class="font-label-badge text-label-badge font-bold">Rankings</span>
+</a>
+<!-- Tab 4: Shop -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary dark:hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none" href="#shop">
+<span class="material-symbols-outlined text-2xl">storefront</span>
+<span class="font-label-badge text-label-badge font-bold">Shop</span>
+</a>
+</nav>
+<!-- Interactive Audio-visual Touch Feedback Script (Vanilla JS) -->
+<script>
+    // Micro-interaction: Provide a punchy tactile arcade vibration & click feel on buttons
+    document.querySelectorAll('button, a').forEach(elem => {
+      elem.addEventListener('click', () => {
+        if (window.navigator && window.navigator.vibrate) {
+          window.navigator.vibrate(25);
+        }
+      });
+    });
+  </script>
+</body></html>

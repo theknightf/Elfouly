@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+
+<html class="dark" dir="rtl" lang="ar"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>QUIZ ARENA - اديني في سري</title>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts: Rubik for dynamic gaming Arabic & Latin -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,400;0,600;0,700;0,800;0,900;1,800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "inverse-surface": "#e7deff",
+            "on-primary": "#412d00",
+            "on-tertiary-fixed": "#40000c",
+            "surface-container-high": "#2c2640",
+            "on-error": "#690005",
+            "on-surface": "#e7deff",
+            "primary": "#ffdca1",
+            "inverse-on-surface": "#322d46",
+            "tertiary": "#ffd7d8",
+            "secondary": "#bdf4ff",
+            "secondary-fixed": "#9cf0ff",
+            "on-secondary-container": "#00616d",
+            "surface-bright": "#3b3650",
+            "outline": "#9e8f78",
+            "on-secondary-fixed-variant": "#004f58",
+            "on-primary-container": "#6b4c00",
+            "surface-dim": "#151028",
+            "on-tertiary-fixed-variant": "#920028",
+            "on-background": "#e7deff",
+            "on-primary-fixed": "#271900",
+            "background": "#151028",
+            "secondary-container": "#00e3fd",
+            "surface-variant": "#37314b",
+            "surface-container-low": "#1d1830",
+            "primary-container": "#ffb800",
+            "inverse-primary": "#7c5800",
+            "outline-variant": "#514532",
+            "on-secondary": "#00363d",
+            "surface-tint": "#ffba20",
+            "error": "#ffb4ab",
+            "on-tertiary": "#68001a",
+            "primary-fixed-dim": "#ffba20",
+            "surface": "#151028",
+            "tertiary-container": "#ffb0b3",
+            "on-error-container": "#ffdad6",
+            "on-tertiary-container": "#a6002e",
+            "tertiary-fixed-dim": "#ffb3b6",
+            "surface-container-lowest": "#0f0a22",
+            "tertiary-fixed": "#ffdada",
+            "error-container": "#93000a",
+            "surface-container-highest": "#37314b",
+            "on-surface-variant": "#d5c4ab",
+            "primary-fixed": "#ffdea8",
+            "secondary-fixed-dim": "#00daf3",
+            "on-secondary-fixed": "#001f24",
+            "on-primary-fixed-variant": "#5e4200",
+            "surface-container": "#211c35"
+          },
+          "borderRadius": {
+            "DEFAULT": "1rem",
+            "lg": "2rem",
+            "xl": "3rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "margin": "1.5rem",
+            "space-md": "1rem",
+            "space-lg": "1.5rem",
+            "margin-mobile": "1rem",
+            "gutter": "1rem",
+            "space-sm": "0.5rem",
+            "space-xs": "0.25rem",
+            "space-xl": "2.25rem",
+            "gutter-mobile": "0.75rem"
+          },
+          "fontFamily": {
+            "headline-sm": ["Rubik"],
+            "body-lg": ["Rubik"],
+            "label-numeric": ["Rubik"],
+            "headline-lg": ["Rubik"],
+            "label-badge": ["Rubik"],
+            "display-hero-mobile": ["Rubik"],
+            "display-hero": ["Rubik"],
+            "headline-md": ["Rubik"],
+            "body-md": ["Rubik"]
+          },
+          "fontSize": {
+            "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "700" }],
+            "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "600" }],
+            "label-numeric": ["20px", { "lineHeight": "24px", "fontWeight": "900" }],
+            "headline-lg": ["28px", { "lineHeight": "36px", "fontWeight": "800" }],
+            "label-badge": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "800" }],
+            "display-hero-mobile": ["34px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "900" }],
+            "display-hero": ["44px", { "lineHeight": "52px", "letterSpacing": "-0.02em", "fontWeight": "900" }],
+            "headline-md": ["22px", { "lineHeight": "28px", "fontWeight": "800" }],
+            "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "500" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* Comic tactile 3D extrusions & cartoon styling */
+    .comic-border {
+      border: 3px solid #090614;
+    }
+    .comic-border-thick {
+      border: 3.5px solid #090614;
+    }
+    .comic-shadow-gold {
+      box-shadow: 0 5px 0 0 #6b4c00, 0 6px 0 0 #090614;
+    }
+    .comic-shadow-red {
+      box-shadow: 0 5px 0 0 #68001a, 0 6px 0 0 #090614;
+    }
+    .comic-shadow-cyan {
+      box-shadow: 0 5px 0 0 #00616d, 0 6px 0 0 #090614;
+    }
+    .comic-shadow-dark {
+      box-shadow: 0 5px 0 0 #090614;
+    }
+    .comic-shadow-green {
+      box-shadow: 0 5px 0 0 #0f5132, 0 6px 0 0 #090614;
+    }
+    .pillow-gloss {
+      box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.4);
+    }
+    .pillow-sunken {
+      box-shadow: inset 0 4px 6px rgba(0, 0, 0, 0.5);
+    }
+    /* Ahwa comic burst backdrop lines */
+    .comic-burst-pattern {
+      background-image: radial-gradient(circle at 50% 20%, #2c2640 10%, #151028 80%);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen font-body-md text-body-md overflow-x-hidden pb-28 select-none">
+<!-- ================= TOP APP BAR (Shared Component Anchor) ================= -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-space-md py-space-sm bg-surface-container docked full-width rounded-b-lg border-b-[3px] border-surface-container-lowest shadow-[0_4px_0_0_#090614]">
+<!-- Leading Avatar Mascot -->
+<div class="flex items-center gap-space-sm">
+<div class="relative w-11 h-11 rounded-full comic-border bg-primary-container p-0.5 flex items-center justify-center shadow-[0_3px_0_0_#090614] overflow-hidden">
+<img class="w-full h-full object-cover rounded-full" data-alt="Vibrant cartoon pharaoh mascot character wearing a traditional golden striped nemes headdress with glowing neon sunglasses and a cheeky grin, rendered in dynamic high-energy Egyptian street comic pop style, rich purple and gold ambient gaming colors." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAO3CQWGeHBa9p0CE5zFCtwRitsydGcfGDBDVfW9E0tlfX8HYzjEJOk2pPXgSKNWSwXiU_YGOhyEPiFoeATfhIC9xRdk4GF-S0Zi93qc3Er-hq5eCRKcbRzvp6WdeymK4OnVEoz0_s1B-HVazoE21Bj4ScFFl4u5UcOR7u3yeeKIVXA8v7Ryo-F6LlbnMXTiECiKh0I7VI_yLO1c-UxV3dcqbIMSJhUngMQISuDQMfiGAKHXcDCpvK3_g"/>
+</div>
+<div class="hidden sm:flex flex-col">
+<span class="font-headline-md text-headline-md text-primary tracking-tight drop-shadow-[0_2px_0_#090614]">QUIZ ARENA</span>
+<span class="font-label-badge text-label-badge text-secondary-container">كازينو التحديات 🔥</span>
+</div>
+</div>
+<!-- Center Mode Banner & Turn Indicator -->
+<div class="flex flex-col items-center">
+<div class="bg-surface-container-highest px-space-md py-0.5 rounded-full comic-border flex items-center gap-space-xs shadow-[0_2px_0_0_#090614] transform -rotate-1">
+<span class="text-tertiary font-headline-sm text-headline-sm tracking-wide">اديني في سري 🤫</span>
+</div>
+<div class="flex items-center gap-1 mt-0.5">
+<span class="w-2 h-2 rounded-full bg-secondary-container animate-pulse"></span>
+<span class="font-label-badge text-label-badge text-on-surface-variant">دور الشارحين (فريق أ)</span>
+</div>
+</div>
+<!-- Trailing HUD Status & Action Settings -->
+<div class="flex items-center gap-space-xs">
+<div class="bg-surface-container-lowest px-space-sm py-1 rounded-full comic-border flex items-center gap-1 text-primary shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]">
+<span class="material-symbols-outlined text-primary-container text-lg" data-weight="fill">bolt</span>
+<span class="font-label-numeric text-headline-sm text-primary">450</span>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-container-high comic-border flex items-center justify-center text-primary hover:brightness-110 active:translate-y-1 active:shadow-none shadow-[0_3px_0_0_#090614] transition-transform">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+</div>
+</header>
+<!-- ================= MAIN CONTAINER CANVAS ================= -->
+<main class="pt-20 px-space-md max-w-xl mx-auto flex flex-col gap-space-md">
+<!-- HUD Round Timer & Clue Progress Strip -->
+<div class="flex items-center justify-between gap-space-sm mt-space-xs">
+<!-- Circular Comic Timer -->
+<div class="flex items-center gap-space-xs bg-surface-container px-space-md py-space-xs rounded-xl comic-border-thick comic-shadow-dark pillow-gloss">
+<span class="material-symbols-outlined text-tertiary-container animate-spin text-xl" data-icon="hourglass_top">hourglass_top</span>
+<div class="flex flex-col items-start leading-none">
+<span class="font-label-badge text-label-badge text-on-surface-variant">الوقت المتبقي</span>
+<span class="font-label-numeric text-headline-lg text-tertiary tracking-tight">00:45</span>
+</div>
+</div>
+<!-- Turn & Team Clue Counter HUD -->
+<div class="flex-1 bg-surface-container-high px-space-md py-space-xs rounded-xl comic-border-thick comic-shadow-dark pillow-gloss flex items-center justify-between">
+<div>
+<span class="font-label-badge text-label-badge text-secondary">التلميحات المستهلكة</span>
+<div class="flex items-center gap-1 mt-0.5">
+<span class="w-3.5 h-3.5 rounded-full bg-primary-container comic-border"></span>
+<span class="w-3.5 h-3.5 rounded-full bg-primary-container comic-border"></span>
+<span class="w-3.5 h-3.5 rounded-full bg-surface-variant comic-border"></span>
+</div>
+</div>
+<div class="bg-surface-container-lowest px-space-sm py-1 rounded-lg comic-border">
+<span class="font-label-numeric text-headline-sm text-primary-container">2/3</span>
+</div>
+</div>
+</div>
+<!-- ================= CLUE-GIVER SECRET PANEL (لوحة الشارحين السرية) ================= -->
+<section class="relative bg-surface-container-low rounded-lg comic-border-thick comic-shadow-dark p-space-md overflow-hidden">
+<!-- Top secret watermark tag -->
+<div class="absolute -top-1 left-6 bg-error-container text-on-error-container font-label-badge text-label-badge px-space-md py-0.5 rounded-b-lg comic-border tracking-wider shadow-[0_2px_0_0_#090614]">
+        سري للشارح فقط ⚠️ ممنوع الشوف
+      </div>
+<!-- Secret Target Word Banner -->
+<div class="mt-space-sm text-center">
+<span class="font-label-badge text-label-badge text-on-surface-variant uppercase">الكلمة السرية المطلوبة</span>
+<div class="mt-space-xs bg-gradient-to-r from-error-container via-on-tertiary-fixed-variant to-error-container p-space-sm rounded-lg comic-border-thick comic-shadow-red pillow-gloss transform -rotate-1">
+<h1 class="font-display-hero-mobile text-display-hero-mobile text-tertiary tracking-tight drop-shadow-[0_3px_0_#090614] flex items-center justify-center gap-space-xs">
+<span>برج القاهرة</span>
+<span class="text-3xl">🗼</span>
+</h1>
+</div>
+</div>
+<!-- Warning Hazard Border Section: Forbidden Taboo Words -->
+<div class="mt-space-md bg-surface-container-lowest/80 rounded-lg comic-border p-space-sm pillow-sunken">
+<div class="flex items-center justify-between border-b-2 border-outline-variant pb-1 mb-space-sm">
+<div class="flex items-center gap-1.5 text-error">
+<span class="material-symbols-outlined text-lg" data-icon="warning">warning</span>
+<span class="font-headline-sm text-headline-sm text-error">ممنوع تقول (Taboo Words)</span>
+</div>
+<span class="font-label-badge text-label-badge text-on-surface-variant">عقوبة فورية 🛑</span>
+</div>
+<!-- Taboo Word High Contrast Comic Chips -->
+<div class="grid grid-cols-2 gap-space-xs">
+<!-- Chip 1 -->
+<div class="bg-surface-container-highest/90 border-2 border-error-container text-on-surface rounded-lg px-space-sm py-space-xs flex items-center justify-between shadow-[0_2px_0_0_#090614]">
+<span class="font-headline-sm text-headline-sm text-primary">طويل</span>
+<span class="text-error font-bold">🚫</span>
+</div>
+<!-- Chip 2 -->
+<div class="bg-surface-container-highest/90 border-2 border-error-container text-on-surface rounded-lg px-space-sm py-space-xs flex items-center justify-between shadow-[0_2px_0_0_#090614]">
+<span class="font-headline-sm text-headline-sm text-primary">سياحة</span>
+<span class="text-error font-bold">🚫</span>
+</div>
+<!-- Chip 3 -->
+<div class="bg-surface-container-highest/90 border-2 border-error-container text-on-surface rounded-lg px-space-sm py-space-xs flex items-center justify-between shadow-[0_2px_0_0_#090614]">
+<span class="font-headline-sm text-headline-sm text-primary">جزيرة</span>
+<span class="text-error font-bold">🚫</span>
+</div>
+<!-- Chip 4 -->
+<div class="bg-surface-container-highest/90 border-2 border-error-container text-on-surface rounded-lg px-space-sm py-space-xs flex items-center justify-between shadow-[0_2px_0_0_#090614]">
+<span class="font-headline-sm text-headline-sm text-primary">تلفزيون</span>
+<span class="text-error font-bold">🚫</span>
+</div>
+</div>
+</div>
+</section>
+<!-- ================= CENTER STAGE CARICATURE DUEL ================= -->
+<section class="relative bg-surface-container rounded-lg comic-border-thick comic-shadow-dark p-space-md comic-burst-pattern overflow-hidden">
+<!-- Ahwa Pop Motif Stamp -->
+<div class="absolute top-2 right-3 opacity-20 pointer-events-none flex items-center gap-1">
+<span class="material-symbols-outlined text-4xl text-primary" data-icon="local_cafe">local_cafe</span>
+<span class="material-symbols-outlined text-3xl text-secondary" data-icon="sports_kabaddi">sports_kabaddi</span>
+</div>
+<!-- Dual Stage Header -->
+<div class="flex items-center justify-between mb-space-sm">
+<div class="flex items-center gap-1.5 bg-surface-container-lowest px-space-sm py-0.5 rounded-full comic-border">
+<span class="w-2.5 h-2.5 rounded-full bg-secondary-container"></span>
+<span class="font-label-badge text-label-badge text-secondary">الميدان المشتعل</span>
+</div>
+<div class="bg-surface-container-lowest px-space-sm py-0.5 rounded-full comic-border">
+<span class="font-label-badge text-label-badge text-primary-container">كلاكيت ثاني مرة 🎬</span>
+</div>
+</div>
+<!-- Duel Layout: Explaining Partner vs Confused Teammate -->
+<div class="grid grid-cols-2 gap-space-sm items-end relative min-h-[175px]">
+<!-- Left Column: Screaming Explaining Partner -->
+<div class="flex flex-col items-center text-center relative z-10">
+<!-- Passionate Comic Speech Bubble -->
+<div class="bg-primary-container text-on-primary-container px-space-sm py-1 rounded-xl comic-border-thick comic-shadow-gold pillow-gloss mb-2 relative transform -rotate-3 animate-bounce">
+<span class="font-headline-sm text-headline-sm block">انطق يا لوح! 📢</span>
+<!-- Bubble tail downward -->
+<div class="absolute -bottom-2 right-6 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-primary-container"></div>
+</div>
+<!-- Caricature Avatar 1 -->
+<div class="relative w-28 h-28 rounded-lg comic-border-thick bg-surface-container-highest p-1 comic-shadow-dark overflow-hidden">
+<img class="w-full h-full object-cover rounded-md" data-alt="Hilarious Egyptian street pop cartoon caricature of a loud, animated guy shouting in dramatic excitement wearing a Cairo street style baseball cap with expressive bugged eyes, thick clean ink comic lines, rich warm saturated tones, gaming tournament atmosphere." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCzgkx6YV03w3NVUsrB4IFo1wougdEEvgbB0RdAd-rocdrL4lfj3BR39A1HAkl3KS5ytfNvfkUw1orGRIYv7IdLjh0SRYplh8v22FcmfWXX_kwQOMV5gA76Qwstf_42yMJouzZ92sDxi_kctkLvlMKPVKdDvKvuSc9fIA_aFNU0nC_henREHdkWq0dmlXPZa3yIPkn2WAzYBfeu-9rCaR1oGm3-htC1GXoEFONn4CmA9RZdfd8zcz186w"/>
+<span class="absolute bottom-1 right-1 bg-surface-container-lowest/90 text-primary-container font-label-badge text-label-badge px-1 rounded border border-outline">الشارح</span>
+</div>
+</div>
+<!-- Right Column: Sweating Confused Partner -->
+<div class="flex flex-col items-center text-center relative z-10">
+<!-- Spinning Stars / Confusion Bubble -->
+<div class="bg-surface-container-highest text-secondary-container px-space-sm py-1 rounded-xl comic-border comic-shadow-cyan mb-2 relative transform rotate-2">
+<span class="font-headline-sm text-headline-sm block">اللوتس يعني؟ 😵‍💫</span>
+<!-- Bubble tail downward -->
+<div class="absolute -bottom-2 left-6 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-surface-container-highest"></div>
+</div>
+<!-- Caricature Avatar 2 -->
+<div class="relative w-28 h-28 rounded-lg comic-border-thick bg-surface-container-highest p-1 comic-shadow-dark overflow-hidden">
+<img class="w-full h-full object-cover rounded-md" data-alt="Funny cartoon Egyptian teammate scratching his head with big comic sweat drops flying and spinning yellow cartoon stars over his head, confused facial expression, bold comic book ink contours and vibrant Cairo pop gaming palette." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCMAh_AEsyevu57SlosF1xjEKrJwa9dR2xfNw2KHIixlEq2V3q07YGyaHBHFmaSai9Q3uCC9QVqNJW0tC1rJdHw8V7WJS9gqL-4fgDJrbobjiVEHG7dDV_bTJGEpDxqnASp6mygujXfCUSfSV1CiDwYEJ9TFpFZ0XBFNxzGnbKF8qC39KCe4iwmq1VpCiY723u1vQ1sG-gJDylY2ULMYxdd6MWBG17qnDQhF_FDyRBB9Ol-BrsgElB43g"/>
+<span class="absolute bottom-1 left-1 bg-surface-container-lowest/90 text-secondary font-label-badge text-label-badge px-1 rounded border border-outline">المخمّن</span>
+</div>
+</div>
+<!-- Comic "VS / ضد" Central Badge -->
+<div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
+<div class="w-10 h-10 rounded-full bg-secondary-container comic-border flex items-center justify-center font-display-hero-mobile text-headline-sm text-on-secondary shadow-[0_3px_0_0_#090614] transform rotate-12">
+            ⚡
+          </div>
+</div>
+</div>
+</section>
+<!-- ================= HOST CONTROL CONSOLE (لوحة تحكم الحكم الرئيسي) ================= -->
+<section class="bg-surface-container-high rounded-lg comic-border-thick comic-shadow-dark p-space-md">
+<!-- Section Header -->
+<div class="flex items-center justify-between pb-space-xs mb-space-sm border-b-2 border-surface-container-highest">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary" data-icon="gavel">gavel</span>
+<h2 class="font-headline-sm text-headline-sm text-primary">لوحة تحكم الحكم الرئيسي</h2>
+</div>
+<span class="bg-surface-container-lowest text-on-surface-variant font-label-badge text-label-badge px-space-sm py-0.5 rounded-full border border-outline">مباشر 🔴</span>
+</div>
+<!-- Tactile Referee Action Buttons Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-space-sm">
+<!-- Green Button: Team A Point -->
+<button class="flex flex-col items-center justify-center p-space-sm bg-gradient-to-b from-[#198754] to-[#0f5132] text-inverse-surface rounded-lg comic-border comic-shadow-green pillow-gloss hover:brightness-110 active:translate-y-1 active:shadow-none transition-all duration-100 ease-bounce group">
+<div class="flex items-center gap-1.5 mb-1">
+<span class="w-3.5 h-3.5 rounded-full bg-[#75b798] border border-black group-hover:scale-110"></span>
+<span class="font-headline-sm text-headline-sm text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">نقطة لفريق أ</span>
+</div>
+<span class="font-label-badge text-label-badge text-secondary">+100 نقطة ذهبية</span>
+</button>
+<!-- Hazard Red Button: Taboo Foul / Penalty -->
+<button class="flex flex-col items-center justify-center p-space-sm bg-gradient-to-b from-error-container to-on-tertiary-container text-on-error-container rounded-lg comic-border-thick comic-shadow-red pillow-gloss hover:brightness-110 active:translate-y-1 active:shadow-none transition-all duration-100 ease-bounce group">
+<div class="flex items-center gap-1.5 mb-1">
+<span class="material-symbols-outlined text-xl text-tertiary" data-icon="block">block</span>
+<span class="font-headline-sm text-headline-sm text-tertiary drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">مخالفة / محظور</span>
+</div>
+<span class="font-label-badge text-label-badge text-tertiary-fixed">-50 خصم فوري</span>
+</button>
+<!-- Blue Button: Team B Point -->
+<button class="flex flex-col items-center justify-center p-space-sm bg-gradient-to-b from-[#00A3FF] to-[#00616d] text-inverse-surface rounded-lg comic-border comic-shadow-cyan pillow-gloss hover:brightness-110 active:translate-y-1 active:shadow-none transition-all duration-100 ease-bounce group">
+<div class="flex items-center gap-1.5 mb-1">
+<span class="w-3.5 h-3.5 rounded-full bg-secondary-fixed border border-black group-hover:scale-110"></span>
+<span class="font-headline-sm text-headline-sm text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">نقطة لفريق ب</span>
+</div>
+<span class="font-label-badge text-label-badge text-secondary">+100 نقطة ذهبية</span>
+</button>
+</div>
+<!-- Quick Referee Tools Strip -->
+<div class="mt-space-sm pt-space-xs flex items-center justify-between bg-surface-container-lowest px-space-md py-space-xs rounded-lg comic-border">
+<div class="flex items-center gap-2">
+<button class="px-space-sm py-1 bg-surface-container text-on-surface font-label-badge text-label-badge rounded comic-border hover:text-primary active:translate-y-0.5">
+            +5 ثواني
+          </button>
+<button class="px-space-sm py-1 bg-surface-container text-on-surface font-label-badge text-label-badge rounded comic-border hover:text-error active:translate-y-0.5">
+            تخطي الكلمة
+          </button>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant font-label-badge text-label-badge">
+<span class="material-symbols-outlined text-sm" data-icon="verified_user">verified_user</span>
+<span>الحكم: كابتن حودة</span>
+</div>
+</div>
+</section>
+</main>
+<!-- ================= BOTTOM NAVIGATION BAR (Shared Component Anchor) ================= -->
+<!-- Active state autonomous selection: "Arena" (ساحة اللعب الحالية) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-space-md py-space-xs bg-surface-container-low dark:bg-surface-container-low docked full-width bottom-0 rounded-t-lg border-t-[3px] border-surface-container-lowest shadow-[0_-4px_0_0_#090614]">
+<!-- Item 0: Battle -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary dark:hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none transition-all duration-100 ease-bounce" href="#">
+<span class="material-symbols-outlined text-2xl" data-icon="sports_esports">sports_esports</span>
+<span class="font-label-badge text-label-badge mt-0.5">Battle</span>
+</a>
+<!-- Item 1: Arena (ACTIVE - Current Password/Taboo Game Screen) -->
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-lg px-space-md py-space-xs border-[2.5px] border-surface-container-lowest shadow-[0_3px_0_0_#6b4c00] active:translate-y-0.5 active:shadow-none hover:brightness-110 transition-all duration-100 ease-bounce" href="#">
+<span class="material-symbols-outlined text-2xl text-on-primary-container" data-icon="swords" style="font-variation-settings: 'FILL' 1;">swords</span>
+<span class="font-label-badge text-label-badge mt-0.5 font-black">Arena</span>
+</a>
+<!-- Item 2: Rankings -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary dark:hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none transition-all duration-100 ease-bounce" href="#">
+<span class="material-symbols-outlined text-2xl" data-icon="leaderboard">leaderboard</span>
+<span class="font-label-badge text-label-badge mt-0.5">Rankings</span>
+</a>
+<!-- Item 3: Shop -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary dark:hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none transition-all duration-100 ease-bounce" href="#">
+<span class="material-symbols-outlined text-2xl" data-icon="storefront">storefront</span>
+<span class="font-label-badge text-label-badge mt-0.5">Shop</span>
+</a>
+</nav>
+<!-- Sound effect trigger simulation -->
+<script>
+    document.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Subtle tactile micro-interaction
+        btn.classList.add('scale-95');
+        setTimeout(() => btn.classList.remove('scale-95'), 120);
+      });
+    });
+  </script>
+</body></html>
