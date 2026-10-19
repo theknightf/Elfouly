@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <rect width="100" height="100" rx="24" fill="#0F1026"/>
+  <circle cx="50" cy="50" r="40" stroke="#00F2FE" stroke-width="4" stroke-dasharray="6 4"/>
+  <path d="M50 18L60 38L82 41L66 57L70 79L50 68L30 79L34 57L18 41L40 38L50 18Z" fill="#FFD200" stroke="#FF4B4B" stroke-width="3"/>
+  <circle cx="50" cy="50" r="16" fill="#0F1026" stroke="#00F2FE" stroke-width="3"/>
+  <text x="50" y="55" font-family="Arial, sans-serif" font-weight="900" font-size="14" fill="#00E676" text-anchor="middle">QA</text>
+</svg>

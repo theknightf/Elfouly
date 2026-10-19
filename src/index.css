@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #090A17;
+    color: #F8FAFC;
+    font-family: 'Tajawal', 'Cairo', sans-serif;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Custom 3D arcade button styles */
+.btn-arcade-cyan {
+  background-color: #00F2FE;
+  color: #090A17;
+  font-weight: 800;
+  box-shadow: 0 6px 0 #008f97, 0 10px 15px rgba(0, 242, 254, 0.25);
+  transition: all 0.1s ease-in-out;
+}
+.btn-arcade-cyan:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #008f97, 0 4px 6px rgba(0, 242, 254, 0.15);
+}
+
+.btn-arcade-red {
+  background-color: #FF4B4B;
+  color: #FFFFFF;
+  font-weight: 800;
+  box-shadow: 0 6px 0 #b32828, 0 10px 15px rgba(255, 75, 75, 0.25);
+  transition: all 0.1s ease-in-out;
+}
+.btn-arcade-red:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #b32828, 0 4px 6px rgba(255, 75, 75, 0.15);
+}
+
+.btn-arcade-yellow {
+  background-color: #FFD200;
+  color: #090A17;
+  font-weight: 800;
+  box-shadow: 0 6px 0 #b39200, 0 10px 15px rgba(255, 210, 0, 0.25);
+  transition: all 0.1s ease-in-out;
+}
+.btn-arcade-yellow:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #b39200, 0 4px 6px rgba(255, 210, 0, 0.15);
+}
+
+.btn-arcade-green {
+  background-color: #00E676;
+  color: #090A17;
+  font-weight: 800;
+  box-shadow: 0 6px 0 #009e52, 0 10px 15px rgba(0, 230, 118, 0.25);
+  transition: all 0.1s ease-in-out;
+}
+.btn-arcade-green:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #009e52, 0 4px 6px rgba(0, 230, 118, 0.15);
+}
+
+.btn-arcade-purple {
+  background-color: #8B5CF6;
+  color: #FFFFFF;
+  font-weight: 800;
+  box-shadow: 0 6px 0 #5b21b6, 0 10px 15px rgba(139, 92, 246, 0.25);
+  transition: all 0.1s ease-in-out;
+}
+.btn-arcade-purple:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #5b21b6, 0 4px 6px rgba(139, 92, 246, 0.15);
+}
+
+.btn-arcade-dark {
+  background-color: #1F2248;
+  color: #F8FAFC;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 5px 0 #11132B;
+  transition: all 0.1s ease-in-out;
+}
+.btn-arcade-dark:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 #11132B;
+}
+
+/* Street Arcade Glow & Grid lines */
+.arcade-grid-bg {
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.neon-border-cyan {
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.3), inset 0 0 10px rgba(0, 242, 254, 0.15);
+  border-color: #00F2FE;
+}
+
+.neon-border-yellow {
+  box-shadow: 0 0 15px rgba(255, 210, 0, 0.3), inset 0 0 10px rgba(255, 210, 0, 0.15);
+  border-color: #FFD200;
+}
+
+.neon-border-red {
+  box-shadow: 0 0 15px rgba(255, 75, 75, 0.3), inset 0 0 10px rgba(255, 75, 75, 0.15);
+  border-color: #FF4B4B;
+}
+
+.neon-border-green {
+  box-shadow: 0 0 15px rgba(0, 230, 118, 0.3), inset 0 0 10px rgba(0, 230, 118, 0.15);
+  border-color: #00E676;
+}
+
+/* Pulse animation for active buzzers */
+@keyframes buzzerPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 20px rgba(255, 75, 75, 0.8), 0 0 40px rgba(255, 75, 75, 0.4);
+  }
+  50% {
+    transform: scale(1.04);
+    box-shadow: 0 0 35px rgba(255, 75, 75, 1), 0 0 70px rgba(255, 75, 75, 0.7);
+  }
+}
+
+.animate-buzzer {
+  animation: buzzerPulse 1.2s infinite ease-in-out;
+}
+
+/* Custom scrollbar for game panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0F1026;
+}
+::-webkit-scrollbar-thumb {
+  background: #2D3164;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00F2FE;
+}

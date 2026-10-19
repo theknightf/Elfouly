@@ -1,0 +1,307 @@
+import React, { useState } from 'react';
+import { useGame } from '../context/GameContext';
+import { PENALTY_QUESTIONS } from '../data/questions';
+import { sounds } from '../utils/soundEffects';
+import { Shield, Flame, Trophy, ArrowRight, Eye, EyeOff, Radio, CheckCircle, XCircle } from 'lucide-react';
+
+export default function Round3Penalty() {
+  const {
+    roomState,
+    r3InterceptBuzz,
+    r3RecordShot,
+    changeRound,
+    showToast
+  } = useGame();
+
+  const [showAnswer, setShowAnswer] = useState(false);
+
+  const r3 = roomState?.round3 || {};
+  const turnIndex = r3.turnIndex || 0;
+  const currentQ = r3.currentQuestion || PENALTY_QUESTIONS[0];
+  const kickingTeamKey = r3.kickerTeam || 'team_a';
+  const defendingTeamKey = kickingTeamKey === 'team_a' ? 'team_b' : 'team_a';
+
+  const kickingTeam = roomState?.teams?.[kickingTeamKey] || { name: 'فريق الحيتان', score: 0 };
+  const defendingTeam = roomState?.teams?.[defendingTeamKey] || { name: 'فريق الوحوش', score: 0 };
+
+  const currentKicker = roomState?.players?.find(p => p.id === r3.currentKickerId) || roomState?.players?.[0];
+  const currentGoalie = roomState?.players?.find(p => p.id === r3.currentGoalieId) || roomState?.players?.[2];
+
+  const shotsHistory = r3.shotsHistory || [];
+  const teamAShots = shotsHistory.filter(s => s.team === 'team_a');
+  const teamBShots = shotsHistory.filter(s => s.team === 'team_b');
+
+  const isIntercepted = !!r3.interceptBuzzedBy;
+
+  const handleInterceptClick = () => {
+    r3InterceptBuzz();
+  };
+
+  const handleRecord = (result) => {
+    setShowAnswer(false);
+    r3RecordShot(result);
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-3 py-4 space-y-6 animate-fadeIn">
+      
+      {/* Top Banner: Round Info */}
+      <div className="bg-arena-card rounded-2xl p-4 border border-arena-cyan/30 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-arena-red/20 border-2 border-arena-red flex items-center justify-center text-2xl font-black text-arena-red">
+            ⚽
+          </div>
+          <div>
+            <div className="inline-flex items-center gap-1.5 text-xs font-black text-arena-red bg-arena-red/10 px-2 py-0.5 rounded-full border border-arena-red/20">
+              <Flame className="w-3.5 h-3.5" />
+              <span>جولة 3: "حط في قريبي" (Penalty Shootouts)</span>
+            </div>
+            <h2 className="text-xl md:text-2xl font-black text-white">
+              ركلات الجزاء التهديفية والتصدي الحاسم! 🥅
+            </h2>
+          </div>
+        </div>
+
+        {/* 1v1 Matchup Spotlight */}
+        <div className="flex items-center gap-3 bg-arena-darker/90 px-4 py-2 rounded-2xl border border-white/10">
+          {/* Kicker */}
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{currentKicker?.character?.avatar || '⚡'}</span>
+            <div className="text-right">
+              <div className="text-[10px] text-gray-400">المسدد (Shooter):</div>
+              <div className="text-xs font-black text-arena-cyan">{currentKicker?.name || 'المسدد'}</div>
+            </div>
+          </div>
+
+          <span className="text-arena-yellow font-black text-sm italic px-1">VS</span>
+
+          {/* Goalie / Interceptor */}
+          <div className="flex items-center gap-2">
+            <div className="text-left">
+              <div className="text-[10px] text-gray-400">حارس المرمى (Goalie):</div>
+              <div className="text-xs font-black text-arena-red">{currentGoalie?.name || 'حارس المرمى'}</div>
+            </div>
+            <span className="text-2xl">{currentGoalie?.character?.avatar || '🛡️'}</span>
+          </div>
+          
+          {currentGoalie?.character?.id === 'khaled_elbarbakh' && (
+            <span className="text-[10px] bg-arena-red/30 text-arena-red px-2 py-1 rounded-lg font-black border border-arena-red/50 animate-pulse">
+              حائط صد البربخ! 🛡️
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Penalty Shootout Scoreboard (5 kicks per team) */}
+      <div className="bg-arena-card rounded-3xl p-5 border-2 border-arena-cyan/30 shadow-2xl">
+        <div className="text-xs font-bold text-gray-400 mb-3 text-center">
+          سجل ضربات الجزاء الترجيحية (5 تسديدات لكل فريق)
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          
+          {/* Team A Penalty Record */}
+          <div className="bg-arena-darker/80 p-4 rounded-2xl border border-arena-cyan/40 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-arena-cyan">{teamA.name || 'فريق الحيتان'}</span>
+              <span className="text-xs font-mono font-bold text-white">
+                أهداف: {teamAShots.filter(s => s.result === 'goal').length} / 5
+              </span>
+            </div>
+            <div className="flex items-center justify-center gap-3 py-2">
+              {[0, 1, 2, 3, 4].map(idx => {
+                const shot = teamAShots[idx];
+                return (
+                  <div
+                    key={idx}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-black border-2 transition-all ${
+                      shot?.result === 'goal'
+                        ? 'bg-emerald-950 border-arena-green text-arena-green shadow-[0_0_10px_#00E676]'
+                        : shot?.result === 'saved'
+                        ? 'bg-amber-950 border-arena-yellow text-arena-yellow shadow-[0_0_10px_#FFD200]'
+                        : shot?.result === 'missed'
+                        ? 'bg-rose-950 border-arena-red text-arena-red'
+                        : 'bg-arena-darker border-white/20 text-gray-600'
+                    }`}
+                  >
+                    {shot?.result === 'goal' ? '⚽' : shot?.result === 'saved' ? '🧤' : shot?.result === 'missed' ? '❌' : idx + 1}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Team B Penalty Record */}
+          <div className="bg-arena-darker/80 p-4 rounded-2xl border border-arena-red/40 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-arena-red">{teamB.name || 'فريق الوحوش'}</span>
+              <span className="text-xs font-mono font-bold text-white">
+                أهداف: {teamBShots.filter(s => s.result === 'goal').length} / 5
+              </span>
+            </div>
+            <div className="flex items-center justify-center gap-3 py-2">
+              {[0, 1, 2, 3, 4].map(idx => {
+                const shot = teamBShots[idx];
+                return (
+                  <div
+                    key={idx}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-black border-2 transition-all ${
+                      shot?.result === 'goal'
+                        ? 'bg-emerald-950 border-arena-green text-arena-green shadow-[0_0_10px_#00E676]'
+                        : shot?.result === 'saved'
+                        ? 'bg-amber-950 border-arena-yellow text-arena-yellow shadow-[0_0_10px_#FFD200]'
+                        : shot?.result === 'missed'
+                        ? 'bg-rose-950 border-arena-red text-arena-red'
+                        : 'bg-arena-darker border-white/20 text-gray-600'
+                    }`}
+                  >
+                    {shot?.result === 'goal' ? '⚽' : shot?.result === 'saved' ? '🧤' : shot?.result === 'missed' ? '❌' : idx + 1}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* Main Kicking Arena & Intercept Console */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        {/* Kicker's Question Card (8 cols) */}
+        <div className="lg:col-span-8 bg-arena-card rounded-3xl p-6 md:p-8 border-2 border-arena-cyan/40 shadow-2xl space-y-5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/20">
+              تخصص التسديد: {currentQ.kickerHint}
+            </span>
+            <span className="text-xs font-mono font-bold text-gray-400">
+              الضربة رقم {turnIndex + 1} من 10
+            </span>
+          </div>
+
+          <div className="text-right">
+            <div className="text-xs text-gray-400 mb-1">
+              سؤال التسديدة لـ <span className="text-arena-cyan font-bold">{currentKicker?.name}</span>:
+            </div>
+            <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed">
+              {currentQ.question}
+            </h3>
+          </div>
+
+          {/* Multiple options for fast play */}
+          {currentQ.options && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
+              {currentQ.options.map((opt, idx) => (
+                <div
+                  key={idx}
+                  className="bg-arena-darker/90 p-3 rounded-xl border border-white/10 text-right text-xs md:text-sm font-semibold text-gray-200"
+                >
+                  <span className="inline-block w-5 font-mono text-arena-cyan font-bold">.{idx + 1}</span>
+                  <span>{opt}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Answer section */}
+          <div className="pt-4 border-t border-white/10 flex items-center justify-between">
+            <button
+              onClick={() => setShowAnswer(!showAnswer)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-arena-darker border border-white/10 hover:border-arena-cyan text-xs font-bold text-gray-300 transition-all"
+            >
+              {showAnswer ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5 text-arena-yellow" />}
+              <span>{showAnswer ? 'إخفاء الإجابة' : 'كشف إجابة السؤال للحكم'}</span>
+            </button>
+            {showAnswer && (
+              <span className="text-sm font-black text-arena-green bg-emerald-950 px-3 py-1 rounded-lg border border-arena-green/50">
+                الإجابة الصحيحة: {currentQ.answer}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Goalie Intercept Buzzer & Referee Judgment (4 cols) */}
+        <div className="lg:col-span-4 space-y-4">
+          
+          {/* Goalie Intercept Buzzer */}
+          <div className="bg-arena-card rounded-2xl p-5 border-2 border-arena-red/50 shadow-xl text-center space-y-3">
+            <div className="flex items-center justify-center gap-1.5 text-xs font-black text-arena-red">
+              <Radio className="w-4 h-4 animate-pulse" />
+              <span>بزر حارس المرمى ({currentGoalie?.name || 'الحارس'})</span>
+            </div>
+
+            <p className="text-[11px] text-gray-400">
+              لو المسدد تردد أو معرفش، اضغط على بزر الصد لخطف النقطة!
+            </p>
+
+            <button
+              onClick={handleInterceptClick}
+              disabled={isIntercepted}
+              className={`w-full py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                isIntercepted
+                  ? 'bg-arena-red/40 text-gray-400 border border-gray-600'
+                  : 'btn-arcade-red animate-buzzer'
+              }`}
+            >
+              <Shield className="w-6 h-6 fill-current" />
+              <span>{isIntercepted ? 'تم الضغط على الصد! 🛡️' : 'صد يا بربخ! (Intercept)'}</span>
+            </button>
+          </div>
+
+          {/* Referee Shot Result Validation */}
+          <div className="bg-arena-card/90 rounded-2xl p-4 border border-white/20 shadow-xl space-y-3">
+            <div className="text-xs font-black text-white text-right">
+              حكم الضربة (اعتماد النتيجة):
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {/* GOAL */}
+              <button
+                onClick={() => handleRecord('goal')}
+                className="btn-arcade-green py-3 rounded-xl text-xs font-black flex flex-col items-center justify-center gap-1 cursor-pointer hover:brightness-110"
+              >
+                <CheckCircle className="w-4 h-4" />
+                <span>هدف! ⚽</span>
+                <span className="text-[9px] font-mono">+1000ن</span>
+              </button>
+
+              {/* SAVED */}
+              <button
+                onClick={() => handleRecord('saved')}
+                className="btn-arcade-yellow py-3 rounded-xl text-xs font-black flex flex-col items-center justify-center gap-1 cursor-pointer hover:brightness-110"
+              >
+                <Shield className="w-4 h-4" />
+                <span>اتصدت! 🧤</span>
+                <span className="text-[9px] font-mono">+800ن حارس</span>
+              </button>
+
+              {/* MISSED */}
+              <button
+                onClick={() => handleRecord('missed')}
+                className="btn-arcade-red py-3 rounded-xl text-xs font-black flex flex-col items-center justify-center gap-1 cursor-pointer hover:brightness-110"
+              >
+                <XCircle className="w-4 h-4" />
+                <span>ضاعت! ❌</span>
+                <span className="text-[9px] font-mono">0 نقطة</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* Navigation to Round 4 */}
+      <div className="flex justify-end pt-2">
+        <button
+          onClick={() => changeRound('round4')}
+          className="btn-arcade-purple px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 cursor-pointer shadow-xl hover:brightness-110"
+        >
+          <span>انتقل للجولة الفاصلة: "مين يزوّد؟" (Blind Auction)</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      </div>
+
+    </div>
+  );
+}
