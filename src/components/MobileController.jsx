@@ -128,7 +128,7 @@ export default function MobileController() {
         </div>
 
         {/* Dynamic In-Round Controller Surface */}
-        {round === 'lobby' && (
+        {(round === 'lobby' || round === 'waiting') && (
           <div className="py-12 text-center space-y-3">
             <div className="text-4xl animate-bounce">⏳</div>
             <div className="text-base font-black text-white">أنت في صالة الانتظار</div>

@@ -40,7 +40,7 @@ function GameScreen() {
             <MobileController />
           ) : (
             <>
-              {currentStatus === 'lobby' && <Lobby />}
+              {(currentStatus === 'lobby' || currentStatus === 'waiting') && <Lobby />}
               {currentStatus === 'round1' && <Round1Bank />}
               {currentStatus === 'round2' && <Round2Password />}
               {currentStatus === 'round3' && <Round3Penalty />}
@@ -62,7 +62,7 @@ function GameScreen() {
             <button
               onClick={() => changeRound('lobby')}
               className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
-                currentStatus === 'lobby' ? 'bg-arena-cyan text-arena-darker font-black' : 'text-gray-400 hover:text-white'
+                (currentStatus === 'lobby' || currentStatus === 'waiting') ? 'bg-arena-cyan text-arena-darker font-black' : 'text-gray-400 hover:text-white'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />

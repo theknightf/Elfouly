@@ -20,6 +20,9 @@ export function GameProvider({ children }) {
   // Notification toast
   const [toast, setToast] = useState(null);
 
+  // Match countdown state: null | 3 | 2 | 1 | 0
+  const [countdown, setCountdown] = useState(null);
+
   // Fallback / Offline local game state (so the entire app is 100% playable standalone or synced)
   const [roomState, setRoomState] = useState({
     code: 'ARENA',
@@ -179,6 +182,31 @@ export function GameProvider({ children }) {
       showToast(title, message);
     });
 
+    s.on('error_message', (msg) => {
+      showToast('تنبيه الساحة ⚠️', msg);
+    });
+
+    s.on('countdown_tick', ({ count }) => {
+      setCountdown(count);
+      if (count === 3) sounds.playWhistle();
+      else if (count === 2) sounds.playStreakUp(2);
+      else if (count === 1) sounds.playStreakUp(4);
+      else if (count === 0) {
+        sounds.playGoalRoar();
+        fireConfetti();
+        setTimeout(() => setCountdown(null), 1200);
+      }
+    });
+
+    s.on('countdown_cancelled', ({ reason }) => {
+      setCountdown(null);
+      showToast('إلغاء العد التنازلي ⚠️', reason || 'انقطع اتصال أحد اللاعبين!');
+    });
+
+    s.on('match_started', () => {
+      setCountdown(null);
+    });
+
     s.on('chat_received', (msg) => {
       setRoomState(prev => ({
         ...prev,
@@ -207,6 +235,140 @@ export function GameProvider({ children }) {
       origin: { y: 0.6 },
       colors: ['#00F2FE', '#FF4B4B', '#FFD200', '#00E676', '#8B5CF6']
     });
+  };
+
+  // Host action: triggers 3-second synchronized countdown
+  const startMatchCountdown = () => {
+    const currentCode = roomCode || roomState.code || 'ARENA';
+    if (socket && isConnected) {
+      socket.emit('start_match_countdown', { roomCode: currentCode });
+    } else {
+      // Local fallback countdown
+      const connectedCount = (roomState.players || []).length;
+      if (connectedCount < 4) {
+        showToast('العدد غير مكتمل ⚠️', `الساحة تحتاج 4 لاعبين على الأقل لبدء المباراة (${connectedCount}/4)`);
+        return;
+      }
+
+      setCountdown(3);
+      sounds.playWhistle();
+      setTimeout(() => {
+        setCountdown(2);
+        sounds.playStreakUp(2);
+        setTimeout(() => {
+          setCountdown(1);
+          sounds.playStreakUp(4);
+          setTimeout(() => {
+            setCountdown(0);
+            sounds.playGoalRoar();
+            fireConfetti();
+            setTimeout(() => {
+              setCountdown(null);
+              changeRound('round1');
+            }, 800);
+          }, 1000);
+        }, 1000);
+      }, 1000);
+    }
+  };
+
+  // Create room action
+  const createRoom = (playerName, characterId) => {
+    if (socket && isConnected) {
+      socket.emit('create_room', { playerName, characterId });
+    } else {
+      const digits = '0123456789';
+      let num = '';
+      for (let i = 0; i < 4; i++) {
+        num += digits.charAt(Math.floor(Math.random() * digits.length));
+      }
+      const newCode = `QZ-${num}`;
+      setRoomCode(newCode);
+      setIsHost(true);
+      const char = CHARACTERS.find(c => c.id === characterId) || CHARACTERS[0];
+      const hostPlayer = {
+        id: 'host_p1',
+        name: playerName || char.name,
+        character: char,
+        team: 'team_a',
+        isHost: true,
+        scoreContribution: 0
+      };
+      setCurrentPlayer(hostPlayer);
+      setRoomState(prev => ({
+        ...prev,
+        code: newCode,
+        status: 'lobby',
+        players: [hostPlayer]
+      }));
+      showToast('تم إنشاء الساحة!', `كود الغرفة: ${newCode}`);
+    }
+  };
+
+  // Join room action
+  const joinRoom = (code, playerName, characterId, teamPreference) => {
+    const cleanCode = String(code || '').toUpperCase().trim();
+    if (socket && isConnected) {
+      socket.emit('join_room', {
+        roomCode: cleanCode,
+        playerName,
+        characterId,
+        teamPreference
+      });
+    } else {
+      setRoomCode(cleanCode);
+      setIsHost(false);
+      const char = CHARACTERS.find(c => c.id === characterId) || CHARACTERS[1];
+      const newPlayer = {
+        id: `p_${Date.now()}`,
+        name: playerName || char.name,
+        character: char,
+        team: teamPreference || 'team_b',
+        isHost: false,
+        scoreContribution: 0
+      };
+      setCurrentPlayer(newPlayer);
+      setRoomState(prev => {
+        const filtered = (prev.players || []).filter(p => p.id !== newPlayer.id);
+        return {
+          ...prev,
+          code: cleanCode,
+          players: [...filtered, newPlayer]
+        };
+      });
+      showToast('نورت الساحة يا كابتن!', `دخلت كود: ${cleanCode}`);
+    }
+  };
+
+  // Quick bot player generator to help solo testing reach 4/4
+  const addDemoPlayer = () => {
+    const currentCode = roomCode || roomState.code || 'ARENA';
+    if (socket && isConnected) {
+      socket.emit('add_demo_player', { roomCode: currentCode });
+    } else {
+      setRoomState(prev => {
+        const currentPlayers = prev.players || [];
+        if (currentPlayers.length >= 4) return prev;
+        const availableChars = CHARACTERS.filter(c => !currentPlayers.some(p => p.character?.id === c.id));
+        const nextChar = availableChars[0] || CHARACTERS[currentPlayers.length % CHARACTERS.length];
+        const teamACount = currentPlayers.filter(p => p.team === 'team_a').length;
+        const teamBCount = currentPlayers.filter(p => p.team === 'team_b').length;
+        const team = teamACount <= teamBCount ? 'team_a' : 'team_b';
+        const botPlayer = {
+          id: `demo_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+          name: nextChar.name,
+          character: nextChar,
+          team: team,
+          isHost: false,
+          scoreContribution: 0
+        };
+        return {
+          ...prev,
+          players: [...currentPlayers, botPlayer]
+        };
+      });
+      showToast('انضمام لاعب محاكي 🤖', 'تمت إضافة لاعب جديد لاكتمال نصاب الـ 4 لاعبين!');
+    }
   };
 
   // Socket or local fallback dispatchers
@@ -715,6 +877,12 @@ export function GameProvider({ children }) {
         roomState,
         setRoomState,
         changeRound,
+        countdown,
+        setCountdown,
+        startMatchCountdown,
+        createRoom,
+        joinRoom,
+        addDemoPlayer,
         // Round actions
         r1Score,
         r1Break,

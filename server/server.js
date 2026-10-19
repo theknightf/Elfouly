@@ -24,14 +24,36 @@ const PORT = process.env.PORT || 3001;
 // Global rooms store
 const rooms = new Map();
 
-// Helper to generate a 4-letter room code
+// Helper to generate a unique 6-character alphanumeric room code (e.g., QZ-7842)
 function generateRoomCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
+  const digits = '0123456789';
+  let num = '';
   for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+    num += digits.charAt(Math.floor(Math.random() * digits.length));
   }
-  return code;
+  return `QZ-${num}`;
+}
+
+// Flexible room lookup supporting hyphenated and raw codes
+function findRoom(inputCode) {
+  if (!inputCode) return null;
+  const clean = String(inputCode).toUpperCase().trim();
+  if (rooms.has(clean)) return rooms.get(clean);
+
+  // Try formatted with hyphen (e.g. QZ7842 -> QZ-7842)
+  if (!clean.includes('-') && clean.startsWith('QZ') && clean.length === 6) {
+    const formatted = `QZ-${clean.slice(2)}`;
+    if (rooms.has(formatted)) return rooms.get(formatted);
+  }
+
+  // Search case-insensitively ignoring hyphens
+  const stripped = clean.replace(/-/g, '');
+  for (const [key, val] of rooms.entries()) {
+    if (key.replace(/-/g, '') === stripped) {
+      return val;
+    }
+  }
+  return null;
 }
 
 // Initial state for a room
@@ -40,6 +62,8 @@ function createInitialRoomState(roomCode, hostId, hostName) {
     code: roomCode,
     hostId: hostId,
     status: 'lobby', // 'lobby' | 'round1' | 'round2' | 'round3' | 'round4' | 'game_over'
+    countdown: null,
+    countdownInterval: null,
     tournamentStructure: TOURNAMENT_STRUCTURE,
     players: [],
     teams: {
@@ -143,8 +167,7 @@ io.on('connection', (socket) => {
 
   // Join room
   socket.on('join_room', ({ roomCode, playerName, characterId, teamPreference }) => {
-    const code = roomCode.toUpperCase().trim();
-    const room = rooms.get(code);
+    const room = findRoom(roomCode);
 
     if (!room) {
       socket.emit('error_message', 'كود الغرفة غير موجود يا بطل! اتأكد من الكود.');
@@ -171,16 +194,42 @@ io.on('connection', (socket) => {
     };
 
     room.players.push(player);
-    socket.join(code);
+    socket.join(room.code);
 
-    socket.emit('joined_room', { roomCode: code, player, room });
-    io.to(code).emit('room_state_updated', room);
-    console.log(`[Player Joined] ${player.name} joined ${code} in ${team}`);
+    socket.emit('joined_room', { roomCode: room.code, player, room });
+    io.to(room.code).emit('room_state_updated', room);
+    console.log(`[Player Joined] ${player.name} joined ${room.code} in ${team}`);
+  });
+
+  // Add demo simulated bot player to room (helps solo testing 4/4)
+  socket.on('add_demo_player', ({ roomCode }) => {
+    const room = findRoom(roomCode);
+    if (!room || room.players.length >= 4) return;
+
+    const availableChars = CHARACTERS.filter(c => !room.players.some(p => p.character?.id === c.id));
+    const nextChar = availableChars[0] || CHARACTERS[room.players.length % CHARACTERS.length];
+    const team = room.players.filter(p => p.team === 'team_a').length <= room.players.filter(p => p.team === 'team_b').length ? 'team_a' : 'team_b';
+
+    const botPlayer = {
+      id: `bot_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: nextChar.name,
+      character: nextChar,
+      team: team,
+      isHost: false,
+      scoreContribution: 0
+    };
+
+    room.players.push(botPlayer);
+    io.to(room.code).emit('room_state_updated', room);
+    io.to(room.code).emit('notification', {
+      title: 'انضمام لاعب 🎮',
+      message: `انضم ${botPlayer.name} إلى الساحة في ${team === 'team_a' ? 'فريق الحيتان' : 'فريق الوحوش'}`
+    });
   });
 
   // Update player character or team in lobby
   socket.on('update_player_profile', ({ roomCode, characterId, team }) => {
-    const room = rooms.get(roomCode);
+    const room = findRoom(roomCode);
     if (!room) return;
 
     const player = room.players.find(p => p.id === socket.id);
@@ -192,41 +241,90 @@ io.on('connection', (socket) => {
       if (team) {
         player.team = team;
       }
-      io.to(roomCode).emit('room_state_updated', room);
+      io.to(room.code).emit('room_state_updated', room);
     }
+  });
+
+  // Helper to initialize Round 1
+  function setupRound1(room) {
+    const teamAPlayers = room.players.filter(p => p.team === 'team_a');
+    const teamBPlayers = room.players.filter(p => p.team === 'team_b');
+    room.round1.activeTeam = 'team_a';
+    room.round1.answeringPlayerId = teamAPlayers[0]?.id || room.players[0]?.id;
+    room.round1.readerPlayerId = teamBPlayers[0]?.id || (room.players[1] ? room.players[1].id : room.players[0]?.id);
+    room.round1.streak = 0;
+    room.round1.pendingPoints = 0;
+    room.round1.currentQuestionIndex = 0;
+
+    const answeringPlayer = teamAPlayers[0] || room.players[0];
+    const dispatchedQ = triviaEngine.getQuestionForPlayer({
+      roomId: room.code,
+      characterId: answeringPlayer?.character?.id || 'fares_elfouly',
+      mode: 'one_two_bank'
+    });
+    room.round1.currentQuestion = dispatchedQ ? {
+      question: dispatchedQ.question_text,
+      answer: dispatchedQ.correct_answer,
+      categoryName: dispatchedQ.category,
+      funFact: 'سؤال مستهدف بحسب تخصص الشخصية والمحرك الديناميكي!'
+    } : TRIVIA_BANK[0];
+  }
+
+  // Host triggers synchronized 3-second match start countdown
+  socket.on('start_match_countdown', ({ roomCode }) => {
+    const room = findRoom(roomCode);
+    if (!room) {
+      socket.emit('error_message', 'الغرفة غير موجودة!');
+      return;
+    }
+
+    const isHost = socket.id === room.hostId || room.players.find(p => p.id === socket.id && p.isHost);
+    if (!isHost) {
+      socket.emit('error_message', 'فقط كابتن الغرفة (الهوست 👑) يملك صلاحية بدء الماتش!');
+      return;
+    }
+
+    if (room.players.length < 4) {
+      socket.emit('error_message', `العدد غير مكتمل! لازم 4 لاعبين في الساحة لبدء المباراة (${room.players.length}/4)`);
+      return;
+    }
+
+    if (room.countdownInterval) return;
+
+    let count = 3;
+    room.countdown = count;
+    io.to(room.code).emit('countdown_tick', { count });
+    io.to(room.code).emit('sound_trigger', { sound: 'whistle' });
+
+    room.countdownInterval = setInterval(() => {
+      count -= 1;
+      if (count > 0) {
+        room.countdown = count;
+        io.to(room.code).emit('countdown_tick', { count });
+        io.to(room.code).emit('sound_trigger', { sound: 'whistle' });
+      } else {
+        clearInterval(room.countdownInterval);
+        room.countdownInterval = null;
+        room.countdown = 0;
+        io.to(room.code).emit('countdown_tick', { count: 0 });
+
+        setupRound1(room);
+        room.status = 'round1';
+        io.to(room.code).emit('room_state_updated', room);
+        io.to(room.code).emit('match_started', { roomCode: room.code });
+      }
+    }, 1000);
   });
 
   // Start game / change round (Host only)
   socket.on('change_round', ({ roomCode, targetRound }) => {
-    const room = rooms.get(roomCode);
+    const room = findRoom(roomCode);
     if (!room) return;
 
     room.status = targetRound;
 
     if (targetRound === 'round1') {
-      // Setup Round 1: 1 تو Bank Mode
-      const teamAPlayers = room.players.filter(p => p.team === 'team_a');
-      const teamBPlayers = room.players.filter(p => p.team === 'team_b');
-      room.round1.activeTeam = 'team_a';
-      room.round1.answeringPlayerId = teamAPlayers[0]?.id || room.players[0]?.id;
-      room.round1.readerPlayerId = teamBPlayers[0]?.id || (room.players[1] ? room.players[1].id : room.players[0]?.id);
-      room.round1.streak = 0;
-      room.round1.pendingPoints = 0;
-      room.round1.currentQuestionIndex = 0;
-
-      const answeringPlayer = teamAPlayers[0] || room.players[0];
-      const dispatchedQ = triviaEngine.getQuestionForPlayer({
-        roomId: roomCode,
-        characterId: answeringPlayer?.character?.id || 'fares_elfouly',
-        mode: 'one_two_bank'
-      });
-      room.round1.currentQuestion = dispatchedQ ? {
-        question: dispatchedQ.question_text,
-        answer: dispatchedQ.correct_answer,
-        categoryName: dispatchedQ.category,
-        funFact: 'سؤال مستهدف بحسب تخصص الشخصية والمحرك الديناميكي!'
-      } : TRIVIA_BANK[0];
-
+      setupRound1(room);
     } else if (targetRound === 'round2') {
       // Setup Round 2: اديني في سري Password Mode
       const teamAPlayers = room.players.filter(p => p.team === 'team_a');
@@ -972,6 +1070,50 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`[Socket] Disconnected: ${socket.id}`);
+
+    for (const [code, room] of rooms.entries()) {
+      const playerIndex = room.players.findIndex(p => p.id === socket.id);
+      if (playerIndex !== -1) {
+        const removedPlayer = room.players[playerIndex];
+        console.log(`[Player Disconnected] ${removedPlayer.name} disconnected from room ${code}`);
+
+        if (room.status === 'lobby' || room.status === 'waiting') {
+          // If countdown was in progress, cancel it immediately!
+          if (room.countdownInterval) {
+            clearInterval(room.countdownInterval);
+            room.countdownInterval = null;
+            room.countdown = null;
+            io.to(room.code).emit('countdown_cancelled', {
+              reason: `انقطع اتصال ${removedPlayer.name} قبل انطلاق المباراة! تم إلغاء العد التنازلي.`
+            });
+          }
+
+          // Remove disconnected player (resets slot to empty)
+          room.players.splice(playerIndex, 1);
+
+          // Transfer host authority if host left
+          if (removedPlayer.isHost && room.players.length > 0) {
+            room.players[0].isHost = true;
+            room.hostId = room.players[0].id;
+            io.to(room.code).emit('notification', {
+              title: 'انتقال شارة القيادة 👑',
+              message: `${room.players[0].name} أصبح هو كابتن الغرفة الجديد!`
+            });
+          }
+
+          if (room.players.length === 0 && code !== 'ARENA' && code !== 'QZ-7842') {
+            rooms.delete(code);
+            console.log(`[Room Deleted] Room ${code} was deleted because all players left.`);
+          } else {
+            io.to(room.code).emit('room_state_updated', room);
+            io.to(room.code).emit('notification', {
+              title: 'تفريغ خانة ⚠️',
+              message: `غادر ${removedPlayer.name} الساحة. تم تفريغ الخانة!`
+            });
+          }
+        }
+      }
+    }
   });
 });
 

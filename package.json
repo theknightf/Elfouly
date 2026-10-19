@@ -9,7 +9,8 @@
     "client": "vite --host",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "tsx tests/triviaEngine.test.ts && tsx tests/simulate_tournament.ts && tsx tests/ui_layout_audit.ts",
+    "test": "tsx tests/triviaEngine.test.ts && tsx tests/simulate_tournament.ts && tsx tests/ui_layout_audit.ts && tsx tests/lobbyWaitingSystem.test.ts",
+    "test:lobby": "tsx tests/lobbyWaitingSystem.test.ts",
     "test:tournament": "tsx tests/simulate_tournament.ts",
     "test:engine": "tsx tests/triviaEngine.test.ts",
     "test:ui": "tsx tests/ui_layout_audit.ts"
