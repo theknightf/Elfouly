@@ -316,11 +316,32 @@ export default function MobileController() {
                 {r3.currentQuestion?.question}
               </div>
               {r3.currentQuestion?.options && (
-                <div className="grid grid-cols-2 gap-1.5 pt-1 text-[11px]">
+                <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
                   {r3.currentQuestion.options.map((opt, i) => (
-                    <div key={i} className="bg-arena-darker p-2 rounded-lg font-bold text-gray-300 border border-white/5">
-                      {opt}
-                    </div>
+                    <button
+                      key={i}
+                      onClick={() => {
+                        const isIntercepted = !!r3.interceptBuzzedBy;
+                        const normOpt = opt.trim().toLowerCase();
+                        const normAns = (r3.currentQuestion?.answer || '').trim().toLowerCase();
+                        const isCorrect = normOpt === normAns || normAns.includes(normOpt) || normOpt.includes(normAns);
+
+                        if (isIntercepted) {
+                          showToast('🧤 تصدي حارس المرمى!', 'الحارس كان ضاغط على الصد وخطف النقطة!');
+                          r3RecordShot('saved');
+                        } else if (isCorrect) {
+                          showToast('⚽ هدف في الجول!', 'تسديدة صاروخية سكنت الشباك!');
+                          r3RecordShot('goal');
+                        } else {
+                          showToast('❌ ضاعت الركلة!', 'التسديدة راحت بعيد عن المرمى!');
+                          r3RecordShot('missed');
+                        }
+                      }}
+                      className="p-3 rounded-xl font-bold text-gray-200 bg-arena-darker hover:bg-arena-cyan/20 border border-white/10 hover:border-arena-cyan transition-all text-right flex items-center justify-between cursor-pointer active:scale-95 shadow-sm"
+                    >
+                      <span className="truncate">{opt}</span>
+                      <span className="text-arena-cyan font-mono font-black text-[10px]">.{i + 1}</span>
+                    </button>
                   ))}
                 </div>
               )}

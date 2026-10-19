@@ -485,6 +485,18 @@ export function GameProvider({ children }) {
         r3.turnIndex += 1;
         r3.kickerTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
         r3.interceptBuzzedBy = null;
+
+        const teamAPlayers = prev.players.filter(p => p.team === 'team_a');
+        const teamBPlayers = prev.players.filter(p => p.team === 'team_b');
+
+        if (r3.kickerTeam === 'team_a') {
+          r3.currentKickerId = teamAPlayers[r3.turnIndex % teamAPlayers.length]?.id;
+          r3.currentGoalieId = teamBPlayers[r3.turnIndex % teamBPlayers.length]?.id;
+        } else {
+          r3.currentKickerId = teamBPlayers[r3.turnIndex % teamBPlayers.length]?.id;
+          r3.currentGoalieId = teamAPlayers[r3.turnIndex % teamAPlayers.length]?.id;
+        }
+
         const nextQIdx = r3.turnIndex % PENALTY_QUESTIONS.length;
         r3.currentQuestion = PENALTY_QUESTIONS[nextQIdx];
 

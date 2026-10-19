@@ -33,13 +33,45 @@ export default function Round3Penalty() {
 
   const isIntercepted = !!r3.interceptBuzzedBy;
 
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [feedback, setFeedback] = useState(null); // { option, isCorrect }
+
   const handleInterceptClick = () => {
     r3InterceptBuzz();
   };
 
   const handleRecord = (result) => {
     setShowAnswer(false);
+    setSelectedOption(null);
+    setFeedback(null);
     r3RecordShot(result);
+  };
+
+  const handleOptionSelect = (opt) => {
+    if (selectedOption) return; // prevent duplicate clicks while resolving
+    setSelectedOption(opt);
+
+    const normOpt = opt.trim().toLowerCase();
+    const normAns = (currentQ.answer || '').trim().toLowerCase();
+    const isCorrect = normOpt === normAns || normAns.includes(normOpt) || normOpt.includes(normAns);
+
+    setFeedback({ option: opt, isCorrect });
+
+    setTimeout(() => {
+      if (isIntercepted) {
+        sounds.playSave();
+        showToast('🧤 تصدي حارس المرمى!', `${currentGoalie?.name || 'حارس المرمى'} تصدى للتسديدة وخطف النقطة! (+800ن)`);
+        handleRecord('saved');
+      } else if (isCorrect) {
+        sounds.playGoalRoar();
+        showToast('⚽ هدف في المقص!', `${currentKicker?.name || 'المسدد'} أحرز هدفاً رائعاً في الشباك! (+1000ن)`);
+        handleRecord('goal');
+      } else {
+        sounds.playBuzzer();
+        showToast('❌ ضاعت الركلة!', `${currentKicker?.name || 'المسدد'} أضاع التسديدة في العارضة!`);
+        handleRecord('missed');
+      }
+    }, 600);
   };
 
   return (
@@ -191,18 +223,47 @@ export default function Round3Penalty() {
             </h3>
           </div>
 
-          {/* Multiple options for fast play */}
+          {/* Intercept Alert Banner */}
+          {isIntercepted && (
+            <div className="bg-arena-red/20 border-2 border-arena-red p-3 rounded-2xl flex items-center gap-3 animate-pulse">
+              <Shield className="w-5 h-5 text-arena-red fill-current" />
+              <div className="text-right text-xs">
+                <span className="font-black text-arena-red">تحذير! الحارس ضغط على بزر الصد: </span>
+                <span className="text-gray-200">أي إجابة غير دقيقة ستُحتسب تصدي مباشر لحارس المرمى!</span>
+              </div>
+            </div>
+          )}
+
+          {/* Multiple options for fast play - Interactive Clickable Buttons */}
           {currentQ.options && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
-              {currentQ.options.map((opt, idx) => (
-                <div
-                  key={idx}
-                  className="bg-arena-darker/90 p-3 rounded-xl border border-white/10 text-right text-xs md:text-sm font-semibold text-gray-200"
-                >
-                  <span className="inline-block w-5 font-mono text-arena-cyan font-bold">.{idx + 1}</span>
-                  <span>{opt}</span>
-                </div>
-              ))}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              {currentQ.options.map((opt, idx) => {
+                const isSelected = selectedOption === opt;
+                const isCorrect = feedback && feedback.option === opt && feedback.isCorrect;
+                const isWrong = feedback && feedback.option === opt && !feedback.isCorrect;
+
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => handleOptionSelect(opt)}
+                    disabled={!!selectedOption}
+                    className={`p-4 rounded-2xl border-2 text-right transition-all flex items-center justify-between cursor-pointer shadow-md ${
+                      isCorrect
+                        ? 'bg-emerald-950/90 border-arena-green text-arena-green scale-[1.02] shadow-[0_0_15px_#00E676]'
+                        : isWrong
+                        ? 'bg-rose-950/90 border-arena-red text-arena-red scale-[0.98]'
+                        : isSelected
+                        ? 'bg-arena-cyan/20 border-arena-cyan text-white'
+                        : 'bg-arena-darker/90 hover:bg-arena-card border-white/10 hover:border-arena-cyan text-gray-200'
+                    }`}
+                  >
+                    <span className="text-xs md:text-sm font-bold">{opt}</span>
+                    <span className="w-7 h-7 rounded-lg bg-black/40 flex items-center justify-center font-mono text-arena-cyan font-black text-xs">
+                      {idx + 1}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
 
