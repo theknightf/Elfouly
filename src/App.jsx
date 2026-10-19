@@ -9,6 +9,7 @@ import BonusAuction from './components/BonusAuction';
 import GameOver from './components/GameOver';
 import MobileController from './components/MobileController';
 import TauntChat from './components/TauntChat';
+import ErrorBoundary from './components/ErrorBoundary';
 import { Layers, PlayCircle, Lock, Shield, Gavel, Trophy, Sparkles } from 'lucide-react';
 
 function GameScreen() {
@@ -34,18 +35,20 @@ function GameScreen() {
 
       {/* Main Content Area */}
       <main className="flex-1 pb-20">
-        {activeTabMode === 'mobile_controller' ? (
-          <MobileController />
-        ) : (
-          <>
-            {currentStatus === 'lobby' && <Lobby />}
-            {currentStatus === 'round1' && <Round1Bank />}
-            {currentStatus === 'round2' && <Round2Password />}
-            {currentStatus === 'round3' && <Round3Penalty />}
-            {currentStatus === 'round4' && <BonusAuction />}
-            {currentStatus === 'game_over' && <GameOver />}
-          </>
-        )}
+        <ErrorBoundary>
+          {activeTabMode === 'mobile_controller' ? (
+            <MobileController />
+          ) : (
+            <>
+              {currentStatus === 'lobby' && <Lobby />}
+              {currentStatus === 'round1' && <Round1Bank />}
+              {currentStatus === 'round2' && <Round2Password />}
+              {currentStatus === 'round3' && <Round3Penalty />}
+              {currentStatus === 'round4' && <BonusAuction />}
+              {currentStatus === 'game_over' && <GameOver />}
+            </>
+          )}
+        </ErrorBoundary>
       </main>
 
       {/* Host Quick Round Navigation Bar at Bottom */}
@@ -127,8 +130,10 @@ function GameScreen() {
 
 export default function App() {
   return (
-    <GameProvider>
-      <GameScreen />
-    </GameProvider>
+    <ErrorBoundary>
+      <GameProvider>
+        <GameScreen />
+      </GameProvider>
+    </ErrorBoundary>
   );
 }

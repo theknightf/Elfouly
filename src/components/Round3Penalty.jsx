@@ -17,19 +17,27 @@ export default function Round3Penalty() {
 
   const r3 = roomState?.round3 || {};
   const turnIndex = r3.turnIndex || 0;
-  const currentQ = r3.currentQuestion || PENALTY_QUESTIONS[0];
+  const currentQ = r3.currentQuestion || PENALTY_QUESTIONS[0] || {
+    question: 'ما هو اسم الملعب الأسطوري لنادي برشلونة؟',
+    answer: 'كامب نو',
+    options: ['كامب نو', 'سانتياغو برنابيو', 'المستايا', 'أنفيلد'],
+    kickerHint: 'برشلونة وأوروبا'
+  };
   const kickingTeamKey = r3.kickerTeam || 'team_a';
   const defendingTeamKey = kickingTeamKey === 'team_a' ? 'team_b' : 'team_a';
 
-  const kickingTeam = roomState?.teams?.[kickingTeamKey] || { name: 'فريق الحيتان', score: 0 };
-  const defendingTeam = roomState?.teams?.[defendingTeamKey] || { name: 'فريق الوحوش', score: 0 };
+  const teamA = roomState?.teams?.team_a || { name: 'فريق الحيتان', score: 0 };
+  const teamB = roomState?.teams?.team_b || { name: 'فريق الوحوش', score: 0 };
+
+  const kickingTeam = roomState?.teams?.[kickingTeamKey] || teamA;
+  const defendingTeam = roomState?.teams?.[defendingTeamKey] || teamB;
 
   const currentKicker = roomState?.players?.find(p => p.id === r3.currentKickerId) || roomState?.players?.[0];
-  const currentGoalie = roomState?.players?.find(p => p.id === r3.currentGoalieId) || roomState?.players?.[2];
+  const currentGoalie = roomState?.players?.find(p => p.id === r3.currentGoalieId) || roomState?.players?.[2] || roomState?.players?.[1] || roomState?.players?.[0];
 
   const shotsHistory = r3.shotsHistory || [];
-  const teamAShots = shotsHistory.filter(s => s.team === 'team_a');
-  const teamBShots = shotsHistory.filter(s => s.team === 'team_b');
+  const teamAShots = shotsHistory.filter(s => s && s.team === 'team_a');
+  const teamBShots = shotsHistory.filter(s => s && s.team === 'team_b');
 
   const isIntercepted = !!r3.interceptBuzzedBy;
 
@@ -51,9 +59,9 @@ export default function Round3Penalty() {
     if (selectedOption) return; // prevent duplicate clicks while resolving
     setSelectedOption(opt);
 
-    const normOpt = opt.trim().toLowerCase();
-    const normAns = (currentQ.answer || '').trim().toLowerCase();
-    const isCorrect = normOpt === normAns || normAns.includes(normOpt) || normOpt.includes(normAns);
+    const normOpt = String(opt || '').trim().toLowerCase();
+    const normAns = String(currentQ?.answer || '').trim().toLowerCase();
+    const isCorrect = normOpt === normAns || (normAns && normOpt && (normAns.includes(normOpt) || normOpt.includes(normAns)));
 
     setFeedback({ option: opt, isCorrect });
 
