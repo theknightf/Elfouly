@@ -8,7 +8,11 @@
     "server": "node server/server.js",
     "client": "vite --host",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "tsx tests/triviaEngine.test.ts && tsx tests/simulate_tournament.ts && tsx tests/ui_layout_audit.ts",
+    "test:tournament": "tsx tests/simulate_tournament.ts",
+    "test:engine": "tsx tests/triviaEngine.test.ts",
+    "test:ui": "tsx tests/ui_layout_audit.ts"
   },
   "dependencies": {
     "autoprefixer": "^10.6.1",
@@ -29,6 +33,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "oxlint": "^1.88.0",
+    "tsx": "^4.23.15",
     "vite": "^8.3.4"
   }
 }
