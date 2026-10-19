@@ -7,6 +7,7 @@ import { Gavel, Timer, PhoneCall, HelpCircle, UserPlus, Check, X, Trophy, Flame,
 export default function BonusAuction() {
   const {
     roomState,
+    currentPlayer,
     r4Bid,
     r4ResolveBid,
     changeRound,
@@ -18,6 +19,8 @@ export default function BonusAuction() {
   const highestBid = r4.highestBid || currentTopic.minBid;
   const highestBidderTeamKey = r4.highestBidderTeam || 'team_a';
   const highestBidderTeam = roomState?.teams?.[highestBidderTeamKey] || { name: 'فريق الحيتان', score: 0 };
+  const opposingTeamKey = highestBidderTeamKey === 'team_a' ? 'team_b' : 'team_a';
+  const opposingTeam = roomState?.teams?.[opposingTeamKey] || { name: 'فريق الوحوش', score: 0 };
 
   const [timeLeft, setTimeLeft] = useState(r4.timer || 60);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
@@ -256,7 +259,7 @@ export default function BonusAuction() {
         <div className="lg:col-span-5 bg-arena-card rounded-3xl p-5 border border-white/20 shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-white/10 pb-2">
             <div className="text-xs font-black text-white flex items-center gap-1.5">
-              <span>قائمة التحقق للحكم (المطلوب: {highestBid})</span>
+              <span>تحكيم الفريق الخصم ({opposingTeam.name}) (المطلوب: {highestBid})</span>
             </div>
             <div className={`text-xs font-mono font-black px-2 py-0.5 rounded-full ${
               countNamed >= highestBid ? 'bg-arena-green text-arena-darker' : 'bg-arena-yellow text-arena-darker'
@@ -265,47 +268,59 @@ export default function BonusAuction() {
             </div>
           </div>
 
-          <p className="text-[11px] text-gray-400">
-            اضغط على العنصر فور سماعه من المتسابق لاعتماده تلقائياً:
-          </p>
+          {currentPlayer && currentPlayer.team === highestBidderTeamKey && !currentPlayer.isHost ? (
+            <div className="p-6 bg-arena-darker/90 rounded-2xl border border-arena-yellow/30 text-center space-y-3">
+              <span className="text-3xl">🗣️</span>
+              <div className="text-sm font-black text-arena-yellow">أنت في وضع التسميع الشفوي!</div>
+              <p className="text-xs text-gray-300 leading-relaxed">
+                سرد الإجابات يتم بصوت واضح في الساحة.. المحكم الخصم (<span className="text-arena-cyan font-bold">{opposingTeam.name}</span>) هو المسؤول عن مطابقة العناصر مع القائمة المعتمدة وإدخال النقاط منعاً للتلاعب (Cross-Team Verification).
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className="text-[11px] text-gray-400">
+                اضغط على العنصر فور سماعه من المتسابق لاعتماده تلقائياً:
+              </p>
 
-          <div className="max-h-[360px] overflow-y-auto space-y-1.5 pr-1">
-            {currentTopic.validItems.map((item, idx) => {
-              const isChecked = !!checkedItems[item];
-              return (
-                <div
-                  key={idx}
-                  onClick={() => toggleItemCheck(item)}
-                  className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer transition-all ${
-                    isChecked
-                      ? 'bg-emerald-950/80 border-arena-green text-arena-green shadow-md'
-                      : 'bg-arena-darker/80 border-white/10 hover:border-white/30 text-gray-300'
-                  }`}
+              <div className="max-h-[360px] overflow-y-auto space-y-1.5 pr-1">
+                {currentTopic.validItems.map((item, idx) => {
+                  const isChecked = !!checkedItems[item];
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => toggleItemCheck(item)}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer transition-all ${
+                        isChecked
+                          ? 'bg-emerald-950/80 border-arena-green text-arena-green shadow-md'
+                          : 'bg-arena-darker/80 border-white/10 hover:border-white/30 text-gray-300'
+                      }`}
+                    >
+                      <span>{item}</span>
+                      {isChecked ? <Check className="w-4 h-4 text-arena-green" /> : <span className="text-[10px] text-gray-500 font-mono">#{idx + 1}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Referee Final Action Resolution */}
+              <div className="pt-2 border-t border-white/10 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => r4ResolveBid(true)}
+                  className="btn-arcade-green py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 cursor-pointer"
                 >
-                  <span>{item}</span>
-                  {isChecked ? <Check className="w-4 h-4 text-arena-green" /> : <span className="text-[10px] text-gray-500 font-mono">#{idx + 1}</span>}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Referee Final Action Resolution */}
-          <div className="pt-2 border-t border-white/10 grid grid-cols-2 gap-2">
-            <button
-              onClick={() => r4ResolveBid(true)}
-              className="btn-arcade-green py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 cursor-pointer"
-            >
-              <Check className="w-4 h-4" />
-              <span>استوفى المزاد (+{highestBid * 400}ن)</span>
-            </button>
-            <button
-              onClick={() => r4ResolveBid(false)}
-              className="btn-arcade-red py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-              <span>فشل في المزاد (-{highestBid * 250}ن)</span>
-            </button>
-          </div>
+                  <Check className="w-4 h-4" />
+                  <span>استوفى المزاد (+{highestBid * 400}ن)</span>
+                </button>
+                <button
+                  onClick={() => r4ResolveBid(false)}
+                  className="btn-arcade-red py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                  <span>فشل في المزاد (-{highestBid * 250}ن)</span>
+                </button>
+              </div>
+            </>
+          )}
 
         </div>
 

@@ -19,14 +19,14 @@ export const TOURNAMENT_CONFIG = {
   },
   round3_penalty: {
     name: 'حط في قريبي (Penalty Shootouts)',
-    totalQuestions: 10, // 5 penalties per team (1v1 sudden shootout)
+    totalQuestions: 10, // 5 penalties per team
     totalShots: 10,
-    structure: 'Speed race buzzer between Kicker and Goalie/Interceptor'
+    structure: 'Random category generated first -> Teams select their duelists -> 1v1 speed shootout'
   },
   round4_auction: {
     name: 'مين يزوّد؟ (Blind Auction)',
     totalQuestions: 4,
-    structure: '60s bidding increments (+1, +2, +5) with verification counter'
+    structure: '60s open bidding -> Highest bidding team plays -> Opposing team verifies and enters points'
   }
 };
 

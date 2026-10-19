@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { io } from 'socket.io-client';
 import confetti from 'canvas-confetti';
 import { CHARACTERS } from '../data/characters';
-import { TRIVIA_BANK, PASSWORD_WORDS, PENALTY_QUESTIONS, AUCTION_TOPICS } from '../data/questions';
+import { TRIVIA_BANK, PASSWORD_WORDS, PENALTY_QUESTIONS, AUCTION_TOPICS, PENALTY_CATEGORIES } from '../data/questions';
 import { TOURNAMENT_STRUCTURE } from '../data/tournamentStructure';
 import { sounds } from '../utils/soundEffects';
 
@@ -75,6 +75,8 @@ export function GameProvider({ children }) {
       currentKickerId: 'p1',
       currentGoalieId: 'p3',
       kickerTeam: 'team_a',
+      currentCategory: PENALTY_CATEGORIES[0],
+      phase: 'duelist_selection', // 'duelist_selection' | 'shootout'
       currentQuestion: PENALTY_QUESTIONS[0],
       timer: 20,
       isTimerRunning: false,
@@ -229,6 +231,9 @@ export function GameProvider({ children }) {
         } else if (targetRound === 'round3') {
           next.round3.turnIndex = 0;
           next.round3.kickerTeam = 'team_a';
+          const randomCat = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
+          next.round3.currentCategory = randomCat;
+          next.round3.phase = 'duelist_selection';
           next.round3.currentQuestion = PENALTY_QUESTIONS[0];
           next.round3.interceptBuzzedBy = null;
           next.round3.shotsHistory = [];
@@ -515,6 +520,10 @@ export function GameProvider({ children }) {
           r3.currentGoalieId = teamAPlayers[r3.turnIndex % teamAPlayers.length]?.id;
         }
 
+        const nextCat = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
+        r3.currentCategory = nextCat;
+        r3.phase = 'duelist_selection';
+
         const nextQIdx = r3.turnIndex % PENALTY_QUESTIONS.length;
         r3.currentQuestion = PENALTY_QUESTIONS[nextQIdx];
 
@@ -525,6 +534,35 @@ export function GameProvider({ children }) {
 
         return { ...prev, teams, round3: r3 };
       });
+    }
+  };
+
+  const r3SelectDuelists = (kickerId, goalieId) => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('r3_select_duelists', { roomCode, kickerId, goalieId });
+    } else {
+      setRoomState(prev => {
+        const r3 = { ...prev.round3 };
+        if (kickerId) r3.currentKickerId = kickerId;
+        if (goalieId) r3.currentGoalieId = goalieId;
+        return { ...prev, round3: r3 };
+      });
+    }
+  };
+
+  const r3StartShootout = () => {
+    sounds.playWhistle();
+    if (socket && isConnected && roomCode) {
+      socket.emit('r3_start_shootout', { roomCode });
+    } else {
+      setRoomState(prev => ({
+        ...prev,
+        round3: {
+          ...prev.round3,
+          phase: 'shootout',
+          interceptBuzzedBy: null
+        }
+      }));
     }
   };
 
@@ -688,6 +726,8 @@ export function GameProvider({ children }) {
         r2TimeFreeze,
         r3InterceptBuzz,
         r3RecordShot,
+        r3SelectDuelists,
+        r3StartShootout,
         r4Bid,
         r4UseLifeline,
         r4ToggleItem,

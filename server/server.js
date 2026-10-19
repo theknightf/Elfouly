@@ -3,8 +3,8 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { CHARACTERS, TEAMS } from '../src/data/characters.js';
-import { TRIVIA_BANK, PASSWORD_WORDS, PENALTY_QUESTIONS, AUCTION_TOPICS } from '../src/data/questions.js';
-import { TOURNAMENT_STRUCTURE } from '../src/data/tournamentStructure.js';
+import { TRIVIA_BANK, PASSWORD_WORDS, PENALTY_QUESTIONS, AUCTION_TOPICS, PENALTY_CATEGORIES } from '../src/data/questions.js';
+import { TOURNAMENT_STRUCTURE, TOURNAMENT_CONFIG } from '../src/data/tournamentStructure.js';
 import { triviaEngine } from '../services/triviaEngine.js';
 
 const app = express();
@@ -85,6 +85,8 @@ function createInitialRoomState(roomCode, hostId, hostName) {
       currentKickerId: null,
       currentGoalieId: null,
       kickerTeam: 'team_a',
+      currentCategory: PENALTY_CATEGORIES[0],
+      phase: 'duelist_selection', // 'duelist_selection' | 'shootout'
       currentQuestion: null,
       timer: 20,
       isTimerRunning: false,
@@ -260,6 +262,11 @@ io.on('connection', (socket) => {
       room.round3.currentKickerId = teamAPlayers[0]?.id || room.players[0]?.id;
       room.round3.currentGoalieId = teamBPlayers[0]?.id || (room.players[1] ? room.players[1].id : room.players[0]?.id);
 
+      // Random category generated first -> Teams select their duelists -> 1v1 speed shootout
+      const randomCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
+      room.round3.currentCategory = randomCategory;
+      room.round3.phase = 'duelist_selection';
+
       const kickerPlayer = teamAPlayers[0] || room.players[0];
       const dispatchedPenalty = triviaEngine.getQuestionForPlayer({
         roomId: roomCode,
@@ -271,7 +278,7 @@ io.on('connection', (socket) => {
           question: dispatchedPenalty.question_text,
           answer: dispatchedPenalty.correct_answer,
           options: dispatchedPenalty.options || ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
-          kickerHint: dispatchedPenalty.category
+          kickerHint: randomCategory?.name || dispatchedPenalty.category
         };
       } else {
         room.round3.currentQuestion = PENALTY_QUESTIONS[0];
@@ -392,6 +399,13 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomCode);
     if (!room) return;
 
+    // Zero Self-Grading Anti-Cheat: Answering team cannot grade themselves
+    const caller = room.players.find(p => p.id === socket.id);
+    if (caller && caller.team === room.round1.activeTeam && !caller.isHost) {
+      socket.emit('error_message', '🚫 ممنوع احتساب النقاط لنفسك! الحكم الخصم هو المسؤول الوحيد عن التقييم.');
+      return;
+    }
+
     const r1 = room.round1;
     const answeringPlayer = room.players.find(p => p.id === r1.answeringPlayerId);
     let nextStreak = Math.min(r1.streak + 1, 10);
@@ -437,6 +451,13 @@ io.on('connection', (socket) => {
   socket.on('r1_action_break', ({ roomCode }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
+
+    // Zero Self-Grading Anti-Cheat
+    const caller = room.players.find(p => p.id === socket.id);
+    if (caller && caller.team === room.round1.activeTeam && !caller.isHost) {
+      socket.emit('error_message', '🚫 ممنوع تقييم الإجابة من الفريق المجيب! الحكم الخصم هو المسؤول الوحيد.');
+      return;
+    }
 
     const r1 = room.round1;
     const answeringPlayer = room.players.find(p => p.id === r1.answeringPlayerId);
@@ -487,6 +508,13 @@ io.on('connection', (socket) => {
   socket.on('r1_action_bank', ({ roomCode }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
+
+    // Only active answering team can bank their points
+    const caller = room.players.find(p => p.id === socket.id);
+    if (caller && caller.team !== room.round1.activeTeam && !caller.isHost) {
+      socket.emit('error_message', '🚫 لا يمكنك حفظ النقاط في الخزنة لفريق الخصم!');
+      return;
+    }
 
     const r1 = room.round1;
     const activeTeamKey = r1.activeTeam;
@@ -648,7 +676,45 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('room_state_updated', room);
   });
 
-  // =================== ROUND 3 ACTIONS (Penalty Shootout) ===================
+  // Select Duelists for Penalty Shootout
+  socket.on('r3_select_duelists', ({ roomCode, kickerId, goalieId }) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    const r3 = room.round3;
+    if (kickerId) r3.currentKickerId = kickerId;
+    if (goalieId) r3.currentGoalieId = goalieId;
+
+    const kickerPlayer = room.players.find(p => p.id === r3.currentKickerId);
+    const category = r3.currentCategory;
+    const dispatched = triviaEngine.getQuestionForPlayer({
+      roomId: roomCode,
+      characterId: kickerPlayer?.character?.id || 'fares_elfouly',
+      mode: 'hat_fi_qoraybi'
+    });
+    if (dispatched) {
+      r3.currentQuestion = {
+        question: dispatched.question_text,
+        answer: dispatched.correct_answer,
+        options: dispatched.options || ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
+        kickerHint: category?.name || dispatched.category
+      };
+    }
+
+    io.to(roomCode).emit('room_state_updated', room);
+  });
+
+  // Start Shootout
+  socket.on('r3_start_shootout', ({ roomCode }) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    room.round3.phase = 'shootout';
+    room.round3.interceptBuzzedBy = null;
+    io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
+    io.to(roomCode).emit('room_state_updated', room);
+  });
+
   socket.on('r3_intercept_buzz', ({ roomCode }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
@@ -699,6 +765,11 @@ io.on('connection', (socket) => {
     r3.kickerTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
     r3.interceptBuzzedBy = null;
 
+    // Pick next random category for next penalty kick and return to duelist selection
+    const nextCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
+    r3.currentCategory = nextCategory;
+    r3.phase = 'duelist_selection';
+
     // Check if 10 shots quota reached
     if (r3.turnIndex >= 10) {
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
@@ -731,7 +802,7 @@ io.on('connection', (socket) => {
         question: nextPenaltyQ.question_text,
         answer: nextPenaltyQ.correct_answer,
         options: nextPenaltyQ.options || ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
-        kickerHint: nextPenaltyQ.category
+        kickerHint: nextCategory?.name || nextPenaltyQ.category
       };
     } else {
       const nextQIdx = (r3.turnIndex) % PENALTY_QUESTIONS.length;
@@ -795,10 +866,17 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('room_state_updated', room);
   });
 
-  // Toggle item named in auction checklist
+  // Toggle item named in auction checklist (Opposing team / referee verification)
   socket.on('r4_toggle_item', ({ roomCode, item }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
+
+    // Cross-Team Verification Anti-Cheat: Answering team cannot verify their own items!
+    const caller = room.players.find(p => p.id === socket.id);
+    if (caller && caller.team === room.round4.highestBidderTeam && !caller.isHost) {
+      socket.emit('error_message', '🚫 التحقق من العناصر يتم بواسطة الفريق الخصم فقط!');
+      return;
+    }
 
     const r4 = room.round4;
     if (!r4.itemsNamed) r4.itemsNamed = [];
@@ -816,6 +894,13 @@ io.on('connection', (socket) => {
   socket.on('r4_resolve_bid', ({ roomCode, success }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
+
+    // Cross-Team Verification Anti-Cheat: Answering team cannot grade their own auction!
+    const caller = room.players.find(p => p.id === socket.id);
+    if (caller && caller.team === room.round4.highestBidderTeam && !caller.isHost) {
+      socket.emit('error_message', '🚫 الفريق المزايد لا يستطيع اعتماد نتيجته بنفسه! الفريق الخصم هو المحكم.');
+      return;
+    }
 
     const r4 = room.round4;
     const winningTeam = r4.highestBidderTeam;

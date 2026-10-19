@@ -20,6 +20,8 @@ export default function MobileController() {
     r2TimeFreeze,
     r3InterceptBuzz,
     r3RecordShot,
+    r3SelectDuelists,
+    r3StartShootout,
     r4Bid,
     r4UseLifeline,
     r4ToggleItem,
@@ -51,10 +53,16 @@ export default function MobileController() {
   const r3 = roomState?.round3 || {};
   const isKickerInR3 = r3.currentKickerId === player?.id;
   const isGoalieInR3 = r3.currentGoalieId === player?.id;
+  const isDuelistSelectionInR3 = r3.phase === 'duelist_selection';
+  const kickingTeamKeyInR3 = r3.kickerTeam || 'team_a';
+  const isKickingTeamInR3 = player?.team === kickingTeamKeyInR3;
+  const currentCategoryInR3 = r3.currentCategory || { name: 'برشلونة وأوروبا (بعد 2010)', icon: '⚽', hint: 'تخصص كروي' };
 
   // Round 4 Roles
   const r4 = roomState?.round4 || {};
   const teamLifelines = r4.usedLifelines?.[player?.team] || [];
+  const isHighestBidderTeamInR4 = r4.highestBidderTeam === player?.team;
+  const isOpposingVerifierInR4 = !!r4.highestBidderTeam && !isHighestBidderTeamInR4;
 
   return (
     <div className="max-w-md mx-auto px-4 py-4 space-y-4 animate-fadeIn">
@@ -307,72 +315,138 @@ export default function MobileController() {
               </span>
             </div>
 
-            {/* Kicker Question */}
-            <div className="bg-arena-card p-3 rounded-2xl border border-white/10 space-y-2">
-              <div className="text-[10px] text-arena-cyan font-bold">
-                {isKickerInR3 ? '🎯 أنت المسدد الآن:' : 'سؤال ركلة الجزاء:'}
-              </div>
-              <div className="text-xs font-black text-white">
-                {r3.currentQuestion?.question}
-              </div>
-              {r3.currentQuestion?.options && (
-                <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
-                  {r3.currentQuestion.options.map((opt, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        const isIntercepted = !!r3.interceptBuzzedBy;
-                        const normOpt = opt.trim().toLowerCase();
-                        const normAns = (r3.currentQuestion?.answer || '').trim().toLowerCase();
-                        const isCorrect = normOpt === normAns || normAns.includes(normOpt) || normOpt.includes(normAns);
-
-                        if (isIntercepted) {
-                          showToast('🧤 تصدي حارس المرمى!', 'الحارس كان ضاغط على الصد وخطف النقطة!');
-                          r3RecordShot('saved');
-                        } else if (isCorrect) {
-                          showToast('⚽ هدف في الجول!', 'تسديدة صاروخية سكنت الشباك!');
-                          r3RecordShot('goal');
-                        } else {
-                          showToast('❌ ضاعت الركلة!', 'التسديدة راحت بعيد عن المرمى!');
-                          r3RecordShot('missed');
-                        }
-                      }}
-                      className="p-3 rounded-xl font-bold text-gray-200 bg-arena-darker hover:bg-arena-cyan/20 border border-white/10 hover:border-arena-cyan transition-all text-right flex items-center justify-between cursor-pointer active:scale-95 shadow-sm"
-                    >
-                      <span className="truncate">{opt}</span>
-                      <span className="text-arena-cyan font-mono font-black text-[10px]">.{i + 1}</span>
-                    </button>
-                  ))}
+            {isDuelistSelectionInR3 ? (
+              <div className="space-y-4">
+                {/* Random Category Announcement */}
+                <div className="bg-arena-card p-3 rounded-2xl border-2 border-arena-yellow/50 text-center space-y-1">
+                  <div className="text-[10px] font-black text-arena-yellow">🎲 التصنيف المختار للركلة:</div>
+                  <div className="text-base font-black text-white flex items-center justify-center gap-2">
+                    <span>{currentCategoryInR3.icon}</span>
+                    <span>{currentCategoryInR3.name}</span>
+                  </div>
+                  <div className="text-[10px] text-gray-400">{currentCategoryInR3.hint}</div>
                 </div>
-              )}
-            </div>
 
-            {/* Giant Intercept Buzzer for Goalie */}
-            <div className="space-y-2 text-center">
-              <div className="text-xs text-gray-400">
-                {isGoalieInR3 ? '🧤 أنت حارس المرمى! اضغط على البزر للصد:' : 'بزر الصد المباشر:'}
+                {/* Duelist Pickers */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-gray-300">
+                    {isKickingTeamInR3 ? '🎯 اختر مسدد فريقك:' : '🧤 اختر حارس مرمى فريقك:'}
+                  </div>
+                  <div className="space-y-1.5">
+                    {(roomState?.players || [])
+                      .filter(p => p.team === (isKickingTeamInR3 ? kickingTeamKeyInR3 : (kickingTeamKeyInR3 === 'team_a' ? 'team_b' : 'team_a')))
+                      .map(p => {
+                        const isSelected = isKickingTeamInR3 ? p.id === r3.currentKickerId : p.id === r3.currentGoalieId;
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => {
+                              if (isKickingTeamInR3) {
+                                r3SelectDuelists(p.id, null);
+                              } else {
+                                r3SelectDuelists(null, p.id);
+                              }
+                            }}
+                            className={`w-full p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
+                              isSelected
+                                ? isKickingTeamInR3
+                                  ? 'bg-arena-cyan/20 border-arena-cyan text-white shadow-sm'
+                                  : 'bg-arena-red/20 border-arena-red text-white shadow-sm'
+                                : 'bg-arena-card border-white/10 text-gray-400'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>{p.character?.avatar}</span>
+                              <span>{p.name}</span>
+                            </div>
+                            {isSelected && (
+                              <span className="text-[10px] text-arena-yellow font-black">تم الاعتماد ✔️</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                <button
+                  onClick={r3StartShootout}
+                  className="w-full btn-arcade-green py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+                >
+                  <span>بدء ركلة الجزاء ⚔️</span>
+                </button>
               </div>
-              <button
-                onClick={r3InterceptBuzz}
-                className="w-full py-8 rounded-3xl btn-arcade-red font-black text-xl flex flex-col items-center justify-center gap-2 animate-buzzer cursor-pointer"
-              >
-                <Shield className="w-8 h-8 fill-current" />
-                <span>صد يا بربخ! (Intercept) 🛡️</span>
-              </button>
-            </div>
+            ) : (
+              <>
+                {/* Kicker Question */}
+                <div className="bg-arena-card p-3 rounded-2xl border border-white/10 space-y-2">
+                  <div className="text-[10px] text-arena-cyan font-bold">
+                    {isKickerInR3 ? '🎯 أنت المسدد الآن:' : 'سؤال ركلة الجزاء:'}
+                  </div>
+                  <div className="text-xs font-black text-white">
+                    {r3.currentQuestion?.question}
+                  </div>
+                  {r3.currentQuestion?.options && (
+                    <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
+                      {r3.currentQuestion.options.map((opt, i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            const isIntercepted = !!r3.interceptBuzzedBy;
+                            const normOpt = opt.trim().toLowerCase();
+                            const normAns = (r3.currentQuestion?.answer || '').trim().toLowerCase();
+                            const isCorrect = normOpt === normAns || normAns.includes(normOpt) || normOpt.includes(normAns);
 
-            {/* Validation quick buttons for referee/host */}
-            <div className="grid grid-cols-3 gap-2">
-              <button onClick={() => r3RecordShot('goal')} className="btn-arcade-green py-2.5 rounded-xl font-black text-xs">
-                هدف ⚽
-              </button>
-              <button onClick={() => r3RecordShot('saved')} className="btn-arcade-yellow py-2.5 rounded-xl font-black text-xs">
-                اتصدت 🧤
-              </button>
-              <button onClick={() => r3RecordShot('missed')} className="btn-arcade-red py-2.5 rounded-xl font-black text-xs">
-                ضاعت ❌
-              </button>
-            </div>
+                            if (isIntercepted) {
+                              showToast('🧤 تصدي حارس المرمى!', 'الحارس كان ضاغط على الصد وخطف النقطة!');
+                              r3RecordShot('saved');
+                            } else if (isCorrect) {
+                              showToast('⚽ هدف في الجول!', 'تسديدة صاروخية سكنت الشباك!');
+                              r3RecordShot('goal');
+                            } else {
+                              showToast('❌ ضاعت الركلة!', 'التسديدة راحت بعيد عن المرمى!');
+                              r3RecordShot('missed');
+                            }
+                          }}
+                          className="p-3 rounded-xl font-bold text-gray-200 bg-arena-darker hover:bg-arena-cyan/20 border border-white/10 hover:border-arena-cyan transition-all text-right flex items-center justify-between cursor-pointer active:scale-95 shadow-sm"
+                        >
+                          <span className="truncate">{opt}</span>
+                          <span className="text-arena-cyan font-mono font-black text-[10px]">.{i + 1}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Giant Intercept Buzzer for Goalie */}
+                <div className="space-y-2 text-center">
+                  <div className="text-xs text-gray-400">
+                    {isGoalieInR3 ? '🧤 أنت حارس المرمى! اضغط على البزر للصد:' : 'بزر الصد المباشر:'}
+                  </div>
+                  <button
+                    onClick={r3InterceptBuzz}
+                    className="w-full py-8 rounded-3xl btn-arcade-red font-black text-xl flex flex-col items-center justify-center gap-2 animate-buzzer cursor-pointer"
+                  >
+                    <Shield className="w-8 h-8 fill-current" />
+                    <span>صد يا بربخ! (Intercept) 🛡️</span>
+                  </button>
+                </div>
+
+                {/* Validation quick buttons for referee/host */}
+                {(player?.isHost || !isKickingTeamInR3) && (
+                  <div className="grid grid-cols-3 gap-2">
+                    <button onClick={() => r3RecordShot('goal')} className="btn-arcade-green py-2.5 rounded-xl font-black text-xs">
+                      هدف ⚽
+                    </button>
+                    <button onClick={() => r3RecordShot('saved')} className="btn-arcade-yellow py-2.5 rounded-xl font-black text-xs">
+                      اتصدت 🧤
+                    </button>
+                    <button onClick={() => r3RecordShot('missed')} className="btn-arcade-red py-2.5 rounded-xl font-black text-xs">
+                      ضاعت ❌
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -438,39 +512,59 @@ export default function MobileController() {
               </div>
             </div>
 
-            {/* Referee Checklist Items */}
-            {r4.currentTopic?.validItems && (
-              <div className="bg-arena-darker p-3 rounded-xl border border-white/10 space-y-1.5 text-right">
-                <div className="text-[10px] font-bold text-gray-400">قائمة التحقق من الإجابات:</div>
-                <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
-                  {r4.currentTopic.validItems.map((item, idx) => {
-                    const isChecked = r4.itemsNamed?.includes(item);
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => r4ToggleItem(item)}
-                        className={`w-full flex items-center justify-between p-1.5 rounded-lg text-xs font-bold transition-all ${
-                          isChecked ? 'bg-arena-green/20 text-arena-green border border-arena-green/40' : 'bg-arena-card text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        <span>{item}</span>
-                        {isChecked ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5 opacity-40" />}
-                      </button>
-                    );
-                  })}
+            {/* Anti-Cheat Zero Self-Grading Check */}
+            {isHighestBidderTeamInR4 ? (
+              <div className="bg-arena-card/90 p-4 rounded-xl border border-arena-yellow/40 text-center space-y-2">
+                <div className="text-xs font-black text-arena-yellow flex items-center justify-center gap-1.5">
+                  <span>قفل منع التقييم الذاتي 🚫</span>
+                </div>
+                <p className="text-[11px] text-gray-300 leading-relaxed">
+                  أنت وفريقك أصحاب المزاد الأعلى ({r4.highestBid || 0} إجابات)! اذكر إجاباتك بصوت واضح، وحكم الفريق الخصم هو المسؤول عن تدقيق العناصر واعتماد النتيجة.
+                </p>
+                <div className="text-[10px] text-arena-cyan font-bold bg-arena-darker/60 p-2 rounded-lg">
+                  العناصر التي تم التحقق منها حتى الآن: {r4.itemsNamed?.length || 0} / {r4.highestBid || 0}
                 </div>
               </div>
-            )}
+            ) : (
+              <>
+                {/* Referee Checklist Items */}
+                {r4.currentTopic?.validItems && (
+                  <div className="bg-arena-darker p-3 rounded-xl border border-white/10 space-y-1.5 text-right">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-gray-400">
+                      <span>قائمة التحقق من الإجابات:</span>
+                      <span className="text-arena-green">حكم التدقيق 🛡️</span>
+                    </div>
+                    <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+                      {r4.currentTopic.validItems.map((item, idx) => {
+                        const isChecked = r4.itemsNamed?.includes(item);
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => r4ToggleItem(item)}
+                            className={`w-full flex items-center justify-between p-1.5 rounded-lg text-xs font-bold transition-all ${
+                              isChecked ? 'bg-arena-green/20 text-arena-green border border-arena-green/40' : 'bg-arena-card text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            <span>{item}</span>
+                            {isChecked ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5 opacity-40" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
-            {/* Resolution buttons */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <button onClick={() => r4ResolveBid(true)} className="btn-arcade-green py-3 rounded-xl font-black text-xs">
-                أنا قدها ونص! 🏆
-              </button>
-              <button onClick={() => r4ResolveBid(false)} className="btn-arcade-red py-3 rounded-xl font-black text-xs">
-                فشل في الوفاء ❌
-              </button>
-            </div>
+                {/* Resolution buttons */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button onClick={() => r4ResolveBid(true)} className="btn-arcade-green py-3 rounded-xl font-black text-xs">
+                    نجح في التحدي! 🏆
+                  </button>
+                  <button onClick={() => r4ResolveBid(false)} className="btn-arcade-red py-3 rounded-xl font-black text-xs">
+                    فشل في الوفاء ❌
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 

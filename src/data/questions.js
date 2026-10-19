@@ -452,7 +452,23 @@ export const PASSWORD_WORDS = [
 ];
 
 // ROUND 3: "حط في قريبي" (Penalty Shootouts)
-// Rapid fire penalty trivia categorized by character specialty
+// Random category generated first -> Teams select their duelists -> 1v1 speed shootout
+export const PENALTY_CATEGORIES = [
+  { id: 'computer_science', name: 'علوم الحاسب والبرمجة', icon: '💻', hint: 'تخصص: حفيد الفولي' },
+  { id: 'barcelona_european_football', name: 'برشلونة والكرة الأوروبية (بعد 2010)', icon: '⚽', hint: 'تخصص: الفولي، التوني، إياد' },
+  { id: 'capitals_and_flags', name: 'عواصم العالم والأعلام', icon: '🌍', hint: 'تخصص: حفيد الفولي' },
+  { id: 'real_madrid_al_ahly', name: 'الأهلي وريال مدريد (بعد 2010)', icon: '🦅', hint: 'تخصص: البربخ، الفندقي، التوني' },
+  { id: 'pc_hardware_assembly', name: 'تجميعات PC وهاردوير', icon: '🖥️', hint: 'تخصص: خالد البربخ' },
+  { id: 'foreign_tv_series', name: 'المسلسلات الأجنبية وBreaking Bad', icon: '🎬', hint: 'تخصص: البربخ، الفندقي' },
+  { id: 'tourism_hospitality', name: 'السياحة وإدارة الفنادق', icon: '🛎️', hint: 'تخصص: زياد الفندقي' },
+  { id: 'cybersecurity', name: 'الأمن السيبراني والشبكات', icon: '🛡️', hint: 'تخصص: إياد الأسد' },
+  { id: 'console_pc_gaming', name: 'جيمنج وكونسول', icon: '🕹️', hint: 'تخصص: مازن الجيمر' },
+  { id: 'cars_and_engine_mechanics', name: 'السيارات ومحركات التوربو', icon: '🏎️', hint: 'تخصص: علي التوربو' },
+  { id: 'dentistry', name: 'طب وجراحة الأسنان', icon: '🦷', hint: 'تخصص: علي التوربو' },
+  { id: 'veterinary_biology', name: 'الطب البيطري والأحياء', icon: '🐾', hint: 'تخصص: التوني بيلافيتا' },
+  { id: 'islamic_studies', name: 'تاريخ وحضارة إسلامية', icon: '🕌', hint: 'تخصص: التوني، البربخ' }
+];
+
 export const PENALTY_QUESTIONS = [
   {
     id: 'pen_1',

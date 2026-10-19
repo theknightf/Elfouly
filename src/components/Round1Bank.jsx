@@ -5,6 +5,7 @@ import { Vault, Flame, CheckCircle, XCircle, ArrowRight, ShieldCheck, Zap, HelpC
 export default function Round1Bank() {
   const {
     roomState,
+    currentPlayer,
     r1Score,
     r1Break,
     r1Bank,
@@ -304,30 +305,43 @@ export default function Round1Bank() {
 
             {/* Opposing Referee Console: Score or Break */}
             <div className="bg-arena-card/90 rounded-2xl p-5 border border-white/20 space-y-3 shadow-lg">
-              <div className="text-xs font-black text-gray-300 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-arena-red" />
-                <span>لوحة تحكم الحكم الخصم ({readerPlayer?.name || 'الحكم'}):</span>
+              <div className="text-xs font-black text-gray-300 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-arena-red" />
+                  <span>لوحة تحكم الحكم الخصم ({readerPlayer?.name || 'الحكم'}):</span>
+                </div>
+                <span className="text-[10px] text-arena-yellow font-mono">Zero Self-Grading 🛡️</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={handleScoreClick}
-                  className="btn-arcade-green py-3.5 px-4 rounded-2xl text-sm font-black flex flex-col items-center justify-center gap-1 cursor-pointer hover:brightness-110"
-                >
-                  <CheckCircle className="w-5 h-5 fill-current" />
-                  <span>صح! (+Points) 🎯</span>
-                  <span className="text-[10px] font-mono">اصعد درجة</span>
-                </button>
+              {currentPlayer && currentPlayer.team === activeTeamKey && !currentPlayer.isHost ? (
+                <div className="p-4 bg-arena-darker/80 rounded-xl text-center space-y-1.5 border border-white/10">
+                  <span className="text-2xl">🚫</span>
+                  <div className="text-xs font-black text-arena-red">قفل منع التقييم الذاتي (Anti-Cheat)</div>
+                  <p className="text-[11px] text-gray-400">
+                    أنت في الفريق المجيب! اعتماد الإجابة وصعود السلّم محصور بجهاز الحكم الخصم ({readerPlayer?.name || 'الحكم'}) فقط.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={handleScoreClick}
+                    className="btn-arcade-green py-3.5 px-4 rounded-2xl text-sm font-black flex flex-col items-center justify-center gap-1 cursor-pointer hover:brightness-110"
+                  >
+                    <CheckCircle className="w-5 h-5 fill-current" />
+                    <span>صح! (+Points) 🎯</span>
+                    <span className="text-[10px] font-mono">اصعد درجة</span>
+                  </button>
 
-                <button
-                  onClick={handleBreakClick}
-                  className="btn-arcade-red py-3.5 px-4 rounded-2xl text-sm font-black flex flex-col items-center justify-center gap-1 cursor-pointer hover:brightness-110"
-                >
-                  <XCircle className="w-5 h-5 fill-current" />
-                  <span>غلط! (تصفير) ❌</span>
-                  <span className="text-[10px] font-mono">اكسر الستريك</span>
-                </button>
-              </div>
+                  <button
+                    onClick={handleBreakClick}
+                    className="btn-arcade-red py-3.5 px-4 rounded-2xl text-sm font-black flex flex-col items-center justify-center gap-1 cursor-pointer hover:brightness-110"
+                  >
+                    <XCircle className="w-5 h-5 fill-current" />
+                    <span>غلط! (تصفير) ❌</span>
+                    <span className="text-[10px] font-mono">اكسر الستريك</span>
+                  </button>
+                </div>
+              )}
             </div>
 
           </div>
