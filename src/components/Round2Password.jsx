@@ -76,6 +76,9 @@ export default function Round2Password() {
             <div className="inline-flex items-center gap-1.5 text-xs font-black text-arena-cyan bg-arena-cyan/10 px-2 py-0.5 rounded-full border border-arena-cyan/20">
               <Lock className="w-3.5 h-3.5" />
               <span>جولة 2: "اديني في سري" (Password Mode)</span>
+              <span className="bg-arena-yellow/20 text-arena-yellow px-1.5 py-0.2 rounded font-mono font-bold text-[10px]">
+                بطاقة {(r2.currentWordIndex || 0) + 1} / 5
+              </span>
             </div>
             <h2 className="text-xl md:text-2xl font-black text-white">
               كلمة السر في الودن والممنوعات الأربعة! 🤐

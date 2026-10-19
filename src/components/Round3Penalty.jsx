@@ -55,6 +55,9 @@ export default function Round3Penalty() {
             <div className="inline-flex items-center gap-1.5 text-xs font-black text-arena-red bg-arena-red/10 px-2 py-0.5 rounded-full border border-arena-red/20">
               <Flame className="w-3.5 h-3.5" />
               <span>جولة 3: "حط في قريبي" (Penalty Shootouts)</span>
+              <span className="bg-arena-yellow/20 text-arena-yellow px-1.5 py-0.2 rounded font-mono font-bold text-[10px]">
+                ركلة {Math.min(10, (r3.turnIndex || 0) + 1)} / 10
+              </span>
             </div>
             <h2 className="text-xl md:text-2xl font-black text-white">
               ركلات الجزاء التهديفية والتصدي الحاسم! 🥅

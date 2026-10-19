@@ -4,6 +4,8 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import { CHARACTERS, TEAMS } from '../src/data/characters.js';
 import { TRIVIA_BANK, PASSWORD_WORDS, PENALTY_QUESTIONS, AUCTION_TOPICS } from '../src/data/questions.js';
+import { TOURNAMENT_STRUCTURE } from '../src/data/tournamentStructure.js';
+import { triviaEngine } from '../services/triviaEngine.js';
 
 const app = express();
 app.use(cors());
@@ -38,16 +40,23 @@ function createInitialRoomState(roomCode, hostId, hostName) {
     code: roomCode,
     hostId: hostId,
     status: 'lobby', // 'lobby' | 'round1' | 'round2' | 'round3' | 'round4' | 'game_over'
+    tournamentStructure: TOURNAMENT_STRUCTURE,
     players: [],
     teams: {
       team_a: { id: 'team_a', name: 'فريق الحيتان (Team A)', score: 0, bank: 0, penaltyScore: 0 },
       team_b: { id: 'team_b', name: 'فريق الوحوش (Team B)', score: 0, bank: 0, penaltyScore: 0 }
     },
-    // Round 1: "1 تو" (Bank Mode)
+    // Round 1: "1 تو" (Bank Mode) - 48 Questions total, 24/team, 4 segments, 2 sub-batches [6, 6] per segment
     round1: {
       activeTeam: 'team_a',
       answeringPlayerId: null,
       readerPlayerId: null,
+      segmentIndex: 0, // 0..3 (4 segments total)
+      subBatchIndex: 0, // 0..1 (2 sub-batches of 6 per segment)
+      subBatchQuestionsAnswered: 0, // 0..6
+      segmentQuestionsAnswered: 0, // 0..12
+      totalQuestionsAnswered: 0, // 0..48
+      totalQuestions: 48,
       currentQuestionIndex: 0,
       streak: 0, // 0 to 10
       pendingPoints: 0,
@@ -57,20 +66,22 @@ function createInitialRoomState(roomCode, hostId, hostName) {
       isTimerRunning: false,
       history: []
     },
-    // Round 2: "اديني في سري" (Password Mode)
+    // Round 2: "اديني في سري" (Password Mode) - 5 Secret Cards
     round2: {
       activeClueGiverA: null,
       activeClueGiverB: null,
       hostRefereeId: null,
       currentWordIndex: 0,
+      totalQuestions: 5,
       currentWord: null,
       timer: 45,
       isTimerRunning: false,
       fouls: { team_a: 0, team_b: 0 }
     },
-    // Round 3: "حط في قريبي" (Penalty Shootouts)
+    // Round 3: "حط في قريبي" (Penalty Shootouts) - 10 shots (5 each alternating)
     round3: {
-      turnIndex: 0, // 0 to 9 (5 shots each)
+      turnIndex: 0, // 0 to 9 (10 shots total)
+      totalShots: 10,
       currentKickerId: null,
       currentGoalieId: null,
       kickerTeam: 'team_a',
@@ -200,7 +211,20 @@ io.on('connection', (socket) => {
       room.round1.streak = 0;
       room.round1.pendingPoints = 0;
       room.round1.currentQuestionIndex = 0;
-      room.round1.currentQuestion = TRIVIA_BANK[0];
+
+      const answeringPlayer = teamAPlayers[0] || room.players[0];
+      const dispatchedQ = triviaEngine.getQuestionForPlayer({
+        roomId: roomCode,
+        characterId: answeringPlayer?.character?.id || 'fares_elfouly',
+        mode: 'one_two_bank'
+      });
+      room.round1.currentQuestion = dispatchedQ ? {
+        question: dispatchedQ.question_text,
+        answer: dispatchedQ.correct_answer,
+        categoryName: dispatchedQ.category,
+        funFact: 'سؤال مستهدف بحسب تخصص الشخصية والمحرك الديناميكي!'
+      } : TRIVIA_BANK[0];
+
     } else if (targetRound === 'round2') {
       // Setup Round 2: اديني في سري Password Mode
       const teamAPlayers = room.players.filter(p => p.team === 'team_a');
@@ -209,8 +233,24 @@ io.on('connection', (socket) => {
       room.round2.activeClueGiverB = teamBPlayers[0]?.id || (room.players[1] ? room.players[1].id : room.players[0]?.id);
       room.round2.hostRefereeId = room.hostId;
       room.round2.currentWordIndex = 0;
-      room.round2.currentWord = PASSWORD_WORDS[0];
+
+      const dispatchedWord = triviaEngine.getQuestionForPlayer({
+        roomId: roomCode,
+        characterId: teamAPlayers[0]?.character?.id || 'fares_elfouly',
+        mode: 'edini_fi_seri'
+      });
+      if (dispatchedWord) {
+        room.round2.currentWord = {
+          target: dispatchedWord.question_text,
+          forbidden: dispatchedWord.forbidden_words || ['كلمة 1', 'كلمة 2', 'كلمة 3', 'كلمة 4'],
+          category: dispatchedWord.category,
+          clueIdea: 'خمن الكلمة بدون نطق الممنوعات الأربعة!'
+        };
+      } else {
+        room.round2.currentWord = PASSWORD_WORDS[0];
+      }
       room.round2.timer = 45;
+
     } else if (targetRound === 'round3') {
       // Setup Round 3: حط في قريبي Penalty Shootouts
       room.round3.turnIndex = 0;
@@ -219,12 +259,45 @@ io.on('connection', (socket) => {
       const teamBPlayers = room.players.filter(p => p.team === 'team_b');
       room.round3.currentKickerId = teamAPlayers[0]?.id || room.players[0]?.id;
       room.round3.currentGoalieId = teamBPlayers[0]?.id || (room.players[1] ? room.players[1].id : room.players[0]?.id);
-      room.round3.currentQuestion = PENALTY_QUESTIONS[0];
+
+      const kickerPlayer = teamAPlayers[0] || room.players[0];
+      const dispatchedPenalty = triviaEngine.getQuestionForPlayer({
+        roomId: roomCode,
+        characterId: kickerPlayer?.character?.id || 'fares_elfouly',
+        mode: 'hat_fi_qoraybi'
+      });
+      if (dispatchedPenalty) {
+        room.round3.currentQuestion = {
+          question: dispatchedPenalty.question_text,
+          answer: dispatchedPenalty.correct_answer,
+          options: dispatchedPenalty.options || ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
+          kickerHint: dispatchedPenalty.category
+        };
+      } else {
+        room.round3.currentQuestion = PENALTY_QUESTIONS[0];
+      }
       room.round3.interceptBuzzedBy = null;
+
     } else if (targetRound === 'round4') {
       // Setup Round 4: مين يزوّد؟ Blind Auction
       room.round4.currentTopicIndex = 0;
-      room.round4.currentTopic = AUCTION_TOPICS[0];
+      const teamBPlayers = room.players.filter(p => p.team === 'team_b');
+      const dispatchedAuction = triviaEngine.getQuestionForPlayer({
+        roomId: roomCode,
+        characterId: teamBPlayers[0]?.character?.id || 'khaled_elbarbakh',
+        mode: 'meen_yezawwed'
+      });
+      if (dispatchedAuction) {
+        room.round4.currentTopic = {
+          topic: dispatchedAuction.question_text,
+          validItems: dispatchedAuction.acceptable_answers || [],
+          category: dispatchedAuction.category,
+          minBid: 3,
+          hint: 'أعلى مزايدة تكسب التحدي!'
+        };
+      } else {
+        room.round4.currentTopic = AUCTION_TOPICS[0];
+      }
       room.round4.highestBid = room.round4.currentTopic.minBid;
       room.round4.highestBidderTeam = null;
       room.round4.highestBidderPlayerId = null;
@@ -236,6 +309,82 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('room_state_updated', room);
     io.to(roomCode).emit('notification', { title: 'انتقال الجولة', message: `بدأت الآن: ${targetRound}` });
   });
+
+  // Helper to advance Round 1 question quota according to TOURNAMENT_STRUCTURE
+  function advanceR1Question(room, roomCode) {
+    const r1 = room.round1;
+    r1.subBatchQuestionsAnswered += 1;
+    r1.segmentQuestionsAnswered += 1;
+    r1.totalQuestionsAnswered += 1;
+
+    const teamAPlayers = room.players.filter(p => p.team === 'team_a');
+    const teamBPlayers = room.players.filter(p => p.team === 'team_b');
+
+    // Check if 48 questions reached (End of Round 1 quota)
+    if (r1.totalQuestionsAnswered >= 48) {
+      io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
+      io.to(roomCode).emit('notification', {
+        title: '🏁 اكتملت جولة "1 تو" بالكامل!',
+        message: 'تم إنجاز حصة الـ 48 سؤالاً بالتساوي (24 لكل فريق)! جاهزون للجولة 2.'
+      });
+      return;
+    }
+
+    // Check if current sub-batch (6 questions) is complete
+    if (r1.subBatchQuestionsAnswered >= 6) {
+      if (r1.segmentQuestionsAnswered < 12) {
+        // Move to sub-batch 2 within the same segment (same team)
+        r1.subBatchIndex = 1;
+        r1.subBatchQuestionsAnswered = 0;
+
+        const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
+        if (activePlayers.length > 1) {
+          const currentIdx = activePlayers.findIndex(p => p.id === r1.answeringPlayerId);
+          const nextIdx = (currentIdx + 1) % activePlayers.length;
+          r1.answeringPlayerId = activePlayers[nextIdx].id;
+        }
+
+        const newPlayer = room.players.find(p => p.id === r1.answeringPlayerId);
+        io.to(roomCode).emit('notification', {
+          title: '🔄 الفقرة الفرعية الثانية (6 أسئلة أخرى)',
+          message: `الدور الآن على الكابتن ${newPlayer?.name || 'اللاعب الجديد'} من نفس الفريق!`
+        });
+      } else {
+        // Full segment (12 questions) complete! Switch to opposite team segment
+        r1.segmentIndex += 1;
+        r1.segmentQuestionsAnswered = 0;
+        r1.subBatchIndex = 0;
+        r1.subBatchQuestionsAnswered = 0;
+
+        // Reset streak for the incoming team
+        r1.pendingPoints = 0;
+        r1.streak = 0;
+
+        // Sequence: Team A (Seg 0) -> Team B (Seg 1) -> Team A (Seg 2) -> Team B (Seg 3)
+        const targetTurns = ['team_a', 'team_b', 'team_a', 'team_b'];
+        r1.activeTeam = targetTurns[r1.segmentIndex % 4];
+
+        const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
+        const opposingPlayers = r1.activeTeam === 'team_a' ? teamBPlayers : teamAPlayers;
+
+        if (activePlayers.length > 0) {
+          const nextAnsIdx = r1.segmentIndex % activePlayers.length;
+          r1.answeringPlayerId = activePlayers[nextAnsIdx].id;
+        }
+        if (opposingPlayers.length > 0) {
+          const nextReadIdx = r1.segmentIndex % opposingPlayers.length;
+          r1.readerPlayerId = opposingPlayers[nextReadIdx].id;
+        }
+
+        const activeTeamObj = room.teams[r1.activeTeam];
+        io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
+        io.to(roomCode).emit('notification', {
+          title: `🔄 تحويل الفقرة (${r1.segmentIndex + 1} من 4)`,
+          message: `انتهت فقرة الـ 12 سؤالاً! الدور الآن على ${activeTeamObj?.name}`
+        });
+      }
+    }
+  }
 
   // =================== ROUND 1 ACTIONS ===================
   // Score / Correct Answer
@@ -257,10 +406,28 @@ io.on('connection', (socket) => {
     }
     r1.pendingPoints = points;
 
-    // Pick next question tailored to player or general
-    const nextIdx = (r1.currentQuestionIndex + 1) % TRIVIA_BANK.length;
-    r1.currentQuestionIndex = nextIdx;
-    r1.currentQuestion = TRIVIA_BANK[nextIdx];
+    // Advance Round 1 quota tracking (48 total, 2x12 segments, [6, 6] splits)
+    advanceR1Question(room, roomCode);
+
+    // Pick next question tailored to active player via triviaEngine ("القلاية")
+    const nextAnsweringPlayer = room.players.find(p => p.id === r1.answeringPlayerId) || answeringPlayer;
+    const nextQ = triviaEngine.getQuestionForPlayer({
+      roomId: roomCode,
+      characterId: nextAnsweringPlayer?.character?.id || 'fares_elfouly',
+      mode: 'one_two_bank'
+    });
+    if (nextQ) {
+      r1.currentQuestion = {
+        question: nextQ.question_text,
+        answer: nextQ.correct_answer,
+        categoryName: nextQ.category,
+        funFact: 'سؤال مستهدف ديناميكياً بحسب التخصص والمحرك الذكي!'
+      };
+    } else {
+      const nextIdx = (r1.currentQuestionIndex + 1) % TRIVIA_BANK.length;
+      r1.currentQuestionIndex = nextIdx;
+      r1.currentQuestion = TRIVIA_BANK[nextIdx];
+    }
 
     io.to(roomCode).emit('sound_trigger', { sound: 'correct', streak: nextStreak });
     io.to(roomCode).emit('room_state_updated', room);
@@ -281,7 +448,6 @@ io.on('connection', (socket) => {
         title: 'درع التوني بيلافيتا! 🍦',
         message: 'تم تفعيل حماية الستريك وإنقاذ النقاط من الضياع!'
       });
-      // Streak reduced by only 1 instead of 0
       r1.streak = Math.max(1, r1.streak - 1);
       r1.pendingPoints = r1.streakLadder[r1.streak];
     } else {
@@ -291,9 +457,28 @@ io.on('connection', (socket) => {
       io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
     }
 
-    const nextIdx = (r1.currentQuestionIndex + 1) % TRIVIA_BANK.length;
-    r1.currentQuestionIndex = nextIdx;
-    r1.currentQuestion = TRIVIA_BANK[nextIdx];
+    // Advance Round 1 quota tracking
+    advanceR1Question(room, roomCode);
+
+    // Pick next question tailored to active player via triviaEngine ("القلاية")
+    const nextAnsweringPlayer = room.players.find(p => p.id === r1.answeringPlayerId) || answeringPlayer;
+    const nextQ = triviaEngine.getQuestionForPlayer({
+      roomId: roomCode,
+      characterId: nextAnsweringPlayer?.character?.id || 'fares_elfouly',
+      mode: 'one_two_bank'
+    });
+    if (nextQ) {
+      r1.currentQuestion = {
+        question: nextQ.question_text,
+        answer: nextQ.correct_answer,
+        categoryName: nextQ.category,
+        funFact: 'سؤال مستهدف ديناميكياً بحسب التخصص والمحرك الذكي!'
+      };
+    } else {
+      const nextIdx = (r1.currentQuestionIndex + 1) % TRIVIA_BANK.length;
+      r1.currentQuestionIndex = nextIdx;
+      r1.currentQuestion = TRIVIA_BANK[nextIdx];
+    }
 
     io.to(roomCode).emit('room_state_updated', room);
   });
@@ -368,13 +553,72 @@ io.on('connection', (socket) => {
 
     const r2 = room.round2;
     room.teams[team].score += 500;
+    r2.currentWordIndex += 1;
 
-    // Pick next secret word
-    const nextIdx = (r2.currentWordIndex + 1) % PASSWORD_WORDS.length;
-    r2.currentWordIndex = nextIdx;
-    r2.currentWord = PASSWORD_WORDS[nextIdx];
+    // Check if 5 cards quota reached
+    if (r2.currentWordIndex >= 5) {
+      io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
+      io.to(roomCode).emit('notification', {
+        title: '🏁 اكتملت جولة "اديني في سري" (5 بطاقات)!',
+        message: 'تم إنجاز الـ 5 بطاقات السرية! جاهزون للانتقال لجولة ركلات الجزاء.'
+      });
+    }
+
+    // Pick next secret word via triviaEngine
+    const nextWord = triviaEngine.getQuestionForPlayer({
+      roomId: roomCode,
+      characterId: room.players[0]?.character?.id || 'fares_elfouly',
+      mode: 'edini_fi_seri'
+    });
+    if (nextWord) {
+      r2.currentWord = {
+        target: nextWord.question_text,
+        forbidden: nextWord.forbidden_words || ['كلمة 1', 'كلمة 2', 'كلمة 3', 'كلمة 4'],
+        category: nextWord.category,
+        clueIdea: 'خمن الكلمة بدون نطق الممنوعات الأربعة!'
+      };
+    } else {
+      const nextIdx = (r2.currentWordIndex) % PASSWORD_WORDS.length;
+      r2.currentWord = PASSWORD_WORDS[nextIdx];
+    }
 
     io.to(roomCode).emit('sound_trigger', { sound: 'correct' });
+    io.to(roomCode).emit('room_state_updated', room);
+  });
+
+  socket.on('r2_skip_card', ({ roomCode }) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    const r2 = room.round2;
+    r2.currentWordIndex += 1;
+
+    if (r2.currentWordIndex >= 5) {
+      io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
+      io.to(roomCode).emit('notification', {
+        title: '🏁 اكتملت جولة "اديني في سري" (5 بطاقات)!',
+        message: 'تم إنجاز الـ 5 بطاقات السرية! جاهزون للانتقال لجولة ركلات الجزاء.'
+      });
+    }
+
+    const nextWord = triviaEngine.getQuestionForPlayer({
+      roomId: roomCode,
+      characterId: room.players[0]?.character?.id || 'fares_elfouly',
+      mode: 'edini_fi_seri'
+    });
+    if (nextWord) {
+      r2.currentWord = {
+        target: nextWord.question_text,
+        forbidden: nextWord.forbidden_words || ['كلمة 1', 'كلمة 2', 'كلمة 3', 'كلمة 4'],
+        category: nextWord.category,
+        clueIdea: 'خمن الكلمة بدون نطق الممنوعات الأربعة!'
+      };
+    } else {
+      const nextIdx = (r2.currentWordIndex) % PASSWORD_WORDS.length;
+      r2.currentWord = PASSWORD_WORDS[nextIdx];
+    }
+
+    io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
     io.to(roomCode).emit('room_state_updated', room);
   });
 
@@ -455,6 +699,15 @@ io.on('connection', (socket) => {
     r3.kickerTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
     r3.interceptBuzzedBy = null;
 
+    // Check if 10 shots quota reached
+    if (r3.turnIndex >= 10) {
+      io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
+      io.to(roomCode).emit('notification', {
+        title: '🏁 انتهت ركلات الجزاء الترجيحية (10 ركلات)!',
+        message: 'تم تسديد 10 ركلات بالتساوي (5 لكل فريق)! الانتقال لجولة المزاد مين يزوّد.'
+      });
+    }
+
     const teamAPlayers = room.players.filter(p => p.team === 'team_a');
     const teamBPlayers = room.players.filter(p => p.team === 'team_b');
 
@@ -466,8 +719,24 @@ io.on('connection', (socket) => {
       r3.currentGoalieId = teamAPlayers[r3.turnIndex % teamAPlayers.length]?.id;
     }
 
-    const nextQIdx = (r3.turnIndex) % PENALTY_QUESTIONS.length;
-    r3.currentQuestion = PENALTY_QUESTIONS[nextQIdx];
+    // Pick next penalty question tailored to next kicker
+    const nextKickerPlayer = room.players.find(p => p.id === r3.currentKickerId);
+    const nextPenaltyQ = triviaEngine.getQuestionForPlayer({
+      roomId: roomCode,
+      characterId: nextKickerPlayer?.character?.id || 'fares_elfouly',
+      mode: 'hat_fi_qoraybi'
+    });
+    if (nextPenaltyQ) {
+      r3.currentQuestion = {
+        question: nextPenaltyQ.question_text,
+        answer: nextPenaltyQ.correct_answer,
+        options: nextPenaltyQ.options || ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
+        kickerHint: nextPenaltyQ.category
+      };
+    } else {
+      const nextQIdx = (r3.turnIndex) % PENALTY_QUESTIONS.length;
+      r3.currentQuestion = PENALTY_QUESTIONS[nextQIdx];
+    }
 
     io.to(roomCode).emit('room_state_updated', room);
   });
@@ -486,6 +755,61 @@ io.on('connection', (socket) => {
     r4.highestBidderPlayerId = player.id;
 
     io.to(roomCode).emit('sound_trigger', { sound: 'bid' });
+    io.to(roomCode).emit('room_state_updated', room);
+  });
+
+  // R4 Lifelines: 'call_friend' | 'rival_hint'
+  socket.on('r4_use_lifeline', ({ roomCode, team, lifelineType }) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    const r4 = room.round4;
+    if (!r4.usedLifelines) r4.usedLifelines = { team_a: [], team_b: [] };
+    if (!r4.usedLifelines[team]) r4.usedLifelines[team] = [];
+
+    if (r4.usedLifelines[team].includes(lifelineType)) {
+      socket.emit('error_message', 'هذه الوسيلة تم استخدامها من قبل لفريقك!');
+      return;
+    }
+
+    r4.usedLifelines[team].push(lifelineType);
+
+    if (lifelineType === 'call_friend') {
+      r4.timer += 20;
+      io.to(roomCode).emit('sound_trigger', { sound: 'bid' });
+      io.to(roomCode).emit('notification', {
+        title: '📞 اتصل بصديق (+20 ثانية)',
+        message: `${room.teams[team]?.name || 'الفريق'} استخدم وسيلة اتصل بصديق وحصل على +20 ثانية!`
+      });
+    } else if (lifelineType === 'rival_hint') {
+      const validItems = r4.currentTopic?.validItems || [];
+      const unrevealed = validItems.filter(item => !r4.itemsNamed.includes(item));
+      const hintItem = unrevealed.length > 0 ? unrevealed[0] : (validItems[0] || 'إجابة مفتاحية');
+      io.to(roomCode).emit('sound_trigger', { sound: 'bid' });
+      io.to(roomCode).emit('notification', {
+        title: '💡 هينت من الخصم!',
+        message: `تلميح الخصم يكشف إجابة مؤكدة: "${hintItem}"`
+      });
+    }
+
+    io.to(roomCode).emit('room_state_updated', room);
+  });
+
+  // Toggle item named in auction checklist
+  socket.on('r4_toggle_item', ({ roomCode, item }) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    const r4 = room.round4;
+    if (!r4.itemsNamed) r4.itemsNamed = [];
+
+    if (r4.itemsNamed.includes(item)) {
+      r4.itemsNamed = r4.itemsNamed.filter(i => i !== item);
+    } else {
+      r4.itemsNamed.push(item);
+      io.to(roomCode).emit('sound_trigger', { sound: 'correct' });
+    }
+
     io.to(roomCode).emit('room_state_updated', room);
   });
 
@@ -549,6 +873,37 @@ io.on('connection', (socket) => {
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', server: 'Quiz Arena Backend', activeRooms: rooms.size });
+});
+
+// Dynamic In-Game Engine API Endpoints ("القلاية")
+app.get('/api/trivia/stats', (req, res) => {
+  res.json({
+    totalQuestions: triviaEngine.inMemoryBank.length,
+    modes: {
+      one_two_bank: triviaEngine.inMemoryBank.filter(q => q.mode === 'one_two_bank').length,
+      edini_fi_seri: triviaEngine.inMemoryBank.filter(q => q.mode === 'edini_fi_seri').length,
+      hat_fi_qoraybi: triviaEngine.inMemoryBank.filter(q => q.mode === 'hat_fi_qoraybi').length,
+      meen_yezawwed: triviaEngine.inMemoryBank.filter(q => q.mode === 'meen_yezawwed').length
+    }
+  });
+});
+
+app.get('/api/trivia/next', (req, res) => {
+  const { roomId = 'test_room', characterId = 'fares_elfouly', mode = 'one_two_bank', category } = req.query;
+  const q = triviaEngine.getQuestionForPlayer({
+    roomId,
+    characterId,
+    mode,
+    preferredCategory: category
+  });
+  res.json({ question: q });
+});
+
+app.post('/api/trivia/replenish', async (req, res) => {
+  const { category = 'computer_science', mode = 'one_two_bank', count = 50 } = req.body || {};
+  const batch = await triviaEngine.generateBatch(category, mode, count);
+  const inserted = triviaEngine.upsertQuestions(batch);
+  res.json({ success: true, count: inserted, total: triviaEngine.inMemoryBank.length });
 });
 
 httpServer.listen(PORT, () => {

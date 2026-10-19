@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import confetti from 'canvas-confetti';
 import { CHARACTERS } from '../data/characters';
 import { TRIVIA_BANK, PASSWORD_WORDS, PENALTY_QUESTIONS, AUCTION_TOPICS } from '../data/questions';
+import { TOURNAMENT_STRUCTURE } from '../data/tournamentStructure';
 import { sounds } from '../utils/soundEffects';
 
 const GameContext = createContext();
@@ -23,6 +24,7 @@ export function GameProvider({ children }) {
   const [roomState, setRoomState] = useState({
     code: 'ARENA',
     status: 'lobby',
+    tournamentStructure: TOURNAMENT_STRUCTURE,
     players: [
       { id: 'p1', name: 'فارس الفولي', character: CHARACTERS[0], team: 'team_a', isHost: true, scoreContribution: 0 },
       { id: 'p2', name: 'عبد الرحمن التوني', character: CHARACTERS[1], team: 'team_a', isHost: false, scoreContribution: 0 },
@@ -36,10 +38,17 @@ export function GameProvider({ children }) {
       team_a: { id: 'team_a', name: 'فريق الحيتان (Team A)', score: 0, bank: 0, penaltyScore: 0 },
       team_b: { id: 'team_b', name: 'فريق الوحوش (Team B)', score: 0, bank: 0, penaltyScore: 0 }
     },
+    // Round 1: 48 questions total (24 per team, 4 segments x 12 questions, split [6, 6])
     round1: {
       activeTeam: 'team_a',
       answeringPlayerId: 'p1',
       readerPlayerId: 'p3',
+      segmentIndex: 0,
+      subBatchIndex: 0,
+      subBatchQuestionsAnswered: 0,
+      segmentQuestionsAnswered: 0,
+      totalQuestionsAnswered: 0,
+      totalQuestions: 48,
       currentQuestionIndex: 0,
       streak: 0,
       pendingPoints: 0,
@@ -54,6 +63,7 @@ export function GameProvider({ children }) {
       activeClueGiverB: 'p3',
       hostRefereeId: 'p1',
       currentWordIndex: 0,
+      totalQuestions: 5,
       currentWord: PASSWORD_WORDS[0],
       timer: 45,
       isTimerRunning: false,
@@ -61,6 +71,7 @@ export function GameProvider({ children }) {
     },
     round3: {
       turnIndex: 0,
+      totalShots: 10,
       currentKickerId: 'p1',
       currentGoalieId: 'p3',
       kickerTeam: 'team_a',
@@ -217,6 +228,54 @@ export function GameProvider({ children }) {
     }
   };
 
+  // Local helper to advance Round 1 quota offline
+  const advanceR1LocalQuota = (r1, players, teams) => {
+    r1.subBatchQuestionsAnswered = (r1.subBatchQuestionsAnswered || 0) + 1;
+    r1.segmentQuestionsAnswered = (r1.segmentQuestionsAnswered || 0) + 1;
+    r1.totalQuestionsAnswered = (r1.totalQuestionsAnswered || 0) + 1;
+
+    const teamAPlayers = players.filter(p => p.team === 'team_a');
+    const teamBPlayers = players.filter(p => p.team === 'team_b');
+
+    if (r1.totalQuestionsAnswered >= 48) {
+      sounds.playWhistle();
+      showToast('🏁 اكتملت جولة "1 تو"!', 'تم إنجاز حصة الـ 48 سؤالاً بالتساوي (24 لكل فريق)!');
+      return;
+    }
+
+    if (r1.subBatchQuestionsAnswered >= 6) {
+      if (r1.segmentQuestionsAnswered < 12) {
+        r1.subBatchIndex = 1;
+        r1.subBatchQuestionsAnswered = 0;
+        const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
+        if (activePlayers.length > 1) {
+          const currentIdx = activePlayers.findIndex(p => p.id === r1.answeringPlayerId);
+          r1.answeringPlayerId = activePlayers[(currentIdx + 1) % activePlayers.length].id;
+        }
+        showToast('الفقرة الفرعية الثانية (6 أسئلة أخرى)', 'انتقل الدور للزميل التالي في نفس الفريق!');
+      } else {
+        r1.segmentIndex = (r1.segmentIndex || 0) + 1;
+        r1.segmentQuestionsAnswered = 0;
+        r1.subBatchIndex = 0;
+        r1.subBatchQuestionsAnswered = 0;
+        r1.pendingPoints = 0;
+        r1.streak = 0;
+        const targetTurns = ['team_a', 'team_b', 'team_a', 'team_b'];
+        r1.activeTeam = targetTurns[r1.segmentIndex % 4];
+        const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
+        const opposingPlayers = r1.activeTeam === 'team_a' ? teamBPlayers : teamAPlayers;
+        if (activePlayers.length > 0) {
+          r1.answeringPlayerId = activePlayers[r1.segmentIndex % activePlayers.length].id;
+        }
+        if (opposingPlayers.length > 0) {
+          r1.readerPlayerId = opposingPlayers[r1.segmentIndex % opposingPlayers.length].id;
+        }
+        sounds.playWhistle();
+        showToast(`تحويل الفقرة (${r1.segmentIndex + 1} من 4)`, `الدور الآن على ${teams[r1.activeTeam]?.name}`);
+      }
+    }
+  };
+
   // Round 1 Handlers
   const r1Score = () => {
     if (socket && isConnected && roomCode) {
@@ -232,6 +291,7 @@ export function GameProvider({ children }) {
           points = Math.round(points * 1.2);
         }
         r1.pendingPoints = points;
+        advanceR1LocalQuota(r1, prev.players, prev.teams);
         const nextIdx = (r1.currentQuestionIndex + 1) % TRIVIA_BANK.length;
         r1.currentQuestionIndex = nextIdx;
         r1.currentQuestion = TRIVIA_BANK[nextIdx];
@@ -257,6 +317,7 @@ export function GameProvider({ children }) {
           r1.streak = 0;
           r1.pendingPoints = 0;
         }
+        advanceR1LocalQuota(r1, prev.players, prev.teams);
         const nextIdx = (r1.currentQuestionIndex + 1) % TRIVIA_BANK.length;
         r1.currentQuestionIndex = nextIdx;
         r1.currentQuestion = TRIVIA_BANK[nextIdx];
@@ -316,10 +377,33 @@ export function GameProvider({ children }) {
         const r2 = { ...prev.round2 };
         const teams = { ...prev.teams };
         teams[team] = { ...teams[team], score: teams[team].score + 500 };
-        const nextIdx = (r2.currentWordIndex + 1) % PASSWORD_WORDS.length;
-        r2.currentWordIndex = nextIdx;
+        r2.currentWordIndex = (r2.currentWordIndex || 0) + 1;
+        const nextIdx = r2.currentWordIndex % PASSWORD_WORDS.length;
         r2.currentWord = PASSWORD_WORDS[nextIdx];
+        if (r2.currentWordIndex >= 5) {
+          sounds.playWhistle();
+          showToast('🏁 اكتملت جولة "اديني في سري"!', 'تم إنجاز 5 بطاقات سرية!');
+        }
         return { ...prev, teams, round2: r2 };
+      });
+    }
+  };
+
+  const r2SkipCard = () => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('r2_skip_card', { roomCode });
+    } else {
+      sounds.playBuzzer();
+      setRoomState(prev => {
+        const r2 = { ...prev.round2 };
+        r2.currentWordIndex = (r2.currentWordIndex || 0) + 1;
+        const nextIdx = r2.currentWordIndex % PASSWORD_WORDS.length;
+        r2.currentWord = PASSWORD_WORDS[nextIdx];
+        if (r2.currentWordIndex >= 5) {
+          sounds.playWhistle();
+          showToast('🏁 اكتملت جولة "اديني في سري"!', 'تم إنجاز 5 بطاقات سرية!');
+        }
+        return { ...prev, round2: r2 };
       });
     }
   };
@@ -404,6 +488,11 @@ export function GameProvider({ children }) {
         const nextQIdx = r3.turnIndex % PENALTY_QUESTIONS.length;
         r3.currentQuestion = PENALTY_QUESTIONS[nextQIdx];
 
+        if (r3.turnIndex >= 10) {
+          sounds.playWhistle();
+          showToast('🏁 انتهت ركلات الجزاء (10 ركلات)!', 'جاهزون لجولة المزاد مين يزوّد!');
+        }
+
         return { ...prev, teams, round3: r3 };
       });
     }
@@ -419,6 +508,49 @@ export function GameProvider({ children }) {
         const r4 = { ...prev.round4 };
         r4.highestBid += increment;
         r4.highestBidderTeam = r4.highestBidderTeam === 'team_a' ? 'team_b' : 'team_a';
+        return { ...prev, round4: r4 };
+      });
+    }
+  };
+
+  const r4UseLifeline = (lifelineType) => {
+    const team = currentPlayer?.team || roomState?.round4?.highestBidderTeam || 'team_a';
+    if (socket && isConnected && roomCode) {
+      socket.emit('r4_use_lifeline', { roomCode, team, lifelineType });
+    } else {
+      setRoomState(prev => {
+        const r4 = { ...prev.round4 };
+        if (!r4.usedLifelines) r4.usedLifelines = { team_a: [], team_b: [] };
+        if (!r4.usedLifelines[team]) r4.usedLifelines[team] = [];
+        if (r4.usedLifelines[team].includes(lifelineType)) return prev;
+        r4.usedLifelines[team].push(lifelineType);
+        if (lifelineType === 'call_friend') {
+          r4.timer += 20;
+          sounds.playBid();
+          showToast('📞 اتصل بصديق (+20 ثانية)', 'تم تمديد الوقت 20 ثانية إضافية!');
+        } else if (lifelineType === 'rival_hint') {
+          sounds.playBid();
+          const hint = r4.currentTopic?.validItems?.[0] || 'إجابة مفتاحية';
+          showToast('💡 هينت من الخصم!', `تلميح الخصم يكشف: "${hint}"`);
+        }
+        return { ...prev, round4: r4 };
+      });
+    }
+  };
+
+  const r4ToggleItem = (item) => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('r4_toggle_item', { roomCode, item });
+    } else {
+      setRoomState(prev => {
+        const r4 = { ...prev.round4 };
+        if (!r4.itemsNamed) r4.itemsNamed = [];
+        if (r4.itemsNamed.includes(item)) {
+          r4.itemsNamed = r4.itemsNamed.filter(i => i !== item);
+        } else {
+          r4.itemsNamed.push(item);
+          sounds.playCorrect();
+        }
         return { ...prev, round4: r4 };
       });
     }
@@ -504,11 +636,14 @@ export function GameProvider({ children }) {
         r1Bank,
         r1PassTurn,
         r2AwardPoint,
+        r2SkipCard,
         r2Foul,
         r2TimeFreeze,
         r3InterceptBuzz,
         r3RecordShot,
         r4Bid,
+        r4UseLifeline,
+        r4ToggleItem,
         r4ResolveBid,
         sendTaunt
       }}

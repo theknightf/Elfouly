@@ -118,6 +118,56 @@ export default function Round1Bank() {
         </div>
       </div>
 
+      {/* Tournament Quota & Sub-turn Progress Engine Bar */}
+      <div className="bg-arena-darker/90 rounded-2xl p-4 border border-white/10 shadow-lg space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-black text-white bg-arena-card px-2.5 py-1 rounded-lg border border-white/10">
+              فقرة {(r1.segmentIndex || 0) + 1} من 4 ({activeTeam.name.split('(')[0]})
+            </span>
+            <span className="font-bold text-arena-cyan bg-arena-cyan/10 px-2 py-1 rounded-lg border border-arena-cyan/20">
+              المرحلة الفرعية: {(r1.subBatchIndex || 0) + 1} من 2 (سؤال {(r1.subBatchQuestionsAnswered || 0) + 1} / 6)
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 font-mono font-bold text-xs text-gray-300">
+            <span>إجمالي أسئلة الجولة:</span>
+            <span className="text-arena-yellow font-black text-sm">
+              {r1.totalQuestionsAnswered || 0} / 48
+            </span>
+          </div>
+        </div>
+
+        {/* Visual 6 Sub-batch Progress Dots */}
+        <div className="flex items-center gap-1.5 pt-1">
+          {[0, 1, 2, 3, 4, 5].map((qIdx) => {
+            const isCompleted = (r1.subBatchQuestionsAnswered || 0) > qIdx;
+            const isCurrent = (r1.subBatchQuestionsAnswered || 0) === qIdx;
+            return (
+              <div
+                key={qIdx}
+                className={`flex-1 h-2 rounded-full transition-all ${
+                  isCompleted
+                    ? 'bg-arena-green shadow-sm'
+                    : isCurrent
+                    ? 'bg-arena-yellow animate-pulse shadow-md'
+                    : 'bg-white/10'
+                }`}
+                title={`سؤال ${qIdx + 1} من 6`}
+              />
+            );
+          })}
+        </div>
+
+        {/* Overall 48 Quota Progress Bar */}
+        <div className="w-full bg-arena-card h-1.5 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-arena-cyan to-arena-yellow transition-all duration-300"
+            style={{ width: `${Math.min(100, (((r1.totalQuestionsAnswered || 0) / 48) * 100))}%` }}
+          />
+        </div>
+      </div>
+
       {/* Main Play Arena: Left Streak Ladder, Right Action & Question Console */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         

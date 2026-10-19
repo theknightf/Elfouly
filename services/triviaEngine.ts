@@ -132,7 +132,12 @@ export class TriviaEngine {
     }
 
     // Filter out already served in this room
-    const unserved = eligible.filter(q => !servedSet.has(q.id));
+    let unserved = eligible.filter(q => !servedSet.has(q.id));
+
+    // If character-specific unserved questions run out, fall back to ANY unserved questions in this mode
+    if (unserved.length === 0) {
+      unserved = this.inMemoryBank.filter(q => q.mode === mode && !servedSet.has(q.id));
+    }
 
     // Dynamic Fallback check: If remaining unserved in category drops below threshold, trigger async replenish
     const primaryCat = targetCategories[0] || 'general';

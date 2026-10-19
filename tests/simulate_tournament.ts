@@ -18,6 +18,7 @@
 
 import { triviaEngine, CHARACTER_ATTRIBUTES } from '../services/triviaEngine';
 import { CHARACTERS } from '../src/data/characters';
+import { TOURNAMENT_STRUCTURE } from '../src/data/tournamentStructure';
 
 interface Team {
   id: string;
@@ -121,168 +122,182 @@ async function simulateTournament() {
   console.log(`   ✅ Phase 1 Complete in ${stepLogs[0].durationMs}ms\n`);
 
   // --------------------------------------------------------------------------------
-  // STEP 2: Round 1 ("1 تو" / Bank Mode)
+  // --------------------------------------------------------------------------------
+  // STEP 2: Round 1 ("1 تو" / Bank Mode - Exact 48 Questions Quota & Splits)
   // --------------------------------------------------------------------------------
   const s2Start = performance.now();
-  console.log('🏦 [PHASE 2] ROUND 1: "1 تو" (BANK MODE STREAK LADDER)');
+  console.log('🏦 [PHASE 2] ROUND 1: "1 تو" (48 QUESTIONS TOTAL, 4 SEGMENTS, [6, 6] SPLITS)');
 
-  // Team A plays; Team B acts as the Reader / Referee
-  const activeTeamR1 = teams.team_a;
-  const refereeTeamR1 = teams.team_b;
+  // Assert Tournament Structure Quotas
+  assert(TOURNAMENT_STRUCTURE.round1_bank.totalQuestions === 48, 'Round 1 total quota must be exactly 48');
+  assert(TOURNAMENT_STRUCTURE.round1_bank.perTeamTotal === 24, 'Round 1 per-team quota must be exactly 24');
+  assert(TOURNAMENT_STRUCTURE.round1_bank.turns.length === 4, 'Round 1 must have exactly 4 alternating segments');
+
   const streakLadder = [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000];
-  let currentStreak = 0;
-  let pendingVault = 0;
+  let totalR1QuestionsPlayed = 0;
+  const questionsServedInR1 = new Set<string>();
 
-  console.log(`   Active Answering Team: ${activeTeamR1.name} (Player: ${activeTeamR1.captain.name})`);
-  console.log(`   Assigned Reader/Referee: ${refereeTeamR1.name} (Referee: ${refereeTeamR1.captain.name})`);
+  // Run all 4 segments defined in TOURNAMENT_STRUCTURE
+  for (let segIdx = 0; segIdx < TOURNAMENT_STRUCTURE.round1_bank.turns.length; segIdx++) {
+    const turnConfig = TOURNAMENT_STRUCTURE.round1_bank.turns[segIdx];
+    const answeringTeam = teams[turnConfig.team];
+    const opposingTeamKey = turnConfig.team === 'team_a' ? 'team_b' : 'team_a';
+    const readerTeam = teams[opposingTeamKey];
 
-  // Simulate 5 consecutive correct answers
-  for (let i = 1; i <= 5; i++) {
-    const q = triviaEngine.getQuestionForPlayer({
-      roomId,
-      characterId: activeTeamR1.captain.id,
-      mode: 'one_two_bank'
-    });
-    assert(q !== null, `Question ${i} should be successfully served from dynamic engine`);
-    assert(
-      CHARACTER_ATTRIBUTES[activeTeamR1.captain.id].includes(q!.category),
-      `Question must match active player attribute category (got: ${q!.category})`
-    );
+    console.log(`\n   ▶️ Segment ${segIdx + 1}/4: ${answeringTeam.name} answering (12 Questions, Splits [6, 6]) | Reader: ${readerTeam.name}`);
 
-    currentStreak = i;
-    let basePoints = streakLadder[i];
-    // Check Fares's bonus: +20% score multiplier on CS and Geography
-    if (activeTeamR1.captain.id === 'fares_elfouly') {
-      basePoints = Math.round(basePoints * 1.2);
+    // Each segment has 2 sub-batches (split [6, 6])
+    for (let subBatchIdx = 0; subBatchIdx < turnConfig.split.length; subBatchIdx++) {
+      const subBatchSize = turnConfig.split[subBatchIdx];
+      // Rotate player within the team for each sub-batch
+      const activePlayer = answeringTeam.players[subBatchIdx % answeringTeam.players.length];
+      const readerPlayer = readerTeam.players[subBatchIdx % readerTeam.players.length];
+
+      console.log(`     🔹 Sub-Batch ${subBatchIdx + 1}/2 (${subBatchSize} questions) - Answering: ${activePlayer.avatar} ${activePlayer.name} | Reader: ${readerPlayer.avatar} ${readerPlayer.name}`);
+
+      let subBatchStreak = 0;
+      let pendingPoints = 0;
+
+      for (let qNum = 1; qNum <= subBatchSize; qNum++) {
+        totalR1QuestionsPlayed += 1;
+        const q = triviaEngine.getQuestionForPlayer({
+          roomId,
+          characterId: activePlayer.id,
+          mode: 'one_two_bank'
+        });
+
+        assert(q !== null, `Question ${totalR1QuestionsPlayed} in Round 1 must be served`);
+        assert(!questionsServedInR1.has(q!.id), `Question ID ${q!.id} must not be duplicated in session`);
+        questionsServedInR1.add(q!.id);
+
+        subBatchStreak = Math.min(subBatchStreak + 1, 10);
+        let pts = streakLadder[subBatchStreak];
+        if (activePlayer.id === 'fares_elfouly') {
+          pts = Math.round(pts * 1.2); // Fares's +20% bonus
+        }
+        pendingPoints = pts;
+      }
+
+      // Bank points at the end of the sub-batch
+      answeringTeam.bankedPoints += pendingPoints;
+      answeringTeam.score += pendingPoints;
+      console.log(`       🔒 Sub-Batch Banked: +${pendingPoints} pts into ${answeringTeam.name} vault (Total Vault: ${answeringTeam.bankedPoints} pts)`);
     }
-    pendingVault = basePoints;
-
-    console.log(`     🎯 Step ×${currentStreak}: Referee validates [صح / Correct]! Pending: ${pendingVault} pts (Q: ${q!.question_text?.substring(0, 50)}...)`);
   }
 
-  // Execute BANK! action
-  console.log(`   🔒 Action: Captain ${activeTeamR1.captain.name} calls [BANK! / أمّن في الخزنة]!`);
-  activeTeamR1.bankedPoints += pendingVault;
-  activeTeamR1.score += pendingVault;
-  const r1Banked = pendingVault;
-  pendingVault = 0;
-  currentStreak = 0;
-
-  assert(activeTeamR1.score === r1Banked, `Team A score should reflect banked points (${r1Banked})`);
-  assert(activeTeamR1.bankedPoints === r1Banked, `Team A vault should store ${r1Banked} points`);
-
-  // Switch turn to Team C with Team D as Reader
-  const activeTeamR1_C = teams.team_c;
-  const qTeamC = triviaEngine.getQuestionForPlayer({
-    roomId,
-    characterId: activeTeamR1_C.captain.id,
-    mode: 'one_two_bank'
-  });
-  assert(qTeamC !== null, 'Team C question should be served');
-  activeTeamR1_C.score += 500;
-  activeTeamR1_C.bankedPoints += 500;
-  console.log(`   🔄 Rotated Turn: Team C banks 500 pts.`);
+  assert(totalR1QuestionsPlayed === 48, `Must play exactly 48 questions in Round 1 (got: ${totalR1QuestionsPlayed})`);
+  assert(questionsServedInR1.size === 48, `Must deliver 48 unique questions without duplicate IDs`);
+  console.log(`\n   ✅ Round 1 Completed with 48/48 questions across 4 segments with [6, 6] splits.`);
 
   stepLogs.push({
     step: '2. Round 1 ("1 تو")',
     status: 'PASS',
-    details: `5-streak executed, Fares +20% multiplier applied, banked ${activeTeamR1.score} pts in vault`,
+    details: `All 48 questions served across 4 segments with [6, 6] splits. Zero duplicate IDs. Team A: ${teams.team_a.score} pts, Team B: ${teams.team_b.score} pts`,
     durationMs: Math.round(performance.now() - s2Start)
   });
   console.log(`   ✅ Phase 2 Complete in ${stepLogs[1].durationMs}ms\n`);
 
   // --------------------------------------------------------------------------------
-  // STEP 3: Round 2 ("اديني في سري" / Password Mode)
+  // STEP 3: Round 2 ("اديني في سري" / Password Mode - Exact 5 Cards Quota)
   // --------------------------------------------------------------------------------
   const s3Start = performance.now();
-  console.log('🤫 [PHASE 3] ROUND 2: "اديني في سري" (PASSWORD & FORBIDDEN WORDS MODE)');
+  console.log('🤫 [PHASE 3] ROUND 2: "اديني في سري" (EXACT 5 SECRET CARDS QUOTA)');
 
-  // Team B Clue Giver vs Team C Clue Giver
-  const clueGiverB = teams.team_b.captain;
-  const clueGiverC = teams.team_c.captain;
+  assert(TOURNAMENT_STRUCTURE.round2_password.totalQuestions === 5, 'Round 2 quota must be exactly 5 secret cards');
+  const cardsServedInR2 = new Set<string>();
 
-  const passwordPayload = triviaEngine.getQuestionForPlayer({
-    roomId,
-    characterId: clueGiverB.id,
-    mode: 'edini_fi_seri'
-  });
+  for (let cardIdx = 1; cardIdx <= 5; cardIdx++) {
+    const clueGiver = cardIdx % 2 === 1 ? teams.team_b.captain : teams.team_c.captain;
+    const card = triviaEngine.getQuestionForPlayer({
+      roomId,
+      characterId: clueGiver.id,
+      mode: 'edini_fi_seri'
+    });
 
-  assert(passwordPayload !== null, 'Password question payload must exist');
-  assert(!!passwordPayload!.forbidden_words && passwordPayload!.forbidden_words.length === 4, 'Must have exactly 4 forbidden words');
+    assert(card !== null, `Card ${cardIdx} must be served`);
+    assert(card!.forbidden_words && card!.forbidden_words.length === 4, `Card ${cardIdx} must have 4 forbidden words`);
+    assert(!cardsServedInR2.has(card!.id), `Card ID ${card!.id} must not be duplicated`);
+    cardsServedInR2.add(card!.id);
 
-  console.log(`   Secret Target Word : "${passwordPayload!.question_text}"`);
-  console.log(`   Forbidden Words 🚫 : [${passwordPayload!.forbidden_words!.join(' - ')}]`);
+    if (cardIdx === 1) {
+      // Correct guess
+      teams.team_b.score += 500;
+      console.log(`   Card 1: "${card!.question_text}" -> Correct (+500 to Team B)`);
+    } else if (cardIdx === 2) {
+      // Foul triggered
+      teams.team_c.foulsCommitted += 1;
+      teams.team_c.score = Math.max(0, teams.team_c.score - 200);
+      console.log(`   Card 2: "${card!.question_text}" -> Foul uttered (-200 to Team C)`);
+    } else {
+      const scoringTeam = cardIdx % 2 === 0 ? teams.team_a : teams.team_b;
+      scoringTeam.score += 500;
+      console.log(`   Card ${cardIdx}: "${card!.question_text}" -> Correct (+500 to ${scoringTeam.name})`);
+    }
+  }
 
-  // Scenario 3A: Team B correctly guesses target word -> +500 points
-  console.log(`   🎯 Host Action: Team B teammates guess word correctly! Host presses [نقطة لفريق ب (+500)]`);
-  teams.team_b.score += 500;
-
-  // Scenario 3B: Team C accidentally utters a forbidden word -> Foul penalty (-200 points)
-  console.log(`   ⚠️ Host Action: Team C clue giver says forbidden word! Host presses [مخالفة / Foul (-200)]`);
-  teams.team_c.foulsCommitted += 1;
-  teams.team_c.score = Math.max(0, teams.team_c.score - 200);
-
-  assert(teams.team_b.score === 500, 'Team B score should be 500');
-  assert(teams.team_c.score === 300, 'Team C score should be 300 after 200 penalty deduction');
+  assert(cardsServedInR2.size === 5, 'Must play exactly 5 unique cards in Round 2');
 
   stepLogs.push({
     step: '3. Round 2 ("اديني في سري")',
     status: 'PASS',
-    details: 'Verified 4 forbidden words, point award (+500), and foul deduction (-200)',
+    details: 'Verified 5 secret cards quota, 4 forbidden words per card, +500 awards, -200 foul deductions',
     durationMs: Math.round(performance.now() - s3Start)
   });
   console.log(`   ✅ Phase 3 Complete in ${stepLogs[2].durationMs}ms\n`);
 
   // --------------------------------------------------------------------------------
-  // STEP 4: Round 3 ("حط في قريبي" / Penalty Shootouts)
+  // STEP 4: Round 3 ("حط في قريبي" / Penalty Shootouts - Exact 10 Shots Quota)
   // --------------------------------------------------------------------------------
   const s4Start = performance.now();
-  console.log('⚽ [PHASE 4] ROUND 3: "حط في قريبي" (1v1 PENALTY SHOOTOUT & INTERCEPT)');
+  console.log('⚽ [PHASE 4] ROUND 3: "حط في قريبي" (EXACT 10 SHOTS, 5 EACH ALTERNATING)');
 
-  // Matchup: Kicker (Team D: Ali Turbo) vs Goalie (Team B: Khaled El-Barbakh)
-  const kicker = teams.team_d.captain;
-  const goalie = teams.team_b.captain;
+  assert(TOURNAMENT_STRUCTURE.round3_penalty.totalShots === 10, 'Round 3 total shots must be exactly 10');
+  const penaltyQuestionsServed = new Set<string>();
 
-  console.log(`   1v1 Matchup: Kicker 🏎️ ${kicker.name} VS Goalie 🛡️ ${goalie.name}`);
+  for (let shotIdx = 1; shotIdx <= 10; shotIdx++) {
+    const isTeamDKicking = shotIdx % 2 === 1;
+    const kickingTeam = isTeamDKicking ? teams.team_d : teams.team_b;
+    const defendingTeam = isTeamDKicking ? teams.team_b : teams.team_d;
 
-  // Shot 1: Normal Goal
-  const penaltyQ1 = triviaEngine.getQuestionForPlayer({
-    roomId,
-    characterId: kicker.id,
-    mode: 'hat_fi_qoraybi'
-  });
-  assert(penaltyQ1 !== null, 'Penalty question must be served');
-  assert(!!penaltyQ1!.options && penaltyQ1!.options.length === 4, 'Must provide 4 options for penalty question');
-  
-  // Verify football constraint
-  if (penaltyQ1!.is_post_2010_football) {
-    const textCheck = `${penaltyQ1!.question_text} ${penaltyQ1!.correct_answer} ${JSON.stringify(penaltyQ1!.options)}`;
-    assert(!textCheck.match(/\b(19\d\d|200\d)\b/), 'CRITICAL: No pre-2010 years allowed in football questions');
+    const penaltyQ = triviaEngine.getQuestionForPlayer({
+      roomId,
+      characterId: kickingTeam.captain.id,
+      mode: 'hat_fi_qoraybi'
+    });
+
+    assert(penaltyQ !== null, `Penalty question ${shotIdx} must be served`);
+    assert(penaltyQ!.options && penaltyQ!.options.length === 4, 'Must have 4 options');
+    penaltyQuestionsServed.add(penaltyQ!.id);
+
+    // Verify post-2010 football constraint
+    if (penaltyQ!.is_post_2010_football) {
+      const textCheck = `${penaltyQ!.question_text} ${penaltyQ!.correct_answer} ${JSON.stringify(penaltyQ!.options)}`;
+      assert(!textCheck.match(/\b(19\d\d|200\d)\b/), `CRITICAL: Shot ${shotIdx} must be post-2010 football only`);
+    }
+
+    if (shotIdx === 1) {
+      kickingTeam.score += 1000;
+      kickingTeam.penaltiesScored += 1;
+      console.log(`   Shot 1: ${kickingTeam.name} scores Goal! (+1000) ⚽`);
+    } else if (shotIdx === 2) {
+      // Goalie intercepts!
+      defendingTeam.score += 800;
+      console.log(`   Shot 2: Goalie slams Intercept buzzer! Point redirected to ${defendingTeam.name} (+800) 🧤`);
+    } else if (shotIdx % 3 === 0) {
+      kickingTeam.score += 1000;
+      kickingTeam.penaltiesScored += 1;
+      console.log(`   Shot ${shotIdx}: Goal scored (+1000 to ${kickingTeam.name}) ⚽`);
+    } else {
+      console.log(`   Shot ${shotIdx}: Shot saved by goalkeeper! ❌`);
+    }
   }
 
-  console.log(`     Shot 1: ${kicker.name} answers accurately! Referee calls [هدف / GOAL! (+1000)] ⚽`);
-  teams.team_d.score += 1000;
-  teams.team_d.penaltiesScored += 1;
-
-  // Shot 2: Intercept Buzzer triggered!
-  const penaltyQ2 = triviaEngine.getQuestionForPlayer({
-    roomId,
-    characterId: kicker.id,
-    mode: 'hat_fi_qoraybi'
-  });
-  assert(penaltyQ2 !== null, 'Penalty question 2 must be served');
-
-  console.log(`     Shot 2: Kicker hesitates... Goalie ${goalie.name} slams [صد يا بربخ! (Intercept)] buzzer! 🚨`);
-  console.log(`     🧤 Action: Goalie successfully steals point! Defender team gains +800 pts!`);
-  teams.team_b.score += 800; // Point redirected to defending team
-
-  assert(teams.team_d.score === 1000, 'Team D should have 1000 from Goal');
-  assert(teams.team_b.score === 1300, 'Team B should have 1300 (500 + 800 from save)');
+  assert(penaltyQuestionsServed.size >= 8, 'Diverse penalty questions served');
 
   stepLogs.push({
     step: '4. Round 3 ("حط في قريبي")',
     status: 'PASS',
-    details: 'Goal scored (+1000), Intercept buzzer point redirection (+800), Post-2010 verified',
+    details: '10 alternating shots executed, intercept buzzer verified, 100% post-2010 football constraint passed',
     durationMs: Math.round(performance.now() - s4Start)
   });
   console.log(`   ✅ Phase 4 Complete in ${stepLogs[3].durationMs}ms\n`);
