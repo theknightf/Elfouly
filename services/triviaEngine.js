@@ -178,30 +178,114 @@ export class TriviaEngine {
   }
 
   /**
-   * Mock or Live LLM generation of batch
+   * Live LLM generation of batch via Groq API
    */
-  async generateBatch(category, mode, count) {
+  async generateBatch(category, mode, count = 10) {
     const results = [];
     const isFootball = category.includes('football') || category.includes('barcelona') || category.includes('ahly') || category.includes('real_madrid');
+    const groqKey = process.env.GROQ_API_KEY || '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';
 
-    for (let i = 0; i < count; i++) {
-      const qText = `سؤال إضافي متقدم في ${category} (${Date.now() + i})`;
-      const hash = crypto.createHash('md5').update(`${mode}_${category}_${qText}`).digest('hex');
+    const footballConstraint = isFootball ? `
+CRITICAL CONSTRAINT: All football questions/topics MUST be STRICTLY from 2010 ONWARD (2010 to 2026).
+DO NOT mention or ask about anything before 2010 (no 2006, 2008, 1990s, etc.). Immediate rejection if violated!
+` : '';
 
-      results.push({
-        id: crypto.randomUUID(),
-        mode: mode,
-        category,
-        question_text: qText,
-        correct_answer: `إجابة صحيحة نموذجية #${i + 1}`,
-        options: mode === 'hat_fi_qoraybi' ? ['إجابة صحيحة نموذجية #1', 'خيار 2', 'خيار 3', 'خيار 4'] : null,
-        forbidden_words: mode === 'edini_fi_seri' ? ['ممنوع 1', 'ممنوع 2', 'ممنوع 3', 'ممنوع 4'] : null,
-        acceptable_answers: mode === 'meen_yezawwed' ? ['عنصر 1', 'عنصر 2', 'عنصر 3', 'عنصر 4', 'عنصر 5'] : null,
-        content_hash: hash,
-        is_post_2010_football: isFootball,
-        created_at: new Date().toISOString()
+    const prompt = `أنت المخرج التفاعلي للعبة البارتي المصرية الشهيرة "QUIZ ARENA (ساحة الكويز - روش ومصري)".
+المطلوب: توليد ${count} عناصر تريفيا حصرية وجديدة للطور: "${mode}" في التصنيف: "${category}".
+
+${footballConstraint}
+
+الشروط:
+- لهجة مصرية روشة، ذكية، وممتعة ("روش ومصري").
+- أسئلة وإجابات دقيقة خالية من اللبس.
+- أخرج الناتج بتنسيق JSON array حصراً كما يلي:
+
+صيغة الكائنات داخل الـ JSON:
+للـ one_two_bank: [{"question_text": "نص السؤال بالعامية المصرية الروشة", "correct_answer": "الإجابة النموذجية"}]
+للـ edini_fi_seri: [{"target_word": "الكلمة السرية", "forbidden_words": ["كلمة 1", "كلمة 2", "كلمة 3", "كلمة 4"]}]
+للـ hat_fi_qoraybi: [{"question_text": "سؤال ركلة جزاء ترجيحية", "options": ["إجابة 1", "إجابة 2", "إجابة 3", "إجابة 4"], "correct_answer": "إجابة 1"}]
+للـ meen_yezawwed: [{"question_text": "موضوع المزاد", "acceptable_answers": ["عنصر 1", "عنصر 2", "عنصر 3", "عنصر 4", "عنصر 5"]}]
+
+أخرج فقط مصفوفة JSON صالحة [ ... ] بدون أي نصوص قبلها أو بعدها.`;
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${groqKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'qwen/qwen3.8-27b',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: 1500
+        })
       });
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawContent = data.choices?.[0]?.message?.content?.trim() || '';
+        
+        // Extract JSON array
+        const jsonMatch = rawContent.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          for (const item of parsed) {
+            const qText = item.question_text || item.target_word || '';
+            if (!qText) continue;
+
+            // Strict football check
+            if (isFootball) {
+              const fullStr = `${qText} ${item.correct_answer || ''} ${JSON.stringify(item.options || [])}`;
+              if (fullStr.match(/\b(19\d\d|200\d)\b/)) {
+                console.warn(`[Groq Filter] Rejected pre-2010 item: ${qText}`);
+                continue;
+              }
+            }
+
+            const hash = crypto.createHash('md5').update(`${mode}_${category}_${qText}`).digest('hex');
+            results.push({
+              id: crypto.randomUUID(),
+              mode,
+              category,
+              question_text: item.question_text || item.target_word,
+              correct_answer: item.correct_answer || item.target_word,
+              options: item.options || (mode === 'hat_fi_qoraybi' ? [item.correct_answer, 'خيار ب', 'خيار ج', 'خيار د'] : null),
+              forbidden_words: item.forbidden_words || null,
+              acceptable_answers: item.acceptable_answers || null,
+              content_hash: hash,
+              is_post_2010_football: isFootball,
+              created_at: new Date().toISOString()
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[TriviaEngine Groq] Error calling Groq API, using fallback:', err.message);
     }
+
+    // Fallback if LLM didn't return items
+    if (results.length === 0) {
+      for (let i = 0; i < count; i++) {
+        const qText = `تحدي متقدم في ${category} #${i + 1} (${Date.now()})`;
+        const hash = crypto.createHash('md5').update(`${mode}_${category}_${qText}`).digest('hex');
+        results.push({
+          id: crypto.randomUUID(),
+          mode,
+          category,
+          question_text: qText,
+          correct_answer: `إجابة صحيحة نموذجية #${i + 1}`,
+          options: mode === 'hat_fi_qoraybi' ? ['إجابة صحيحة نموذجية #1', 'خيار 2', 'خيار 3', 'خيار 4'] : null,
+          forbidden_words: mode === 'edini_fi_seri' ? ['ممنوع 1', 'ممنوع 2', 'ممنوع 3', 'ممنوع 4'] : null,
+          acceptable_answers: mode === 'meen_yezawwed' ? ['عنصر 1', 'عنصر 2', 'عنصر 3', 'عنصر 4', 'عنصر 5'] : null,
+          content_hash: hash,
+          is_post_2010_football: isFootball,
+          created_at: new Date().toISOString()
+        });
+      }
+    }
+
     return results;
   }
 }

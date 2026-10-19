@@ -33,7 +33,8 @@ try:
 except ImportError:
     HAS_SUPABASE = False
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY") or "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"
+GROQ_MODEL = os.environ.get("GROQ_MODEL") or "qwen/qwen3.8-27b"
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
@@ -213,10 +214,9 @@ def fetch_from_groq(prompt: str, retries: int = 3) -> list:
     for attempt in range(retries):
         try:
             resp = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model=GROQ_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-                response_format={"type": "json_object"}
+                temperature=0.7
             )
             raw = resp.choices[0].message.content.strip()
             # Parse JSON
