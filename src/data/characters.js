@@ -9,14 +9,14 @@ export const CHARACTERS = [
     accentColor: '#008f97',
     badge: 'كبير العيلة ومبرمج الساحة',
     catchphrase: 'الفولي كودها.. والبارسا في القلب والقمة!',
-    lore: 'حفيد الفولي الأصلي، يحل أعقد كود في ثانية، ويسمع تشكيلة برشلونة في المنام، وجغرافيا العالم في جيبه.',
-    attributes: ['computer_science', 'barcelona_european_football', 'capitals_and_flags'],
-    attributesDisplay: ['علوم حاسب وبرمجة 💻', 'برشلونة والكرة الأوروبية ⚽', 'عواصم وأعلام الدول 🌍'],
+    lore: 'حفيد الفولي الأصلي، يحل أعقد فزورة في ثانية، ويسمع تشكيلة برشلونة في المنام، وجغرافيا العالم ومعلوماتها في جيبه.',
+    attributes: ['football_post_2010', 'capitals_and_flags', 'general_knowledge'],
+    attributesDisplay: ['كرة قدم بعد 2010 ⚽', 'عواصم وأعلام الدول 🌍', 'معلومات عامة ومنوعات 💡'],
     bonus: {
       title: 'بونص الفولي +20%',
-      description: 'مضاعف +20% على أسئلة الجغرافيا وأكواد البرمجة السريعة',
+      description: 'مضاعف +20% على أسئلة الجغرافيا والمعلومات العامة السريعة',
       multiplier: 1.2,
-      appliedCategories: ['capitals_and_flags', 'computer_science']
+      appliedCategories: ['capitals_and_flags', 'general_knowledge', 'football_post_2010']
     }
   },
   {
@@ -29,14 +29,14 @@ export const CHARACTERS = [
     accentColor: '#b39200',
     badge: 'دكتور الحبايب وخبير الجيلاتي',
     catchphrase: 'بيلا فيتا يا عيوني.. الجيلاتي مظبوط والتشريح بالفيمتو ثانية!',
-    lore: 'طبيب بيطري فنان في الجيلاتي والحلويات، عاشق للأهلي والبارسا ومرجع إسلامي معتمد في السهرة.',
-    attributes: ['veterinary_biology', 'gelato_and_desserts', 'al_ahly_barca', 'islamic_studies'],
-    attributesDisplay: ['بيولوجيا وبيطري 🔬', 'جيلاتي وحلويات 🍨', 'الأهلي والبارسا 🔴🔵', 'دراسات وتاريخ إسلامي 📖'],
+    lore: 'طبيب بيطري فنان في الجيلاتي والحلويات، عاشق للأهلي والكرة الحديثة ومرجع إسلامي معتمد في السهرة.',
+    attributes: ['veterinary_biology', 'gelato_sweets', 'football_post_2010', 'islamic_studies'],
+    attributesDisplay: ['بيولوجيا وبيطري 🔬', 'جيلاتي وحلويات 🍨', 'كرة قدم بعد 2010 ⚽', 'دراسات إسلامية 📖'],
     bonus: {
       title: 'حماية الستريك البيلافيتا',
       description: 'درع حماية ضد كسر الستريك في أسئلة التاريخ الإسلامي والبيولوجيا',
       streakShield: true,
-      appliedCategories: ['islamic_studies', 'veterinary_biology']
+      appliedCategories: ['islamic_studies', 'veterinary_biology', 'gelato_sweets']
     }
   },
   {
@@ -49,14 +49,14 @@ export const CHARACTERS = [
     accentColor: '#b32828',
     badge: 'حائط الصد ومستر بريكينج باد',
     catchphrase: 'البربخ مسيطر.. مفيش شوتة ولا جون بيعدي من هنا!',
-    lore: 'بيطري، مجمّع هاردوير احترافي، بطل الفيفا، حافظ بريكينج باد كلمة بكلمة، والريال والأهلي في دمه.',
-    attributes: ['veterinary_medicine', 'pc_hardware_assembly', 'fifa_gaming', 'foreign_tv_series', 'real_madrid_al_ahly', 'islamic_culture'],
-    attributesDisplay: ['طب بيطري 🐾', 'تجميعات PC وهاردوير 🖥️', 'فيفا وجيمنج 🎮', 'مسلسلات أجنبية (Breaking Bad) 📺', 'ريال مدريد والأهلي ⚪🦅', 'ثقافة إسلامية 🕌'],
+    lore: 'بيطري، مجمّع هاردوير احترافي، حافظ بريكينج باد كلمة بكلمة، والريال والأهلي في دمه.',
+    attributes: ['veterinary_medicine', 'pc_hardware_gaming', 'series_breaking_bad', 'football_post_2010', 'islamic_culture'],
+    attributesDisplay: ['طب بيطري 🐾', 'هاردوير وجيمنج 🖥️', 'مسلسل Breaking Bad 🧪', 'كرة قدم بعد 2010 ⚽', 'ثقافة إسلامية 🕌'],
     bonus: {
       title: 'حائط صد البربخ',
       description: 'أعلى فرصة إنقاذ واعتراض (Intercept) كرات ترجيحية في جولة حط في قريبي',
       interceptBonus: true,
-      appliedCategories: ['real_madrid_al_ahly', 'fifa_gaming', 'foreign_tv_series']
+      appliedCategories: ['football_post_2010', 'pc_hardware_gaming', 'series_breaking_bad']
     }
   },
   {
@@ -67,16 +67,16 @@ export const CHARACTERS = [
     avatar: '🛎️',
     color: '#EC4899',
     accentColor: '#be185d',
-    badge: 'خبير الضيافة ودراما البرايم تايم',
+    badge: 'خبير المسلسلات والمعلومات الروشة',
     catchphrase: 'خدمة 5 نجوم وبرايم تايم دراما مفيش تفاهم!',
-    lore: 'ملك الفندقة والسياحة الفاخرة، ناقد دراما عالمي ومدريدي أهلاوي للنخاع، يدير الغرفة بروقان تام.',
-    attributes: ['tourism_hospitality', 'international_drama_series', 'real_madrid_al_ahly'],
-    attributesDisplay: ['سياحة وفندقة 5 نجوم 🛎️', 'دراما ومسلسلات عالمية 🎭', 'ريال مدريد والأهلي 👑'],
+    lore: 'ناقد مسلسلات ودراما عالمية، كروي مدريدي حتى النخاع، وموسوعة معلومات عامة تدير الغرفة بروقان.',
+    attributes: ['popular_foreign_series', 'football_post_2010', 'general_knowledge'],
+    attributesDisplay: ['مسلسلات أجنبية شهيرة 📺', 'كرة قدم بعد 2010 ⚽', 'معلومات عامة ومنوعات 💡'],
     bonus: {
       title: 'تجميد الوقت الفندقي',
       description: 'خاصية تجميد الوقت +10 ثواني كاملة في الجولات السريعة (Time Freeze)',
       timeFreeze: 10,
-      appliedCategories: ['tourism_hospitality', 'international_drama_series']
+      appliedCategories: ['popular_foreign_series', 'general_knowledge', 'football_post_2010']
     }
   },
   {
@@ -87,16 +87,16 @@ export const CHARACTERS = [
     avatar: '🦁',
     color: '#00E676',
     accentColor: '#009e52',
-    badge: 'صائد الثغرات وحامي الشبكات',
-    catchphrase: 'سيرفراتنا مشفرة والتأمين حديدي.. إياد جاهز للافتراس!',
-    lore: 'وحش أمن المعلومات وهندسة الشبكات والأنظمة، كتالوني وأهلاوي شرس على كل الجبهات.',
-    attributes: ['it_systems_networking', 'cybersecurity', 'barca_al_ahly'],
-    attributesDisplay: ['شبكات وأنظمة IT 🌐', 'أمن سيبراني واختراق أخلاقي 🔒', 'برشلونة والأهلي ⚽'],
+    badge: 'الأسد الكروي وموسوعة الأمثال',
+    catchphrase: 'إياد جاهز للافتراس.. الكورة في المقص والمعلومة في الجيب!',
+    lore: 'عاشق للكرة الحديثة بعد 2010، بطل الجيمنج والتقنية، وحافظ لأشهر الأمثال الشعبية والمعلومات العامة.',
+    attributes: ['football_post_2010', 'general_knowledge', 'gaming_tech'],
+    attributesDisplay: ['كرة قدم بعد 2010 ⚽', 'معلومات عامة وأمثال 💡', 'جيمنج وتقنية 🎮'],
     bonus: {
       title: 'جدار الحماية السيبراني',
       description: 'حماية مضاعف الستريك وتأمين نقاط الفريق من أي خصم أو عقوبة',
       firewallProtection: true,
-      appliedCategories: ['cybersecurity', 'it_systems_networking']
+      appliedCategories: ['football_post_2010', 'general_knowledge', 'gaming_tech']
     }
   },
   {
@@ -130,13 +130,13 @@ export const CHARACTERS = [
     badge: 'طبيب الأسنان وميكانيكي الفورمولا',
     catchphrase: 'توربو شغال على أعلى RPM وعضلات ناشفة وابتسامة هوليود!',
     lore: 'طبيب أسنان متألق، موسوعة في ميكانيكا محركات السيارات، وحش الجيم ورفع الأوزان الثقيلة.',
-    attributes: ['dentistry', 'cars_and_engine_mechanics', 'fitness_gym'],
+    attributes: ['dentistry', 'cars_mechanics', 'fitness_gym'],
     attributesDisplay: ['طب وجراحة أسنان 🦷', 'ميكانيكا سيارات ومحركات 🏎️', 'فيتنس وكمال أجسام 💪'],
     bonus: {
       title: 'دفعة التوربو السريعة',
       description: '+15% بونص نقاط إضافية إذا جاوبت في أول 5 ثواني من السؤال!',
       speedBonus: 1.15,
-      appliedCategories: ['cars_and_engine_mechanics', 'fitness_gym', 'dentistry']
+      appliedCategories: ['cars_mechanics', 'fitness_gym', 'dentistry']
     }
   }
 ];

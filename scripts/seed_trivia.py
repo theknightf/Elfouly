@@ -40,22 +40,19 @@ SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 # Player Attributes & Target Categories
 CATEGORIES = [
-    {"id": "computer_science", "name": "علوم الحاسب والبرمجة", "character": "fares_elfouly", "is_football": False},
-    {"id": "barcelona_post_2010", "name": "برشلونة والكرة الأوروبية (2010 وما بعدها)", "character": "fares_elfouly", "is_football": True},
+    {"id": "general_knowledge", "name": "معلومات عامة ومنوعات وأمثال مشهورة", "character": "fares_elfouly", "is_football": False},
+    {"id": "football_post_2010", "name": "كرة قدم حديثة (2010 وما بعدها)", "character": "fares_elfouly", "is_football": True},
     {"id": "capitals_and_flags", "name": "عواصم وأعلام الدول", "character": "fares_elfouly", "is_football": False},
     {"id": "veterinary_biology", "name": "البيولوجيا والطب البيطري", "character": "abdelrahman_eltouny", "is_football": False},
-    {"id": "gelato_and_desserts", "name": "الجيلاتي وفنون الحلويات", "character": "abdelrahman_eltouny", "is_football": False},
-    {"id": "ahly_post_2010", "name": "النادي الأهلي والكرة المصرية (2010 وما بعدها)", "character": "abdelrahman_eltouny", "is_football": True},
+    {"id": "gelato_sweets", "name": "الجيلاتي وفنون الحلويات", "character": "abdelrahman_eltouny", "is_football": False},
     {"id": "islamic_studies", "name": "الدراسات والتاريخ الإسلامي", "character": "abdelrahman_eltouny", "is_football": False},
-    {"id": "pc_hardware", "name": "تجميعات PC وهاردوير", "character": "khaled_elbarbakh", "is_football": False},
-    {"id": "fifa_gaming", "name": "فيفا وجيمنج كونسول", "character": "khaled_elbarbakh", "is_football": False},
-    {"id": "breaking_bad_series", "name": "مسلسلات أجنبية وBreaking Bad", "character": "khaled_elbarbakh", "is_football": False},
-    {"id": "real_madrid_post_2010", "name": "ريال مدريد ودوري الأبطال (2010 وما بعدها)", "character": "khaled_elbarbakh", "is_football": True},
-    {"id": "tourism_hospitality", "name": "السياحة وإدارة الفنادق", "character": "ziad_elfondoqy", "is_football": False},
-    {"id": "drama_series", "name": "دراما ومسلسلات عالمية", "character": "ziad_elfondoqy", "is_football": False},
-    {"id": "cybersecurity_net", "name": "أمن سيبراني وشبكات IT", "character": "eyad_amr", "is_football": False},
+    {"id": "pc_hardware_gaming", "name": "تجميعات PC وهاردوير وجيمنج", "character": "khaled_elbarbakh", "is_football": False},
+    {"id": "series_breaking_bad", "name": "مسلسلات أجنبية وBreaking Bad", "character": "khaled_elbarbakh", "is_football": False},
+    {"id": "popular_foreign_series", "name": "دراما ومسلسلات عالمية شهيرة", "character": "ziad_elfondoqy", "is_football": False},
+    {"id": "gaming_tech", "name": "تقنية وجيمنج وألعاب", "character": "eyad_amr", "is_football": False},
     {"id": "health_sciences_lab", "name": "علوم صحية وتحاليل معملية", "character": "mazen_elgamer", "is_football": False},
-    {"id": "reflex_gaming", "name": "جيمنج وسرعة رد فعل 240Hz", "character": "mazen_elgamer", "is_football": False},
+    {"id": "console_pc_gaming", "name": "ألعاب كونسول وبي سي", "character": "mazen_elgamer", "is_football": False},
+    {"id": "reflex_trivia", "name": "جيمنج وسرعة رد فعل 240Hz", "character": "mazen_elgamer", "is_football": False},
     {"id": "dentistry", "name": "طب وجراحة الأسنان", "character": "ali_ahmed", "is_football": False},
     {"id": "cars_mechanics", "name": "ميكانيكا سيارات ومحركات", "character": "ali_ahmed", "is_football": False},
     {"id": "fitness_gym", "name": "فيتنس وكمال أجسام", "character": "ali_ahmed", "is_football": False}
@@ -150,6 +147,14 @@ def generate_prompt_for_mode(mode: str, category: dict, count: int = 5) -> str:
 CRITICAL FOOTBALL CONSTRAINT:
 - ALL questions, events, stats, players, and matches MUST strictly be from 2010 ONWARD (2010-2026).
 - ABSOLUTELY NO pre-2010 questions (No 2006, 2009, 1990s, etc.). Immediate rejection if violated!
+"""
+
+    general_knowledge_rule = ""
+    if category.get("id") == "general_knowledge":
+        general_knowledge_rule = """
+GENERAL KNOWLEDGE & PARTY TRIVIA GUIDELINES:
+- Questions must be snappy, accessible, fun Egyptian party trivia (NOT academic or deeply technical).
+- Focus on popular culture, famous Egyptian proverbs (أمثال شعبية مشهورة), light geography, food & street culture, and fun general facts.
 """
 
     if mode == "one_two_bank":

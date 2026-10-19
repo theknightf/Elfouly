@@ -6,40 +6,40 @@ export const SEED_DATA = [
   // ==========================================
   // MODE: one_two_bank (1 تو)
   // ==========================================
-  // 1. Computer Science (Fares)
+  // 1. General Knowledge & Egyptian Party Trivia (Fares, Ziad, Eyad)
   {
     mode: 'one_two_bank',
-    category: 'computer_science',
-    question_text: 'ما هو التعقيد الزمني لعملية البحث الثنائي (Binary Search) في مصفوفة مرتبة؟',
-    correct_answer: 'O(log n)',
+    category: 'general_knowledge',
+    question_text: 'أكمل المثل الشعبي الشهير: "اقلب القدرة على فمها تطلع..."؟',
+    correct_answer: 'البنت لأمها',
     is_post_2010_football: false
   },
   {
     mode: 'one_two_bank',
-    category: 'computer_science',
-    question_text: 'في لغة جافاسكريبت، ماذا تُرجع المقارنة الشهيرة: typeof null؟',
-    correct_answer: 'object',
+    category: 'general_knowledge',
+    question_text: 'ما هو أطول نهر في العالم ويمر بجمهورية مصر العربية؟',
+    correct_answer: 'نهر النيل',
     is_post_2010_football: false
   },
   {
     mode: 'one_two_bank',
-    category: 'computer_science',
-    question_text: 'أي هيكل بيانات (Data Structure) يتبع مبدأ FIFO (من يدخل أولاً يخرج أولاً)؟',
-    correct_answer: 'الطابور (Queue)',
+    category: 'general_knowledge',
+    question_text: 'أكمل المثل الشعبي: "اللي اختشوا..."؟',
+    correct_answer: 'ماتوا',
     is_post_2010_football: false
   },
   {
     mode: 'one_two_bank',
-    category: 'computer_science',
-    question_text: 'ما هو البروتوكول المسؤول عن تحويل أسماء النطاقات (مثل google.com) إلى عناوين IP رقمية؟',
-    correct_answer: 'DNS',
+    category: 'general_knowledge',
+    question_text: 'ما هو المعدن الوحيد الذي يتواجد في الحالة السائلة في درجة حرارة الغرفة الطبيعية؟',
+    correct_answer: 'الزئبق',
     is_post_2010_football: false
   },
   {
     mode: 'one_two_bank',
-    category: 'computer_science',
-    question_text: 'في قواعد البيانات العلائقية، ماذا يعني الحرف A في مبدأ ACID للعمليات؟',
-    correct_answer: 'Atomicity (الذرية)',
+    category: 'general_knowledge',
+    question_text: 'ما هي الأكلة الشعبية المصرية المكونة من مكرونة وأرز وعدس وبصل محمر وصلصة ودقة؟',
+    correct_answer: 'الكشري',
     is_post_2010_football: false
   },
 

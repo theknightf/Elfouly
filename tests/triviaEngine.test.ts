@@ -94,7 +94,7 @@ async function main() {
     const roomId = 'audit_targeting_room';
     triviaEngine.resetRoomSession(roomId);
 
-    // 1. Fares -> Computer Science or Barca 2010+ or Capitals
+    // 1. Fares -> football_post_2010 or capitals_and_flags or general_knowledge
     const qFares = triviaEngine.getQuestionForPlayer({
       roomId,
       characterId: 'fares_elfouly',
@@ -102,8 +102,8 @@ async function main() {
     });
     assert(qFares !== null, 'Should return a question for Fares');
     assert(
-      CHARACTER_ATTRIBUTES.fares_elfouly.includes(qFares!.category),
-      `Question category "${qFares!.category}" must match Fares attributes`
+      CHARACTER_ATTRIBUTES.fares_elfouly.some(cat => triviaEngine.matchesCategory(qFares!, cat)),
+      `Question category "${qFares!.category}" must match Fares attributes: ${CHARACTER_ATTRIBUTES.fares_elfouly.join(', ')}`
     );
 
     // 2. Ali Turbo -> Dentistry or Cars or Fitness
@@ -114,8 +114,8 @@ async function main() {
     });
     assert(qAli !== null, 'Should return a question for Ali');
     assert(
-      CHARACTER_ATTRIBUTES.ali_ahmed.includes(qAli!.category),
-      `Question category "${qAli!.category}" must match Ali attributes`
+      CHARACTER_ATTRIBUTES.ali_ahmed.some(cat => triviaEngine.matchesCategory(qAli!, cat)),
+      `Question category "${qAli!.category}" must match Ali attributes: ${CHARACTER_ATTRIBUTES.ali_ahmed.join(', ')}`
     );
 
     // 3. Khaled El-Barbakh -> Hardware, TV series, Real Madrid post-2010, etc.
@@ -126,8 +126,8 @@ async function main() {
     });
     assert(qKhaled !== null, 'Should return a question for Khaled');
     assert(
-      CHARACTER_ATTRIBUTES.khaled_elbarbakh.includes(qKhaled!.category),
-      `Question category "${qKhaled!.category}" must match Khaled attributes`
+      CHARACTER_ATTRIBUTES.khaled_elbarbakh.some(cat => triviaEngine.matchesCategory(qKhaled!, cat)),
+      `Question category "${qKhaled!.category}" must match Khaled attributes: ${CHARACTER_ATTRIBUTES.khaled_elbarbakh.join(', ')}`
     );
   });
 
@@ -177,7 +177,7 @@ async function main() {
     const testItem: QuestionItem = {
       id: 'test-hash-id-1',
       mode: 'one_two_bank',
-      category: 'computer_science',
+      category: 'general_knowledge',
       question_text: 'سؤال اختبار الهاش والتكرار',
       correct_answer: 'نعم',
       content_hash: 'test_hash_unique_123',
@@ -192,6 +192,58 @@ async function main() {
     const addedSecond = triviaEngine.upsertQuestions([testItem]);
     assert(addedSecond === 0, 'Duplicate content_hash MUST be rejected (0 added)');
     console.log('     ↳ Duplicate item with identical MD5 hash was successfully rejected.');
+  });
+
+  // Test 6: Category Replacement Audit (Zero CS/Hospitality, 100% General Knowledge)
+  await runTest('Category Replacement Audit (Zero computer_science/tourism, valid general_knowledge)', () => {
+    const bankPath = path.resolve('data/questions_bank.json');
+    const questions: QuestionItem[] = JSON.parse(fs.readFileSync(bankPath, 'utf-8'));
+
+    const forbiddenCategories = ['computer_science', 'programming', 'tourism_and_hospitality', 'tourism_hospitality'];
+    const forbiddenMatches = questions.filter(q => forbiddenCategories.includes(q.category));
+
+    assert(
+      forbiddenMatches.length === 0,
+      `Found ${forbiddenMatches.length} questions with deprecated categories: ${forbiddenMatches.map(q => q.category).join(', ')}`
+    );
+
+    const gkQuestions = questions.filter(q => q.category === 'general_knowledge');
+    assert(gkQuestions.length >= 100, `Expected at least 100 general_knowledge questions, found ${gkQuestions.length}`);
+
+    console.log(`     ↳ Audited bank: 0 obsolete categories found. Active general_knowledge count: ${gkQuestions.length}.`);
+  });
+
+  // Test 7: All 7 Character Attribute Profiles & Fallback Verification
+  await runTest('All 7 Character Attribute Profiles & General Knowledge Fallback', () => {
+    const roomId = 'seven_characters_audit_room';
+    triviaEngine.resetRoomSession(roomId);
+
+    const characters = [
+      'fares_elfouly',
+      'ziad_ashraf',
+      'eltouny',
+      'khaled_elbarbakh',
+      'eyad_mohamed',
+      'mazen_hazem',
+      'ali_ahmed'
+    ];
+
+    for (const charId of characters) {
+      const attributes = (CHARACTER_ATTRIBUTES as any)[charId];
+      assert(Array.isArray(attributes) && attributes.length > 0, `Character ${charId} must have attributes configured`);
+
+      const q = triviaEngine.getQuestionForPlayer({
+        roomId,
+        characterId: charId,
+        mode: 'one_two_bank'
+      });
+      assert(q !== null, `Should return a question for ${charId}`);
+      assert(
+        attributes.some((cat: string) => triviaEngine.matchesCategory(q!, cat)) || q!.category === 'general_knowledge',
+        `Question category "${q!.category}" must match character ${charId} attributes or fallback`
+      );
+    }
+    console.log(`     ↳ Verified dispatch and attribute matching for all 7 characters.`);
   });
 
   // Print Summary
