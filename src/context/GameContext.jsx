@@ -96,6 +96,24 @@ export function GameProvider({ children }) {
     messages: []
   });
 
+  // Check URL parameters for dynamic screen separation (?view=controller & ?room=ARENA)
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const viewParam = urlParams.get('view') || urlParams.get('mode');
+      if (viewParam === 'controller' || viewParam === 'mobile') {
+        setActiveTabMode('mobile_controller');
+      }
+      const roomParam = urlParams.get('room');
+      if (roomParam) {
+        setRoomCode(roomParam.toUpperCase());
+        setRoomState(prev => ({ ...prev, code: roomParam.toUpperCase() }));
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
   // Socket setup
   useEffect(() => {
     // Try connecting to local game server
@@ -589,7 +607,24 @@ export function GameProvider({ children }) {
           sounds.playBuzzer();
           showToast('المزاد طار! ❌', `${teams[winningTeam].name} مقدرش يوفي بالمزاد وخسر ${penalty} نقطة!`);
         }
+
+        r4.currentTopicIndex = (r4.currentTopicIndex || 0) + 1;
         r4.phase = 'resolved';
+
+        if (r4.currentTopicIndex >= 4) {
+          sounds.playFanfare();
+          fireConfetti();
+          showToast('🏁 اكتملت جولة المزاد (4 موضوعات)!', 'حان وقت تتويج بطل الساحة وإعلان النتائج النهائية 👑');
+        } else {
+          const nextTopic = AUCTION_TOPICS[r4.currentTopicIndex % AUCTION_TOPICS.length];
+          r4.currentTopic = nextTopic;
+          r4.highestBid = nextTopic.minBid;
+          r4.timer = 60;
+          r4.itemsNamed = [];
+          r4.phase = 'bidding';
+          r4.usedLifelines = { team_a: [], team_b: [] };
+        }
+
         return { ...prev, teams, round4: r4 };
       });
     }

@@ -1,29 +1,33 @@
-export const TOURNAMENT_STRUCTURE = {
+export const TOURNAMENT_CONFIG = {
   round1_bank: {
     name: '1 تو (Bank)',
     totalQuestions: 48,
     perTeamTotal: 24,
-    // Structure: 4 segments total (Team A -> Team B -> Team A -> Team B)
-    // Each team gets 2 turns of 12 questions (split as 6 and 6 sub-batches)
+    // 4 major turns: Team A (12) -> Team B (12) -> Team A (12) -> Team B (12)
+    // Inside each 12-question turn: sub-cycles of (6 + 6) questions
     turns: [
-      { segment: 1, team: 'team_a', teamName: 'Team A', questions: 12, split: [6, 6] },
-      { segment: 2, team: 'team_b', teamName: 'Team B', questions: 12, split: [6, 6] },
-      { segment: 3, team: 'team_a', teamName: 'Team A', questions: 12, split: [6, 6] },
-      { segment: 4, team: 'team_b', teamName: 'Team B', questions: 12, split: [6, 6] },
+      { teamId: 'A', team: 'team_a', questionsCount: 12, questions: 12, subSplits: [6, 6], split: [6, 6] },
+      { teamId: 'B', team: 'team_b', questionsCount: 12, questions: 12, subSplits: [6, 6], split: [6, 6] },
+      { teamId: 'A', team: 'team_a', questionsCount: 12, questions: 12, subSplits: [6, 6], split: [6, 6] },
+      { teamId: 'B', team: 'team_b', questionsCount: 12, questions: 12, subSplits: [6, 6], split: [6, 6] },
     ]
   },
   round2_password: {
     name: 'اديني في سري (Password)',
     totalQuestions: 5,
-    structure: '5 secret cards; 2 competing clue-givers with dynamic neutral host referee'
+    structure: '5 secret cards; 2 opposing clue-givers + dynamic neutral host'
   },
   round3_penalty: {
-    name: 'حط في قريبي (Penalty)',
-    totalShots: 10, // 5 per team alternating
-    structure: '1v1 shootout with goalie intercept buzzer'
+    name: 'حط في قريبي (Penalty Shootouts)',
+    totalQuestions: 10, // 5 penalties per team (1v1 sudden shootout)
+    totalShots: 10,
+    structure: 'Speed race buzzer between Kicker and Goalie/Interceptor'
   },
   round4_auction: {
-    name: 'مين يزوّد؟ (Auction)',
-    structure: 'Tie-breaker/bonus bidding cycle with 60s timer and referee verification checklist'
+    name: 'مين يزوّد؟ (Blind Auction)',
+    totalQuestions: 4,
+    structure: '60s bidding increments (+1, +2, +5) with verification counter'
   }
 };
+
+export const TOURNAMENT_STRUCTURE = TOURNAMENT_CONFIG;

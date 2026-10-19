@@ -840,7 +840,26 @@ io.on('connection', (socket) => {
       });
     }
 
+    r4.currentTopicIndex = (r4.currentTopicIndex || 0) + 1;
     r4.phase = 'resolved';
+
+    if (r4.currentTopicIndex >= 4) {
+      io.to(roomCode).emit('sound_trigger', { sound: 'fanfare' });
+      io.to(roomCode).emit('confetti_trigger');
+      io.to(roomCode).emit('notification', {
+        title: '🏁 اكتملت جولة المزاد (4 موضوعات)!',
+        message: 'تم إنجاز كافة جولات ساحة الكويز! حان وقت تتويج بطل الساحة 👑'
+      });
+    } else {
+      const nextTopic = AUCTION_TOPICS[r4.currentTopicIndex % AUCTION_TOPICS.length];
+      r4.currentTopic = nextTopic;
+      r4.highestBid = nextTopic.minBid;
+      r4.timer = 60;
+      r4.itemsNamed = [];
+      r4.phase = 'bidding';
+      r4.usedLifelines = { team_a: [], team_b: [] };
+    }
+
     io.to(roomCode).emit('room_state_updated', room);
   });
 

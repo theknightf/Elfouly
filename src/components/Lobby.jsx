@@ -131,8 +131,16 @@ export default function Lobby() {
               </button>
 
               <button
+                onClick={handleCreateRoom}
+                className="btn-arcade-yellow px-5 py-3 rounded-2xl text-sm font-black flex items-center gap-2 shadow-md cursor-pointer hover:brightness-110"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>إنشاء ساحة جديدة 🎲</span>
+              </button>
+
+              <button
                 onClick={() => setShowJoinModal(true)}
-                className="btn-arcade-cyan px-5 py-3 rounded-2xl text-sm font-bold flex items-center gap-2"
+                className="btn-arcade-cyan px-5 py-3 rounded-2xl text-sm font-bold flex items-center gap-2 cursor-pointer"
               >
                 <Smartphone className="w-4 h-4" />
                 <span>دخول بكود الغرفة</span>
@@ -145,6 +153,25 @@ export default function Lobby() {
             <div className="text-xs text-gray-400 font-bold uppercase tracking-wider">كود الساحة الحالي</div>
             <div className="text-4xl font-black font-mono text-arena-yellow tracking-widest bg-black/40 py-2 rounded-xl border border-arena-yellow/30">
               {roomState.code || 'ARENA'}
+            </div>
+            <div className="flex items-center justify-center gap-2 pt-1">
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}/?view=controller&room=${roomState.code || 'ARENA'}`;
+                  navigator.clipboard?.writeText(url);
+                  showToast('تم نسخ الرابط! 🔗', 'شارك الرابط مع اللاعبين للدخول المباشر كتحكم موبايل!');
+                }}
+                className="btn-arcade-dark px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <span>نسخ رابط الموبايل 📋</span>
+              </button>
+              <button
+                onClick={handleCreateRoom}
+                className="btn-arcade-dark px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer text-gray-400 hover:text-white"
+                title="توليد كود جديد"
+              >
+                <span>🔄</span>
+              </button>
             </div>
             <div className="text-[11px] text-gray-400">
               يقدر أي لاعب يدخل من موبايله بنفس الكود عبر متصفح الشبكة!

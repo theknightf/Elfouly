@@ -78,6 +78,9 @@ export default function BonusAuction() {
             <div className="inline-flex items-center gap-1.5 text-xs font-black text-arena-yellow bg-arena-yellow/10 px-2 py-0.5 rounded-full border border-arena-yellow/20">
               <Gavel className="w-3.5 h-3.5" />
               <span>جولة المزاد الفاصلة: "مين يزوّد؟" (Blind Auction)</span>
+              <span className="bg-arena-cyan/20 text-arena-cyan px-2 py-0.5 rounded-full font-mono font-bold text-[10px]">
+                تحدي {Math.min(4, (r4.currentTopicIndex || 0) + 1)} / 4
+              </span>
             </div>
             <h2 className="text-xl md:text-2xl font-black text-white">
               مزاد التحديات العمياء.. مين يثبت كلامه؟! 🔨
