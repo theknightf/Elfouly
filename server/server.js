@@ -24,6 +24,211 @@ const PORT = process.env.PORT || 3001;
 // Global rooms store
 const rooms = new Map();
 
+// =================== REFEREE / ANTI-CHEAT ENGINE ===================
+// A referee device is the ONLY device allowed to grade the current round.
+// If a referee stops sending heartbeats (screen lock / crash / disconnect)
+// for this grace period, the server rotates refereeing to the next device.
+const REFEREE_FAILOVER_MS = 6000; // inside the required 5-8 seconds window
+const REFEREE_WATCHDOG_MS = 2000;
+const R3_TIE_WINDOW_MS = 300; // both clicks inside this window require neutral confirmation
+const ROUND_KEYS = ['round1', 'round2', 'round3', 'round4'];
+
+function createRefereeSlot() {
+  return {
+    refereePlayerId: null,
+    refereeQueue: [],
+    refereeAssignedAt: null,
+    refereeLastSeen: null,
+    refereeFailovers: 0,
+    refereeFallback: false
+  };
+}
+
+function isConnectedHuman(player) {
+  return !!player && !player.isBot && player.connected !== false;
+}
+
+function getRoundRefereePool(room, roundKey) {
+  const humans = room.players.filter(isConnectedHuman);
+
+  if (roundKey === 'round1') {
+    return humans.filter(p => p.team !== room.round1.activeTeam);
+  }
+
+  if (roundKey === 'round2') {
+    const clueGiverIds = [room.round2.activeClueGiverA, room.round2.activeClueGiverB];
+    return humans.filter(p => !clueGiverIds.includes(p.id));
+  }
+
+  if (roundKey === 'round3') {
+    const duelistIds = [room.round3.currentKickerId, room.round3.currentGoalieId];
+    return humans.filter(p => !duelistIds.includes(p.id));
+  }
+
+  if (roundKey === 'round4') {
+    const winnerTeam = room.round4.highestBidderTeam;
+    return winnerTeam ? humans.filter(p => p.team !== winnerTeam) : humans;
+  }
+
+  return humans;
+}
+
+function getFallbackRefereeId(room) {
+  const host = room.players.find(p => p.id === room.hostId && isConnectedHuman(p));
+  if (host) return host.id;
+  return room.players.find(isConnectedHuman)?.id || room.players[0]?.id || null;
+}
+
+function pickRefereeId(room, roundKey, { rotate = false, excludeIds = [] } = {}) {
+  const state = room[roundKey];
+  const pool = getRoundRefereePool(room, roundKey);
+  const poolIds = pool.map(p => p.id).filter(id => !excludeIds.includes(id));
+
+  if (poolIds.length === 0) {
+    const fallbackId = getFallbackRefereeId(room);
+    return {
+      refereeId: fallbackId && !excludeIds.includes(fallbackId) ? fallbackId : null,
+      poolIds,
+      fallback: true
+    };
+  }
+
+  if (!rotate) {
+    return { refereeId: poolIds[0], poolIds, fallback: false };
+  }
+
+  const previousQueue = (state.refereeQueue || []).filter(id => poolIds.includes(id));
+  if (previousQueue.length === 0) {
+    return { refereeId: poolIds[0], poolIds, fallback: false };
+  }
+
+  const currentIndex = previousQueue.indexOf(state.refereePlayerId);
+  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % previousQueue.length;
+  return { refereeId: previousQueue[nextIndex], poolIds, fallback: false };
+}
+
+function assignReferee(room, roundKey, { rotate = false, reason = 'assign', excludeIds = [] } = {}) {
+  const state = room[roundKey];
+  if (!state) return null;
+
+  const previousId = state.refereePlayerId;
+  const { refereeId, poolIds, fallback } = pickRefereeId(room, roundKey, { rotate, excludeIds });
+
+  state.refereePlayerId = refereeId || null;
+  state.refereeQueue = poolIds;
+  state.refereeAssignedAt = Date.now();
+  state.refereeLastSeen = Date.now();
+  state.refereeFallback = fallback;
+  if (reason === 'failover') state.refereeFailovers = (state.refereeFailovers || 0) + 1;
+
+  // The Round 1 reader must always be the current opposing referee.
+  if (roundKey === 'round1' && state.refereePlayerId) {
+    state.readerPlayerId = state.refereePlayerId;
+  }
+
+  return { previousId, refereeId: state.refereePlayerId, fallback, reason };
+}
+
+function isReferee(room, roundKey, socketId) {
+  return !!socketId && room?.[roundKey]?.refereePlayerId === socketId;
+}
+
+function requireReferee(room, roundKey, socket, actionLabel) {
+  if (isReferee(room, roundKey, socket.id)) return true;
+  const current = room?.players?.find(p => p.id === room?.[roundKey]?.refereePlayerId);
+  socket.emit(
+    'error_message',
+    `🚫 ${actionLabel}: لوحة التحكيم مقفولة على جهاز الحكم المعتمد (${current?.name || 'لم يتم تعيين حكم بعد'}).`
+  );
+  return false;
+}
+
+function notifyRefereeChange(room, roundKey, previousId, reason) {
+  const next = room.players.find(p => p.id === room[roundKey]?.refereePlayerId);
+  const previous = room.players.find(p => p.id === previousId);
+  const labels = {
+    round1: 'جولة "1 تو"',
+    round2: 'جولة "اديني في سري"',
+    round3: 'جولة ركلات الجزاء',
+    round4: 'جولة المزاد'
+  };
+
+  io.to(room.code).emit('referee_changed', {
+    round: roundKey,
+    previousRefId: previousId || null,
+    refereePlayerId: room[roundKey]?.refereePlayerId || null,
+    reason
+  });
+
+  if (reason === 'failover') {
+    io.to(room.code).emit('notification', {
+      title: 'تحويل صلاحية التحكيم تلقائياً 🛡️',
+      message: `فقدنا اتصال الحكم ${previous?.name || 'السابق'} لأكثر من ${Math.round(REFEREE_FAILOVER_MS / 1000)} ثوانٍ. انتقلت صلاحية تحكيم ${labels[roundKey] || roundKey} إلى ${next?.name || 'الحكم التالي'} فوراً.`
+    });
+  }
+}
+
+// Build a per-device room snapshot so secret answers never leave the server
+// for players who are not the current referee (or, in Password mode, clue givers).
+function sanitizeRoomForViewer(room, socketId) {
+  // countdownInterval is a Node timer with circular internals; never serialize it.
+  const snapshot = JSON.parse(JSON.stringify({ ...room, countdownInterval: null }));
+  const viewer = room.players.find(p => p.id === socketId);
+
+  const r1Ref = room.round1?.refereePlayerId === socketId;
+  const r2Ref = room.round2?.refereePlayerId === socketId;
+  const r3Ref = room.round3?.refereePlayerId === socketId;
+  const r4Ref = room.round4?.refereePlayerId === socketId;
+  const r2ClueGiver =
+    room.round2?.activeClueGiverA === socketId ||
+    room.round2?.activeClueGiverB === socketId;
+
+  if (snapshot.round1?.currentQuestion && !r1Ref) {
+    snapshot.round1.currentQuestion.answer = null;
+  }
+
+  if (!r2Ref && !r2ClueGiver) {
+    snapshot.round2.currentWord = {
+      target: '🤫 محجوبة',
+      forbidden: ['••••', '••••', '••••', '••••'],
+      category: 'سري',
+      clueIdea: 'الكلمة السرية مرئية فقط للحكم والمرشدين.',
+      redacted: true
+    };
+  }
+
+  if (snapshot.round3?.currentQuestion && !r3Ref) {
+    snapshot.round3.currentQuestion.answer = null;
+  }
+
+  if (snapshot.round4?.currentTopic && !r4Ref) {
+    snapshot.round4.currentTopic.validItems = [];
+  }
+
+  // Internal rotation metadata is not needed by clients.
+  for (const key of ROUND_KEYS) {
+    if (snapshot[key]) {
+      delete snapshot[key].refereeQueue;
+      delete snapshot[key].refereeLastSeen;
+      delete snapshot[key].refereeAssignedAt;
+    }
+  }
+
+  // Mark the viewer's identity so clients can resolve their own permissions.
+  snapshot.viewerId = viewer?.id || socketId;
+  return snapshot;
+}
+
+function emitRoomState(room) {
+  const socketIds = io.sockets.adapter.rooms.get(room.code);
+  if (!socketIds) return;
+
+  for (const socketId of socketIds) {
+    const target = io.sockets.sockets.get(socketId);
+    if (target) target.emit('room_state_updated', sanitizeRoomForViewer(room, socketId));
+  }
+}
+
 // Helper to generate a unique 6-character alphanumeric room code (e.g., QZ-7842)
 function generateRoomCode() {
   const digits = '0123456789';
@@ -72,6 +277,7 @@ function createInitialRoomState(roomCode, hostId, hostName) {
     },
     // Round 1: "1 تو" (Bank Mode) - 48 Questions total, 24/team, 4 segments, 2 sub-batches [6, 6] per segment
     round1: {
+      ...createRefereeSlot(),
       activeTeam: 'team_a',
       answeringPlayerId: null,
       readerPlayerId: null,
@@ -92,9 +298,9 @@ function createInitialRoomState(roomCode, hostId, hostName) {
     },
     // Round 2: "اديني في سري" (Password Mode) - 5 Secret Cards
     round2: {
+      ...createRefereeSlot(),
       activeClueGiverA: null,
       activeClueGiverB: null,
-      hostRefereeId: null,
       currentWordIndex: 0,
       totalQuestions: 5,
       currentWord: null,
@@ -104,6 +310,7 @@ function createInitialRoomState(roomCode, hostId, hostName) {
     },
     // Round 3: "حط في قريبي" (Penalty Shootouts) - 10 shots (5 each alternating)
     round3: {
+      ...createRefereeSlot(),
       turnIndex: 0, // 0 to 9 (10 shots total)
       totalShots: 10,
       currentKickerId: null,
@@ -115,10 +322,15 @@ function createInitialRoomState(roomCode, hostId, hostName) {
       timer: 20,
       isTimerRunning: false,
       interceptBuzzedBy: null,
+      interceptAt: null,
+      shotStartedAt: null,
+      tieBreakActive: false,
+      tieBreakData: null,
       shotsHistory: []
     },
     // Round 4: "مين يزوّد؟" (Blind Auction)
     round4: {
+      ...createRefereeSlot(),
       currentTopicIndex: 0,
       currentTopic: null,
       highestBid: 0,
@@ -138,6 +350,24 @@ function createInitialRoomState(roomCode, hostId, hostName) {
 io.on('connection', (socket) => {
   console.log(`[Socket] Connected: ${socket.id}`);
 
+  // Liveness heartbeat. Every player sends this, but only the assigned
+  // referee's timestamp is used to detect a locked/crashed judging device.
+  socket.on('player_heartbeat', ({ roomCode }) => {
+    const room = findRoom(roomCode);
+    if (!room) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    const now = Date.now();
+    player.connected = true;
+    player.lastSeen = now;
+
+    const roundKey = room.status;
+    if (ROUND_KEYS.includes(roundKey) && room[roundKey]?.refereePlayerId === socket.id) {
+      room[roundKey].refereeLastSeen = now;
+    }
+  });
+
   // Create room
   socket.on('create_room', ({ playerName, characterId }) => {
     let roomCode = generateRoomCode();
@@ -154,6 +384,9 @@ io.on('connection', (socket) => {
       character: char,
       team: 'team_a',
       isHost: true,
+      isBot: false,
+      connected: true,
+      lastSeen: Date.now(),
       scoreContribution: 0
     };
 
@@ -161,7 +394,7 @@ io.on('connection', (socket) => {
     rooms.set(roomCode, room);
     socket.join(roomCode);
 
-    socket.emit('room_created', { roomCode, player, room });
+    socket.emit('room_created', { roomCode, player, room: sanitizeRoomForViewer(room, socket.id) });
     console.log(`[Room Created] ${roomCode} by ${player.name}`);
   });
 
@@ -190,14 +423,17 @@ io.on('connection', (socket) => {
       character: char,
       team: team,
       isHost: false,
+      isBot: false,
+      connected: true,
+      lastSeen: Date.now(),
       scoreContribution: 0
     };
 
     room.players.push(player);
     socket.join(room.code);
 
-    socket.emit('joined_room', { roomCode: room.code, player, room });
-    io.to(room.code).emit('room_state_updated', room);
+    socket.emit('joined_room', { roomCode: room.code, player, room: sanitizeRoomForViewer(room, socket.id) });
+    emitRoomState(room);
     console.log(`[Player Joined] ${player.name} joined ${room.code} in ${team}`);
   });
 
@@ -205,6 +441,10 @@ io.on('connection', (socket) => {
   socket.on('add_demo_player', ({ roomCode }) => {
     const room = findRoom(roomCode);
     if (!room || room.players.length >= 4) return;
+    if (socket.id !== room.hostId || !['lobby', 'waiting'].includes(room.status)) {
+      socket.emit('error_message', '🚫 إضافة اللاعبين التجريبيين متاحة للهوست داخل صالة الانتظار فقط.');
+      return;
+    }
 
     const availableChars = CHARACTERS.filter(c => !room.players.some(p => p.character?.id === c.id));
     const nextChar = availableChars[0] || CHARACTERS[room.players.length % CHARACTERS.length];
@@ -216,11 +456,14 @@ io.on('connection', (socket) => {
       character: nextChar,
       team: team,
       isHost: false,
+      isBot: true,
+      connected: false,
+      lastSeen: 0,
       scoreContribution: 0
     };
 
     room.players.push(botPlayer);
-    io.to(room.code).emit('room_state_updated', room);
+    emitRoomState(room);
     io.to(room.code).emit('notification', {
       title: 'انضمام لاعب 🎮',
       message: `انضم ${botPlayer.name} إلى الساحة في ${team === 'team_a' ? 'فريق الحيتان' : 'فريق الوحوش'}`
@@ -232,6 +475,11 @@ io.on('connection', (socket) => {
     const room = findRoom(roomCode);
     if (!room) return;
 
+    if (!['lobby', 'waiting'].includes(room.status)) {
+      socket.emit('error_message', '🚫 لا يمكن تغيير الفريق أو الشخصية بعد انطلاق الماتش.');
+      return;
+    }
+
     const player = room.players.find(p => p.id === socket.id);
     if (player) {
       if (characterId) {
@@ -241,7 +489,7 @@ io.on('connection', (socket) => {
       if (team) {
         player.team = team;
       }
-      io.to(room.code).emit('room_state_updated', room);
+      emitRoomState(room);
     }
   });
 
@@ -251,10 +499,18 @@ io.on('connection', (socket) => {
     const teamBPlayers = room.players.filter(p => p.team === 'team_b');
     room.round1.activeTeam = 'team_a';
     room.round1.answeringPlayerId = teamAPlayers[0]?.id || room.players[0]?.id;
-    room.round1.readerPlayerId = teamBPlayers[0]?.id || (room.players[1] ? room.players[1].id : room.players[0]?.id);
     room.round1.streak = 0;
     room.round1.pendingPoints = 0;
     room.round1.currentQuestionIndex = 0;
+    room.round1.segmentIndex = 0;
+    room.round1.subBatchIndex = 0;
+    room.round1.subBatchQuestionsAnswered = 0;
+    room.round1.segmentQuestionsAnswered = 0;
+    room.round1.totalQuestionsAnswered = 0;
+    room.round1.history = [];
+
+    // Round-robin referee from the opposing team (never the answering team).
+    assignReferee(room, 'round1', { reason: 'round_start' });
 
     const answeringPlayer = teamAPlayers[0] || room.players[0];
     const dispatchedQ = triviaEngine.getQuestionForPlayer({
@@ -310,7 +566,7 @@ io.on('connection', (socket) => {
 
         setupRound1(room);
         room.status = 'round1';
-        io.to(room.code).emit('room_state_updated', room);
+        emitRoomState(room);
         io.to(room.code).emit('match_started', { roomCode: room.code });
       }
     }, 1000);
@@ -320,6 +576,12 @@ io.on('connection', (socket) => {
   socket.on('change_round', ({ roomCode, targetRound }) => {
     const room = findRoom(roomCode);
     if (!room) return;
+
+    // Round transitions are host-only. Players can never jump rounds themselves.
+    if (socket.id !== room.hostId) {
+      socket.emit('error_message', '🚫 فقط كابتن الغرفة (الهوست) يمكنه الانتقال بين الجولات.');
+      return;
+    }
 
     room.status = targetRound;
 
@@ -331,8 +593,9 @@ io.on('connection', (socket) => {
       const teamBPlayers = room.players.filter(p => p.team === 'team_b');
       room.round2.activeClueGiverA = teamAPlayers[0]?.id || room.players[0]?.id;
       room.round2.activeClueGiverB = teamBPlayers[0]?.id || (room.players[1] ? room.players[1].id : room.players[0]?.id);
-      room.round2.hostRefereeId = room.hostId;
       room.round2.currentWordIndex = 0;
+      room.round2.fouls = { team_a: 0, team_b: 0 };
+      assignReferee(room, 'round2', { reason: 'round_start' });
 
       const dispatchedWord = triviaEngine.getQuestionForPlayer({
         roomId: roomCode,
@@ -359,11 +622,21 @@ io.on('connection', (socket) => {
       const teamBPlayers = room.players.filter(p => p.team === 'team_b');
       room.round3.currentKickerId = teamAPlayers[0]?.id || room.players[0]?.id;
       room.round3.currentGoalieId = teamBPlayers[0]?.id || (room.players[1] ? room.players[1].id : room.players[0]?.id);
+      room.round3.shotsHistory = [];
+      room.round3.turnIndex = 0;
+      room.round3.interceptBuzzedBy = null;
+      room.round3.interceptAt = null;
+      room.round3.shotStartedAt = null;
+      room.round3.tieBreakActive = false;
+      room.round3.tieBreakData = null;
 
       // Random category generated first -> Teams select their duelists -> 1v1 speed shootout
       const randomCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
       room.round3.currentCategory = randomCategory;
       room.round3.phase = 'duelist_selection';
+
+      // Neutral referee (not the kicker or the goalie) confirms only ties/disputes.
+      assignReferee(room, 'round3', { reason: 'round_start' });
 
       const kickerPlayer = teamAPlayers[0] || room.players[0];
       const dispatchedPenalty = triviaEngine.getQuestionForPlayer({
@@ -412,9 +685,11 @@ io.on('connection', (socket) => {
       room.round4.phase = 'bidding';
       room.round4.timer = 60;
       room.round4.itemsNamed = [];
+      room.round4.usedLifelines = { team_a: [], team_b: [] };
+      assignReferee(room, 'round4', { reason: 'round_start' });
     }
 
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
     io.to(roomCode).emit('notification', { title: 'انتقال الجولة', message: `بدأت الآن: ${targetRound}` });
   });
 
@@ -452,10 +727,14 @@ io.on('connection', (socket) => {
           r1.answeringPlayerId = activePlayers[nextIdx].id;
         }
 
+        // Round-robin refereeing: the next opposing player takes the judge seat.
+        assignReferee(room, 'round1', { rotate: true, reason: 'sub_batch_rotation' });
+
         const newPlayer = room.players.find(p => p.id === r1.answeringPlayerId);
+        const newRef = room.players.find(p => p.id === r1.refereePlayerId);
         io.to(roomCode).emit('notification', {
           title: '🔄 الفقرة الفرعية الثانية (6 أسئلة أخرى)',
-          message: `الدور الآن على الكابتن ${newPlayer?.name || 'اللاعب الجديد'} من نفس الفريق!`
+          message: `الدور الآن على الكابتن ${newPlayer?.name || 'اللاعب الجديد'} من نفس الفريق! الحكم الجديد: ${newRef?.name || 'لاعب الخصم'}.`
         });
       } else {
         // Full segment (12 questions) complete! Switch to opposite team segment
@@ -473,16 +752,14 @@ io.on('connection', (socket) => {
         r1.activeTeam = targetTurns[r1.segmentIndex % 4];
 
         const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
-        const opposingPlayers = r1.activeTeam === 'team_a' ? teamBPlayers : teamAPlayers;
 
         if (activePlayers.length > 0) {
           const nextAnsIdx = r1.segmentIndex % activePlayers.length;
           r1.answeringPlayerId = activePlayers[nextAnsIdx].id;
         }
-        if (opposingPlayers.length > 0) {
-          const nextReadIdx = r1.segmentIndex % opposingPlayers.length;
-          r1.readerPlayerId = opposingPlayers[nextReadIdx].id;
-        }
+
+        // A new answering team => a new opposing referee (and reader).
+        assignReferee(room, 'round1', { reason: 'segment_change' });
 
         const activeTeamObj = room.teams[r1.activeTeam];
         io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
@@ -500,9 +777,10 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomCode);
     if (!room) return;
 
-    // Zero Self-Grading Anti-Cheat: Answering team cannot grade themselves
+    // Zero Self-Grading Anti-Cheat: only the assigned opposing referee may grade.
+    if (!requireReferee(room, 'round1', socket, 'احتساب نقطة')) return;
     const caller = room.players.find(p => p.id === socket.id);
-    if (caller && caller.team === room.round1.activeTeam && !caller.isHost) {
+    if (caller && caller.team === room.round1.activeTeam) {
       socket.emit('error_message', '🚫 ممنوع احتساب النقاط لنفسك! الحكم الخصم هو المسؤول الوحيد عن التقييم.');
       return;
     }
@@ -545,7 +823,7 @@ io.on('connection', (socket) => {
     }
 
     io.to(roomCode).emit('sound_trigger', { sound: 'correct', streak: nextStreak });
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
   });
 
   // Break streak / Wrong answer
@@ -553,9 +831,10 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomCode);
     if (!room) return;
 
-    // Zero Self-Grading Anti-Cheat
+    // Zero Self-Grading Anti-Cheat: only the assigned opposing referee may break.
+    if (!requireReferee(room, 'round1', socket, 'كسر الستريك')) return;
     const caller = room.players.find(p => p.id === socket.id);
-    if (caller && caller.team === room.round1.activeTeam && !caller.isHost) {
+    if (caller && caller.team === room.round1.activeTeam) {
       socket.emit('error_message', '🚫 ممنوع تقييم الإجابة من الفريق المجيب! الحكم الخصم هو المسؤول الوحيد.');
       return;
     }
@@ -602,7 +881,7 @@ io.on('connection', (socket) => {
       r1.currentQuestion = TRIVIA_BANK[nextIdx];
     }
 
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
   });
 
   // BANK points
@@ -610,9 +889,10 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomCode);
     if (!room) return;
 
-    // Only active answering team can bank their points
+    // Only active answering team can bank their points. The referee is from
+    // the opposing team and must never be able to bank on their behalf.
     const caller = room.players.find(p => p.id === socket.id);
-    if (caller && caller.team !== room.round1.activeTeam && !caller.isHost) {
+    if (!caller || caller.team !== room.round1.activeTeam) {
       socket.emit('error_message', '🚫 لا يمكنك حفظ النقاط في الخزنة لفريق الخصم!');
       return;
     }
@@ -641,14 +921,19 @@ io.on('connection', (socket) => {
 
       io.to(roomCode).emit('sound_trigger', { sound: 'bank_safe' });
       io.to(roomCode).emit('confetti_trigger');
-      io.to(roomCode).emit('room_state_updated', room);
+      emitRoomState(room);
     }
   });
 
-  // Pass Round 1 turn to next player / opposite team
+  // Pass Round 1 turn to next player / opposite team (host control only)
   socket.on('r1_pass_turn', ({ roomCode }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
+
+    if (socket.id !== room.hostId) {
+      socket.emit('error_message', '🚫 تبديل الدور يتم من جهاز كابتن الغرفة فقط.');
+      return;
+    }
 
     const r1 = room.round1;
     r1.pendingPoints = 0;
@@ -657,7 +942,6 @@ io.on('connection', (socket) => {
     // Toggle active team
     r1.activeTeam = r1.activeTeam === 'team_a' ? 'team_b' : 'team_a';
     const answeringCandidates = room.players.filter(p => p.team === r1.activeTeam);
-    const readerCandidates = room.players.filter(p => p.team !== r1.activeTeam);
 
     if (answeringCandidates.length > 0) {
       const currentAnsIdx = answeringCandidates.findIndex(p => p.id === r1.answeringPlayerId);
@@ -665,20 +949,21 @@ io.on('connection', (socket) => {
       r1.answeringPlayerId = answeringCandidates[nextAnsIdx].id;
     }
 
-    if (readerCandidates.length > 0) {
-      const currentReadIdx = readerCandidates.findIndex(p => p.id === r1.readerPlayerId);
-      const nextReadIdx = (currentReadIdx + 1) % readerCandidates.length;
-      r1.readerPlayerId = readerCandidates[nextReadIdx].id;
-    }
+    // Assign the next opposing referee/reader automatically.
+    assignReferee(room, 'round1', { reason: 'turn_change' });
 
     io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
   });
 
   // =================== ROUND 2 ACTIONS (Password Mode) ===================
   socket.on('r2_award_point', ({ roomCode, team }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
+
+    // Only the neutral referee may award the card.
+    if (!requireReferee(room, 'round2', socket, 'احتساب نقطة كلمة السر')) return;
+    if (team !== 'team_a' && team !== 'team_b') return;
 
     const r2 = room.round2;
     room.teams[team].score += 500;
@@ -711,13 +996,20 @@ io.on('connection', (socket) => {
       r2.currentWord = PASSWORD_WORDS[nextIdx];
     }
 
+    // Rotate the neutral referee for the next secret card.
+    if (r2.currentWordIndex < 5) {
+      assignReferee(room, 'round2', { rotate: true, reason: 'card_complete' });
+    }
+
     io.to(roomCode).emit('sound_trigger', { sound: 'correct' });
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
   });
 
   socket.on('r2_skip_card', ({ roomCode }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
+
+    if (!requireReferee(room, 'round2', socket, 'تخطي كلمة سرية')) return;
 
     const r2 = room.round2;
     r2.currentWordIndex += 1;
@@ -747,13 +1039,20 @@ io.on('connection', (socket) => {
       r2.currentWord = PASSWORD_WORDS[nextIdx];
     }
 
+    if (r2.currentWordIndex < 5) {
+      assignReferee(room, 'round2', { rotate: true, reason: 'card_skipped' });
+    }
+
     io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
   });
 
   socket.on('r2_foul', ({ roomCode, team }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
+
+    if (!requireReferee(room, 'round2', socket, 'احتساب مخالفة')) return;
+    if (team !== 'team_a' && team !== 'team_b') return;
 
     const r2 = room.round2;
     r2.fouls[team] = (r2.fouls[team] || 0) + 1;
@@ -761,12 +1060,14 @@ io.on('connection', (socket) => {
     room.teams[team].score = Math.max(0, room.teams[team].score - 200);
 
     io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
   });
 
   socket.on('r2_time_freeze', ({ roomCode }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
+
+    if (!requireReferee(room, 'round2', socket, 'تجميد الوقت')) return;
 
     // Ziad's bonus: +10s time freeze
     room.round2.timer += 10;
@@ -774,7 +1075,7 @@ io.on('connection', (socket) => {
       title: 'تجميد الوقت الفندقي 🛎️',
       message: 'زياد الفندقي مد الوقت +10 ثواني كاملة بروقان!'
     });
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
   });
 
   // Select Duelists for Penalty Shootout
@@ -783,8 +1084,38 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     const r3 = room.round3;
-    if (kickerId) r3.currentKickerId = kickerId;
-    if (goalieId) r3.currentGoalieId = goalieId;
+    if (r3.phase !== 'duelist_selection') {
+      socket.emit('error_message', '🚫 لا يمكن تغيير المبارزين أثناء تنفيذ الركلة.');
+      return;
+    }
+
+    const caller = room.players.find(p => p.id === socket.id);
+    if (!caller) return;
+
+    const defendingTeam = r3.kickerTeam === 'team_a' ? 'team_b' : 'team_a';
+
+    if (kickerId) {
+      const candidate = room.players.find(p => p.id === kickerId);
+      if (caller.team !== r3.kickerTeam || candidate?.team !== r3.kickerTeam) {
+        socket.emit('error_message', '🚫 اختيار المسدد من صلاحيات فريق المسدد فقط.');
+        return;
+      }
+      r3.currentKickerId = kickerId;
+    }
+
+    if (goalieId) {
+      const candidate = room.players.find(p => p.id === goalieId);
+      if (caller.team !== defendingTeam || candidate?.team !== defendingTeam) {
+        socket.emit('error_message', '🚫 اختيار الحارس من صلاحيات فريق الحارس فقط.');
+        return;
+      }
+      r3.currentGoalieId = goalieId;
+    }
+
+    // Referee must stay neutral: never the kicker or the goalie.
+    if ([r3.currentKickerId, r3.currentGoalieId].includes(r3.refereePlayerId)) {
+      assignReferee(room, 'round3', { rotate: true, reason: 'duelists_changed' });
+    }
 
     const kickerPlayer = room.players.find(p => p.id === r3.currentKickerId);
     const category = r3.currentCategory;
@@ -807,7 +1138,12 @@ io.on('connection', (socket) => {
       r3.currentQuestion = backupQ;
     }
 
-    io.to(roomCode).emit('room_state_updated', room);
+    r3.interceptBuzzedBy = null;
+    r3.interceptAt = null;
+    r3.tieBreakActive = false;
+    r3.tieBreakData = null;
+
+    emitRoomState(room);
   });
 
   // Start Shootout
@@ -815,44 +1151,65 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomCode);
     if (!room) return;
 
-    room.round3.phase = 'shootout';
-    room.round3.interceptBuzzedBy = null;
+    const r3 = room.round3;
+    if (socket.id !== room.hostId && !isReferee(room, 'round3', socket.id)) {
+      socket.emit('error_message', '🚫 بدء الركلة يتم من جهاز الهوست أو الحكم المحايد فقط.');
+      return;
+    }
+
+    if (!r3.currentKickerId || !r3.currentGoalieId) {
+      socket.emit('error_message', '🚫 يجب اختيار المسدد والحارس أولاً.');
+      return;
+    }
+
+    r3.phase = 'shootout';
+    r3.interceptBuzzedBy = null;
+    r3.interceptAt = null;
+    r3.shotStartedAt = Date.now();
+    r3.tieBreakActive = false;
+    r3.tieBreakData = null;
     io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
   });
 
+  // Server timestamp #1: goalkeeper's save buzz.
   socket.on('r3_intercept_buzz', ({ roomCode }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
 
     const r3 = room.round3;
-    if (!r3.interceptBuzzedBy) {
-      r3.interceptBuzzedBy = socket.id;
-      const goalie = room.players.find(p => p.id === socket.id);
-      io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
-      io.to(roomCode).emit('notification', {
-        title: 'صد واعتراض! 🛡️',
-        message: `${goalie?.name || 'حارس المرمى'} ضغط على بزر الصد لسرقة النقطة!`
-      });
-      io.to(roomCode).emit('room_state_updated', room);
+    if (r3.phase !== 'shootout') {
+      socket.emit('error_message', '🚫 بزر الصد متاح أثناء الركلة فقط.');
+      return;
     }
+    if (socket.id !== r3.currentGoalieId) {
+      socket.emit('error_message', '🚫 بزر الصد مخصص لحارس المرمى الحالي فقط.');
+      return;
+    }
+    if (r3.interceptBuzzedBy) return;
+
+    r3.interceptBuzzedBy = socket.id;
+    r3.interceptAt = Date.now();
+    const goalie = room.players.find(p => p.id === socket.id);
+    io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
+    io.to(roomCode).emit('notification', {
+      title: 'صد واعتراض! 🛡️',
+      message: `${goalie?.name || 'حارس المرمى'} ضغط على بزر الصد لسرقة النقطة!`
+    });
+    emitRoomState(room);
   });
 
-  socket.on('r3_record_shot', ({ roomCode, result }) => { // result: 'goal' | 'saved' | 'missed'
-    const room = rooms.get(roomCode);
-    if (!room) return;
-
+  function settlePenaltyShot(room, roomCode, result, meta = {}) {
     const r3 = room.round3;
     const kickingTeam = r3.kickerTeam;
     const defendingTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
 
     if (result === 'goal') {
       room.teams[kickingTeam].score += 1000;
-      room.teams[kickingTeam].penaltyScore += 1;
+      room.teams[kickingTeam].penaltyScore = (room.teams[kickingTeam].penaltyScore || 0) + 1;
       io.to(roomCode).emit('sound_trigger', { sound: 'goal_roar' });
       io.to(roomCode).emit('confetti_trigger');
     } else if (result === 'saved') {
-      // Goalie stole point
       room.teams[defendingTeam].score += 800;
       io.to(roomCode).emit('sound_trigger', { sound: 'save' });
     } else {
@@ -862,21 +1219,27 @@ io.on('connection', (socket) => {
     r3.shotsHistory.push({
       shotIndex: r3.turnIndex,
       team: kickingTeam,
-      result: result,
-      intercepted: !!r3.interceptBuzzedBy
+      result,
+      intercepted: !!r3.interceptBuzzedBy,
+      tieBreak: !!meta.tieBreak,
+      answerMs: meta.answerMs ?? null,
+      interceptMs: meta.interceptMs ?? null
     });
 
-    // Advance turn
+    // Advance turn and reset the shooting clock / buzzer for the next kick.
     r3.turnIndex += 1;
     r3.kickerTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
     r3.interceptBuzzedBy = null;
+    r3.interceptAt = null;
+    r3.shotStartedAt = null;
+    r3.tieBreakActive = false;
+    r3.tieBreakData = null;
 
-    // Pick next random category for next penalty kick and return to duelist selection
     const nextCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
     r3.currentCategory = nextCategory;
     r3.phase = 'duelist_selection';
+    r3.isComplete = r3.turnIndex >= 10;
 
-    // Check if 10 shots quota reached
     if (r3.turnIndex >= 10) {
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
       io.to(roomCode).emit('notification', {
@@ -889,14 +1252,16 @@ io.on('connection', (socket) => {
     const teamBPlayers = room.players.filter(p => p.team === 'team_b');
 
     if (r3.kickerTeam === 'team_a') {
-      r3.currentKickerId = teamAPlayers[r3.turnIndex % teamAPlayers.length]?.id;
-      r3.currentGoalieId = teamBPlayers[r3.turnIndex % teamBPlayers.length]?.id;
+      r3.currentKickerId = teamAPlayers[r3.turnIndex % Math.max(1, teamAPlayers.length)]?.id;
+      r3.currentGoalieId = teamBPlayers[r3.turnIndex % Math.max(1, teamBPlayers.length)]?.id;
     } else {
-      r3.currentKickerId = teamBPlayers[r3.turnIndex % teamBPlayers.length]?.id;
-      r3.currentGoalieId = teamAPlayers[r3.turnIndex % teamAPlayers.length]?.id;
+      r3.currentKickerId = teamBPlayers[r3.turnIndex % Math.max(1, teamBPlayers.length)]?.id;
+      r3.currentGoalieId = teamAPlayers[r3.turnIndex % Math.max(1, teamAPlayers.length)]?.id;
     }
 
-    // Pick next penalty question tailored to next kicker
+    // Neutral tie-break referee must not be either duelist for the next kick.
+    assignReferee(room, 'round3', { rotate: true, reason: 'shot_complete' });
+
     const nextKickerPlayer = room.players.find(p => p.id === r3.currentKickerId);
     const nextPenaltyQ = triviaEngine.getQuestionForPlayer({
       roomId: roomCode,
@@ -917,7 +1282,108 @@ io.on('connection', (socket) => {
       r3.currentQuestion = backupQ;
     }
 
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
+  }
+
+  // Server timestamp #2: shooter's answer. The server — not the phone —
+  // decides whether the answer or the goalkeeper buzz happened first.
+  socket.on('r3_submit_answer', ({ roomCode, option }) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    const r3 = room.round3;
+    if (r3.phase !== 'shootout' || !r3.shotStartedAt) {
+      socket.emit('error_message', '🚫 لا توجد ركلة نشطة الآن.');
+      return;
+    }
+    if (socket.id !== r3.currentKickerId) {
+      socket.emit('error_message', '🚫 المسدد الحالي فقط هو من يجيب على سؤال الركلة.');
+      return;
+    }
+    if (r3.tieBreakActive) return;
+
+    const answerAt = Date.now();
+    const answerMs = answerAt - r3.shotStartedAt;
+    const interceptMs = r3.interceptAt ? r3.interceptAt - r3.shotStartedAt : null;
+    const norm = (value) => String(value || '').trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, ' ');
+    const submitted = norm(option);
+    const expected = norm(r3.currentQuestion?.answer);
+    const isCorrect = !!submitted && (submitted === expected || expected.includes(submitted) || submitted.includes(expected));
+
+    let provisional;
+    if (isCorrect) {
+      // Correct answer wins unless the goalie buzzed first.
+      provisional = r3.interceptAt && r3.interceptAt < answerAt ? 'saved' : 'goal';
+    } else {
+      provisional = r3.interceptAt ? 'saved' : 'missed';
+    }
+
+    const bothClicked = !!r3.interceptAt;
+    const nearlySimultaneous = bothClicked && Math.abs(answerAt - r3.interceptAt) <= R3_TIE_WINDOW_MS;
+
+    if (nearlySimultaneous) {
+      r3.tieBreakActive = true;
+      r3.tieBreakData = {
+        provisionalResult: provisional,
+        answerMs,
+        interceptMs,
+        isCorrect,
+        kickerId: r3.currentKickerId,
+        goalieId: r3.currentGoalieId
+      };
+      io.to(roomCode).emit('notification', {
+        title: '⏱️ تعادل لحظي في أجزاء الثانية!',
+        message: 'الضغطتان متزامنتان. الحكم المحايد سيفصل النتيجة نهائياً من جهازه.'
+      });
+      emitRoomState(room);
+      return;
+    }
+
+    const resultLabel = provisional === 'goal' ? 'هدف ⚽' : provisional === 'saved' ? 'تصدي 🧤' : 'ضاعت ❌';
+    io.to(roomCode).emit('notification', {
+      title: `نتيجة الركلة: ${resultLabel}`,
+      message: `حسمها السيرفر بالتوقيت: ${provisional === 'goal' ? 'المسدد أسرع' : provisional === 'saved' ? 'الحارس أسرع بالصد' : 'بدون إصابة'}.`
+    });
+
+    settlePenaltyShot(room, roomCode, provisional, { answerMs, interceptMs });
+  });
+
+  // Neutral referee final confirmation / tie-break only.
+  socket.on('r3_resolve_tiebreak', ({ roomCode, result }) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    if (!requireReferee(room, 'round3', socket, 'فض تعادل الركلة')) return;
+
+    const r3 = room.round3;
+    if (!r3.tieBreakActive || !r3.tieBreakData) {
+      socket.emit('error_message', '🚫 لا يوجد تعادل لحظي يحتاج تدخّل الحكم الآن.');
+      return;
+    }
+
+    const allowed = ['goal', 'saved', 'missed'];
+    if (!allowed.includes(result)) return;
+
+    settlePenaltyShot(room, roomCode, result, {
+      tieBreak: true,
+      answerMs: r3.tieBreakData.answerMs,
+      interceptMs: r3.tieBreakData.interceptMs
+    });
+  });
+
+  // Legacy manual record endpoint: only the neutral referee can use it,
+  // and only while a genuine tie-break is waiting for a decision.
+  socket.on('r3_record_shot', ({ roomCode, result }) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    if (!requireReferee(room, 'round3', socket, 'اعتماد نتيجة الركلة')) return;
+    if (!room.round3.tieBreakActive) {
+      socket.emit('error_message', '🚫 النتيجة تُحسب تلقائياً بتوقيت السيرفر. يدوي فقط عند التعادل اللحظي.');
+      return;
+    }
+    if (!['goal', 'saved', 'missed'].includes(result)) return;
+    settlePenaltyShot(room, roomCode, result, { tieBreak: true });
   });
 
   // =================== ROUND 4 ACTIONS (Blind Auction) ===================
@@ -929,18 +1395,39 @@ io.on('connection', (socket) => {
     const player = room.players.find(p => p.id === socket.id);
     if (!player) return;
 
+    if (![1, 2, 5].includes(increment)) {
+      socket.emit('error_message', '🚫 قيمة المزايدة غير صحيحة.');
+      return;
+    }
+
     r4.highestBid += increment;
     r4.highestBidderTeam = player.team;
     r4.highestBidderPlayerId = player.id;
 
+    // When the winning team changes, the referee must be an opposing player.
+    if (room.round4.refereePlayerId) {
+      const currentRef = room.players.find(p => p.id === room.round4.refereePlayerId);
+      if (currentRef?.team === player.team) {
+        assignReferee(room, 'round4', { rotate: true, reason: 'bidder_changed' });
+      }
+    }
+
     io.to(roomCode).emit('sound_trigger', { sound: 'bid' });
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
   });
 
   // R4 Lifelines: 'call_friend' | 'rival_hint'
   socket.on('r4_use_lifeline', ({ roomCode, team, lifelineType }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
+
+    const caller = room.players.find(p => p.id === socket.id);
+    if (!caller) return;
+    if (team && team !== caller.team) {
+      socket.emit('error_message', '🚫 لا يمكنك استخدام وسائل مساعدة لفريق الخصم.');
+      return;
+    }
+    team = caller.team;
 
     const r4 = room.round4;
     if (!r4.usedLifelines) r4.usedLifelines = { team_a: [], team_b: [] };
@@ -971,22 +1458,23 @@ io.on('connection', (socket) => {
       });
     }
 
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
   });
 
-  // Toggle item named in auction checklist (Opposing team / referee verification)
+  // Toggle item named in auction checklist. Only the designated opposing
+  // referee may tick items; the answering team can never self-verify.
   socket.on('r4_toggle_item', ({ roomCode, item }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
 
-    // Cross-Team Verification Anti-Cheat: Answering team cannot verify their own items!
-    const caller = room.players.find(p => p.id === socket.id);
-    if (caller && caller.team === room.round4.highestBidderTeam && !caller.isHost) {
-      socket.emit('error_message', '🚫 التحقق من العناصر يتم بواسطة الفريق الخصم فقط!');
-      return;
-    }
+    if (!requireReferee(room, 'round4', socket, 'تدقيق إجابات المزاد')) return;
 
     const r4 = room.round4;
+    const validItems = r4.currentTopic?.validItems || [];
+    if (!validItems.includes(item)) {
+      socket.emit('error_message', '🚫 هذا العنصر ليس ضمن قائمة الإجابات المعتمدة.');
+      return;
+    }
     if (!r4.itemsNamed) r4.itemsNamed = [];
 
     if (r4.itemsNamed.includes(item)) {
@@ -996,22 +1484,27 @@ io.on('connection', (socket) => {
       io.to(roomCode).emit('sound_trigger', { sound: 'correct' });
     }
 
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
   });
 
   socket.on('r4_resolve_bid', ({ roomCode, success }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
 
-    // Cross-Team Verification Anti-Cheat: Answering team cannot grade their own auction!
-    const caller = room.players.find(p => p.id === socket.id);
-    if (caller && caller.team === room.round4.highestBidderTeam && !caller.isHost) {
-      socket.emit('error_message', '🚫 الفريق المزايد لا يستطيع اعتماد نتيجته بنفسه! الفريق الخصم هو المحكم.');
-      return;
-    }
+    if (!requireReferee(room, 'round4', socket, 'اعتماد نقاط المزاد')) return;
 
     const r4 = room.round4;
     const winningTeam = r4.highestBidderTeam;
+
+    if (!winningTeam) {
+      socket.emit('error_message', '🚫 لا يوجد صاحب مزاد معتمد بعد.');
+      return;
+    }
+
+    if (success && (r4.itemsNamed?.length || 0) < r4.highestBid) {
+      socket.emit('error_message', `🚫 لم يصل الفريق للرقم المطلوب (${r4.itemsNamed?.length || 0}/${r4.highestBid}). لا يمكن اعتماد النقاط.`);
+      return;
+    }
 
     if (success) {
       const reward = r4.highestBid * 400;
@@ -1051,9 +1544,12 @@ io.on('connection', (socket) => {
       r4.itemsNamed = [];
       r4.phase = 'bidding';
       r4.usedLifelines = { team_a: [], team_b: [] };
+      r4.highestBidderTeam = null;
+      r4.highestBidderPlayerId = null;
+      assignReferee(room, 'round4', { reason: 'next_topic' });
     }
 
-    io.to(roomCode).emit('room_state_updated', room);
+    emitRoomState(room);
   });
 
   // Chat message & Taunts
@@ -1083,49 +1579,131 @@ io.on('connection', (socket) => {
 
     for (const [code, room] of rooms.entries()) {
       const playerIndex = room.players.findIndex(p => p.id === socket.id);
-      if (playerIndex !== -1) {
-        const removedPlayer = room.players[playerIndex];
-        console.log(`[Player Disconnected] ${removedPlayer.name} disconnected from room ${code}`);
+      if (playerIndex === -1) continue;
 
-        if (room.status === 'lobby' || room.status === 'waiting') {
-          // If countdown was in progress, cancel it immediately!
-          if (room.countdownInterval) {
-            clearInterval(room.countdownInterval);
-            room.countdownInterval = null;
-            room.countdown = null;
-            io.to(room.code).emit('countdown_cancelled', {
-              reason: `انقطع اتصال ${removedPlayer.name} قبل انطلاق المباراة! تم إلغاء العد التنازلي.`
-            });
-          }
+      const removedPlayer = room.players[playerIndex];
+      console.log(`[Player Disconnected] ${removedPlayer.name} disconnected from room ${code}`);
 
-          // Remove disconnected player (resets slot to empty)
-          room.players.splice(playerIndex, 1);
+      if (room.status === 'lobby' || room.status === 'waiting') {
+        // If countdown was in progress, cancel it immediately!
+        if (room.countdownInterval) {
+          clearInterval(room.countdownInterval);
+          room.countdownInterval = null;
+          room.countdown = null;
+          io.to(room.code).emit('countdown_cancelled', {
+            reason: `انقطع اتصال ${removedPlayer.name} قبل انطلاق المباراة! تم إلغاء العد التنازلي.`
+          });
+        }
 
-          // Transfer host authority if host left
-          if (removedPlayer.isHost && room.players.length > 0) {
-            room.players[0].isHost = true;
-            room.hostId = room.players[0].id;
-            io.to(room.code).emit('notification', {
-              title: 'انتقال شارة القيادة 👑',
-              message: `${room.players[0].name} أصبح هو كابتن الغرفة الجديد!`
-            });
-          }
+        // Remove disconnected player (resets slot to empty)
+        room.players.splice(playerIndex, 1);
 
-          if (room.players.length === 0 && code !== 'ARENA' && code !== 'QZ-7842') {
-            rooms.delete(code);
-            console.log(`[Room Deleted] Room ${code} was deleted because all players left.`);
-          } else {
-            io.to(room.code).emit('room_state_updated', room);
-            io.to(room.code).emit('notification', {
-              title: 'تفريغ خانة ⚠️',
-              message: `غادر ${removedPlayer.name} الساحة. تم تفريغ الخانة!`
-            });
-          }
+        // Transfer host authority if host left
+        if (removedPlayer.isHost && room.players.length > 0) {
+          room.players[0].isHost = true;
+          room.hostId = room.players[0].id;
+          io.to(room.code).emit('notification', {
+            title: 'انتقال شارة القيادة 👑',
+            message: `${room.players[0].name} أصبح هو كابتن الغرفة الجديد!`
+          });
+        }
+
+        if (room.players.length === 0 && code !== 'ARENA' && code !== 'QZ-7842') {
+          rooms.delete(code);
+          console.log(`[Room Deleted] Room ${code} was deleted because all players left.`);
+        } else {
+          emitRoomState(room);
+          io.to(room.code).emit('notification', {
+            title: 'تفريغ خانة ⚠️',
+            message: `غادر ${removedPlayer.name} الساحة. تم تفريغ الخانة!`
+          });
+        }
+        continue;
+      }
+
+      // In-game disconnect: keep the seat for the scoreboard, mark it offline.
+      // The referee watchdog will transfer judging rights after the grace period.
+      removedPlayer.connected = false;
+      removedPlayer.lastSeen = Date.now();
+
+      // Host migration during a live match (connected humans first).
+      if (removedPlayer.isHost) {
+        const nextHost = room.players.find(p => p.id !== socket.id && isConnectedHuman(p));
+        if (nextHost) {
+          room.players.forEach(p => { p.isHost = false; });
+          nextHost.isHost = true;
+          room.hostId = nextHost.id;
+          io.to(room.code).emit('notification', {
+            title: 'انتقال شارة القيادة 👑',
+            message: `${nextHost.name} أصبح كابتن الغرفة الجديد بعد انقطاع الهوست.`
+          });
         }
       }
+
+      emitRoomState(room);
+      io.to(room.code).emit('notification', {
+        title: 'انقطاع اتصال ⚠️',
+        message: `فقدنا اتصال ${removedPlayer.name}. سيتم تحويل صلاحيات التحكيم تلقائياً إذا كان هو الحكم الحالي.`
+      });
     }
   });
 });
+
+// =================== REFEREE FAILOVER WATCHDOG ===================
+// Runs continuously. A referee that stops heartbeating for REFEREE_FAILOVER_MS
+// (screen lock, crash, network drop) loses judging rights immediately.
+const refereeWatchdog = setInterval(() => {
+  const now = Date.now();
+
+  for (const room of rooms.values()) {
+    const roundKey = room.status;
+    if (!ROUND_KEYS.includes(roundKey)) continue;
+
+    const state = room[roundKey];
+    if (!state) continue;
+
+    const currentRef = room.players.find(p => p.id === state.refereePlayerId);
+
+    if (!currentRef) {
+      if (getRoundRefereePool(room, roundKey).length > 0) {
+        const previousId = state.refereePlayerId;
+        assignReferee(room, roundKey, { reason: 'missing_referee' });
+        notifyRefereeChange(room, roundKey, previousId, 'failover');
+        emitRoomState(room);
+      }
+      continue;
+    }
+
+    // Bots never receive judging rights, so they cannot "time out".
+    if (currentRef.isBot) continue;
+
+    const lastSeen = Math.max(state.refereeLastSeen || 0, currentRef.lastSeen || 0, state.refereeAssignedAt || 0);
+    const isAlive =
+      currentRef.connected !== false &&
+      now - lastSeen <= REFEREE_FAILOVER_MS;
+
+    if (isAlive) continue;
+
+    // Pick a different connected human. If no alternative exists, keep the
+    // seat to avoid an infinite rotation loop and wait for a player to return.
+    const alternatives = getRoundRefereePool(room, roundKey).filter(p => p.id !== currentRef.id);
+    if (alternatives.length === 0) continue;
+
+    const previousId = state.refereePlayerId;
+    assignReferee(room, roundKey, {
+      rotate: true,
+      reason: 'failover',
+      excludeIds: [currentRef.id]
+    });
+
+    if (state.refereePlayerId) {
+      notifyRefereeChange(room, roundKey, previousId, 'failover');
+      emitRoomState(room);
+    }
+  }
+}, REFEREE_WATCHDOG_MS);
+
+refereeWatchdog.unref?.();
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', server: 'Quiz Arena Backend', activeRooms: rooms.size });
@@ -1156,7 +1734,7 @@ app.get('/api/trivia/next', (req, res) => {
 });
 
 app.post('/api/trivia/replenish', async (req, res) => {
-  const { category = 'computer_science', mode = 'one_two_bank', count = 50 } = req.body || {};
+  const { category = 'general_knowledge', mode = 'one_two_bank', count = 50 } = req.body || {};
   const batch = await triviaEngine.generateBatch(category, mode, count);
   const inserted = triviaEngine.upsertQuestions(batch);
   res.json({ success: true, count: inserted, total: triviaEngine.inMemoryBank.length });

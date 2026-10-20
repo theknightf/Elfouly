@@ -121,10 +121,12 @@ export function GameProvider({ children }) {
 
   // Socket setup
   useEffect(() => {
-    // Try connecting to local game server
-    const serverUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      ? 'http://localhost:3001'
-      : `http://${window.location.hostname}:3001`;
+    // Connect to server (supports VITE_SERVER_URL for cloud deployments like Vercel)
+    const serverUrl = import.meta.env.VITE_SERVER_URL || (
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:3001'
+        : `http://${window.location.hostname}:3001`
+    );
 
     const s = io(serverUrl, {
       reconnectionAttempts: 5,
