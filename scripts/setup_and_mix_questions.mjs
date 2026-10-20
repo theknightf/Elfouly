@@ -35,10 +35,35 @@ function shuffle(array) {
 }
 
 // Helper: Validate Post-2010 Football
+const FOOTBALL_CATEGORY_HINTS = ['football', 'barcelona', 'ahly', 'real_madrid', 'champions'];
+const PRE_2010_YEAR_PATTERN = /\b(1\d{3}|200\d)\b/;
+
+function isFootballItem(item) {
+  if (item.is_post_2010_football) return true;
+  const category = String(item.category || '').toLowerCase();
+  return FOOTBALL_CATEGORY_HINTS.some(hint => category.includes(hint));
+}
+
 function validateFootballPost2010(item) {
-  if (!item.is_post_2010_football) return true;
-  const fullText = `${item.question_text || ''} ${item.correct_answer || ''} ${JSON.stringify(item.options || [])} ${JSON.stringify(item.acceptable_answers || [])} ${JSON.stringify(item.forbidden_words || [])}`;
-  const pre2010Match = fullText.match(/\b(19\d\d|200\d)\b/);
+  if (!isFootballItem(item)) return true;
+
+  if (!item.is_post_2010_football) {
+    console.warn(`[Football Guardrail] REJECTED football item without is_post_2010_football flag: ${item.question_text?.substring(0, 50) || item.id}`);
+    return false;
+  }
+
+  const fullText = [
+    item.question_text,
+    item.question,
+    item.correct_answer,
+    item.answer,
+    item.target_word,
+    item.target,
+    JSON.stringify(item.options || []),
+    JSON.stringify(item.acceptable_answers || []),
+    JSON.stringify(item.forbidden_words || [])
+  ].filter(Boolean).join(' ');
+  const pre2010Match = fullText.match(PRE_2010_YEAR_PATTERN);
   if (pre2010Match) {
     console.warn(`[Football Guardrail] REJECTED question with pre-2010 year ${pre2010Match[0]}: ${item.question_text?.substring(0, 50)}`);
     return false;
@@ -824,8 +849,8 @@ async function setupAndMix() {
       deprecatedCount++;
     }
 
-    // Check football guardrail
-    if (q.is_post_2010_football && !validateFootballPost2010(q)) {
+    // Check football guardrail (including missing flags on football categories)
+    if (!validateFootballPost2010(q)) {
       continue;
     }
 
@@ -891,10 +916,10 @@ async function setupAndMix() {
   console.log('  ✅ 0 deprecated categories (100% compliant)');
 
   // Audit B: Football Post-2010 Strict Guardrail
-  const footballItems = thoroughlyMixed.filter(q => q.is_post_2010_football);
+  const footballItems = thoroughlyMixed.filter(isFootballItem);
   for (const fb of footballItems) {
     if (!validateFootballPost2010(fb)) {
-      throw new Error(`CRITICAL: Found pre-2010 football reference in question ID ${fb.id}!`);
+      throw new Error(`CRITICAL: Found unsafe football content in question ID ${fb.id}!`);
     }
   }
   console.log(`  ✅ Audited ${footballItems.length} football questions: 100% Post-2010 verified.`);

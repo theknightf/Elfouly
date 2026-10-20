@@ -70,16 +70,64 @@ def calculate_hash(text: str) -> str:
     normalized = re.sub(r'\s+', ' ', text.strip().lower())
     return hashlib.md5(normalized.encode('utf-8')).hexdigest()
 
+FOOTBALL_CATEGORY_HINTS = ("football", "barcelona", "ahly", "real_madrid", "champions")
+PRE_2010_YEAR_PATTERN = re.compile(r"\b(1\d{3}|200\d)\b")
+
+
+def collect_text(value) -> str:
+    """Flattens strings/lists/dicts into searchable text."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple, set)):
+        return " ".join(collect_text(entry) for entry in value)
+    if isinstance(value, dict):
+        return " ".join(collect_text(entry) for entry in value.values())
+    return str(value)
+
+
+def is_football_item(item: dict) -> bool:
+    """Detects football content from the explicit flag or category hints."""
+    if item.get("is_post_2010_football"):
+        return True
+    category = str(item.get("category") or "").lower()
+    return any(hint in category for hint in FOOTBALL_CATEGORY_HINTS)
+
+
 def is_football_post_2010(item: dict) -> bool:
-    """Strict football validation: rejects anything mentioning years < 2010."""
-    full_text = f"{item.get('question_text', '')} {item.get('correct_answer', '')} {item.get('target_word', '')} {str(item.get('options', []))}"
-    
-    # Check for any year in 1900-2009
-    pre_2010_years = re.findall(r'\b(19\d\d|200\d)\b', full_text)
+    """Strict football validation across every generated content field."""
+    if not is_football_item(item):
+        return True
+
+    if not item.get("is_post_2010_football"):
+        print(f"[Football Filter] REJECTED football item without post-2010 flag: '{collect_text(item)[:60]}...'")
+        return False
+
+    full_text = " ".join(
+        collect_text(item.get(field))
+        for field in (
+            "question_text",
+            "question",
+            "correct_answer",
+            "answer",
+            "target_word",
+            "target",
+            "options",
+            "acceptable_answers",
+            "forbidden_words",
+        )
+    )
+    pre_2010_years = PRE_2010_YEAR_PATTERN.findall(full_text)
     if pre_2010_years:
         print(f"[Football Filter] REJECTED pre-2010 reference: {pre_2010_years} in '{full_text[:60]}...'")
         return False
     return True
+
+
+def is_servable_item(item: dict) -> bool:
+    """Final pre-insert guard shared by the pipeline and SQLite writer."""
+    return is_football_post_2010(item)
 
 def init_sqlite_db(db_path: str = "questions.db"):
     """Initializes local SQLite database matching the Supabase schema."""
@@ -108,6 +156,8 @@ def init_sqlite_db(db_path: str = "questions.db"):
 
 def insert_question_sqlite(db_path: str, q: dict) -> bool:
     """Inserts a question into SQLite, ignoring duplicates based on content_hash."""
+    if not is_servable_item(q):
+        return False
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     try:
@@ -145,8 +195,9 @@ def generate_prompt_for_mode(mode: str, category: dict, count: int = 5) -> str:
     if is_football:
         football_rule = """
 CRITICAL FOOTBALL CONSTRAINT:
-- ALL questions, events, stats, players, and matches MUST strictly be from 2010 ONWARD (2010-2026).
-- ABSOLUTELY NO pre-2010 questions (No 2006, 2009, 1990s, etc.). Immediate rejection if violated!
+- ALL questions, events, stats, players, answers, options, acceptable answers, and forbidden words MUST strictly be from 2010 ONWARD (2010-2026).
+- ABSOLUTELY NO pre-2010 references anywhere (No 2006, 2009, 1990s, etc.). Immediate rejection if violated!
+- Do not ask about historical records, clubs, or players unless the event or fact itself is from 2010 or later.
 """
 
     general_knowledge_rule = ""
@@ -265,8 +316,8 @@ def run_seed_pipeline(output_sqlite: str = "questions.db"):
                 item["category"] = cat["id"]
                 item["is_post_2010_football"] = cat.get("is_football", False)
 
-                # Strict Football Filter check
-                if cat.get("is_football", False) and not is_football_post_2010(item):
+                # Strict Football Filter check across all content fields
+                if not is_servable_item(item):
                     continue
 
                 # Hash

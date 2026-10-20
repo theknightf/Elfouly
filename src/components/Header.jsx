@@ -1,11 +1,13 @@
 import React from 'react';
 import { useGame } from '../context/GameContext';
-import { Volume2, VolumeX, Wifi, WifiOff, Tv, Smartphone, Copy, Check } from 'lucide-react';
+import { Volume2, VolumeX, Wifi, WifiOff, Tv, Smartphone, Copy, Check, Loader2, Clock, AlertTriangle } from 'lucide-react';
 
 export default function Header() {
   const {
     roomState,
     isConnected,
+    connectionStatus,
+    reconnect,
     isAudioMuted,
     setIsAudioMuted,
     activeTabMode,
@@ -15,6 +17,7 @@ export default function Header() {
 
   const [copied, setCopied] = React.useState(false);
 
+  const currentCode = roomState?.code || '';
   const teamA = roomState?.teams?.team_a || { name: 'فريق الحيتان', score: 0, bank: 0 };
   const teamB = roomState?.teams?.team_b || { name: 'فريق الوحوش', score: 0, bank: 0 };
 
@@ -31,9 +34,10 @@ export default function Header() {
   };
 
   const copyRoomCode = () => {
-    navigator.clipboard?.writeText(roomState.code || 'ARENA');
+    if (!currentCode) return;
+    navigator.clipboard?.writeText(currentCode);
     setCopied(true);
-    showToast('تم نسخ الكود!', `شارك الكود ${roomState.code} مع أصحابك للدخول من الموبايل!`);
+    showToast('تم نسخ الكود!', `شارك الكود ${currentCode} مع أصحابك للدخول من الموبايل!`);
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -56,21 +60,23 @@ export default function Header() {
                 </h1>
               </div>
               <div className="text-xs text-gray-300 font-semibold flex items-center gap-1">
-                <span>{getRoundLabel(roomState.status)}</span>
+                <span>{getRoundLabel(roomState?.status || 'lobby')}</span>
               </div>
             </div>
           </div>
 
           {/* Quick Room Code Pill */}
-          <button
-            onClick={copyRoomCode}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-arena-darker/90 border border-arena-cyan/40 hover:border-arena-cyan text-arena-cyan text-xs font-mono font-bold transition-all"
-            title="انسخ كود الغرفة"
-          >
-            <span className="text-gray-400">غرفة:</span>
-            <span className="text-sm font-black text-white">{roomState.code || 'ARENA'}</span>
-            {copied ? <Check className="w-3.5 h-3.5 text-arena-green" /> : <Copy className="w-3.5 h-3.5" />}
-          </button>
+          {currentCode && (
+            <button
+              onClick={copyRoomCode}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-arena-darker/90 border border-arena-cyan/40 hover:border-arena-cyan text-arena-cyan text-xs font-mono font-bold transition-all"
+              title="انسخ كود الغرفة"
+            >
+              <span className="text-gray-400">غرفة:</span>
+              <span className="text-sm font-black text-white">{currentCode}</span>
+              {copied ? <Check className="w-3.5 h-3.5 text-arena-green" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          )}
         </div>
 
         {/* Live Head-to-Head Arena Scoreboard */}
@@ -151,17 +157,62 @@ export default function Header() {
           </button>
 
           {/* Connection Status Indicator */}
-          <div
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border ${
-              isConnected
-                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
-                : 'bg-amber-950/60 border-amber-500/40 text-amber-300'
-            }`}
-            title={isConnected ? 'متصل بالسيرفر الحي' : 'يعمل بالوضع المحلي المباشر'}
-          >
-            {isConnected ? <Wifi className="w-3.5 h-3.5 animate-pulse" /> : <WifiOff className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">{isConnected ? 'لايف' : 'محلي'}</span>
-          </div>
+          {connectionStatus === 'connected' && (
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border bg-emerald-950/60 border-emerald-500/40 text-emerald-300"
+              title="متصل بالسيرفر الحي"
+            >
+              <Wifi className="w-3.5 h-3.5 animate-pulse" />
+              <span>لايف</span>
+            </div>
+          )}
+
+          {connectionStatus === 'connecting' && (
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border bg-cyan-950/60 border-cyan-500/40 text-cyan-300"
+              title="بنتصل بالسيرفر…"
+            >
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>بنتصل بالسيرفر…</span>
+            </div>
+          )}
+
+          {connectionStatus === 'waking_up' && (
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border bg-amber-950/60 border-amber-500/40 text-amber-300"
+              title="السيرفر بيصحى، استنى لحد دقيقة"
+            >
+              <Clock className="w-3.5 h-3.5 animate-pulse" />
+              <span>السيرفر بيصحى، استنى لحد دقيقة</span>
+            </div>
+          )}
+
+          {connectionStatus === 'failed' && (
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border bg-rose-950/70 border-rose-500/50 text-rose-300"
+              title="مش قادرين نوصل للسيرفر"
+            >
+              <WifiOff className="w-3.5 h-3.5" />
+              <span>مش قادرين نوصل للسيرفر</span>
+              <button
+                type="button"
+                onClick={reconnect}
+                className="mr-1 px-2 py-0.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-white text-[10px] font-black border border-rose-500/40 transition-colors cursor-pointer"
+              >
+                حاول تاني
+              </button>
+            </div>
+          )}
+
+          {connectionStatus === 'misconfigured' && (
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border bg-red-950/70 border-red-500/50 text-red-300"
+              title="السيرفر مش متظبط. صاحب اللعبة لازم يضبط VITE_SERVER_URL"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span className="max-w-[200px] truncate sm:max-w-none">السيرفر مش متظبط. صاحب اللعبة لازم يضبط VITE_SERVER_URL</span>
+            </div>
+          )}
         </div>
 
       </div>

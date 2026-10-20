@@ -20,6 +20,7 @@ export default function MobileController() {
     r2TimeFreeze,
     r3InterceptBuzz,
     r3RecordShot,
+    r3SubmitAnswer,
     r3SelectDuelists,
     r3StartShootout,
     r4Bid,
@@ -47,12 +48,21 @@ export default function MobileController() {
   // Round 2 Roles
   const r2 = roomState?.round2 || {};
   const isClueGiverInR2 = r2.activeClueGiverA === player?.id || r2.activeClueGiverB === player?.id;
-  const isRefereeInR2 = player?.isHost || r2.hostRefereeId === player?.id;
+  const isRefereeInR2 = r2.refereePlayerId === player?.id;
+  const activeTurnTeamInR2 = r2.activeTurnTeam === 'team_b' ? 'team_b' : 'team_a';
+  const activeTeamNameInR2 = activeTurnTeamInR2 === 'team_a'
+    ? (roomState?.teams?.team_a?.name || 'فريق الحيتان')
+    : (roomState?.teams?.team_b?.name || 'فريق الوحوش');
+  const activeClueGiverInR2 = roomState?.players?.find(p =>
+    p.id === (activeTurnTeamInR2 === 'team_a' ? r2.activeClueGiverA : r2.activeClueGiverB)
+  );
+  const refereeInR2 = roomState?.players?.find(p => p.id === r2.refereePlayerId);
 
   // Round 3 Roles
   const r3 = roomState?.round3 || {};
   const isKickerInR3 = r3.currentKickerId === player?.id;
   const isGoalieInR3 = r3.currentGoalieId === player?.id;
+  const isRefereeInR3 = r3.refereePlayerId === player?.id;
   const isDuelistSelectionInR3 = r3.phase === 'duelist_selection';
   const kickingTeamKeyInR3 = r3.kickerTeam || 'team_a';
   const isKickingTeamInR3 = player?.team === kickingTeamKeyInR3;
@@ -256,20 +266,25 @@ export default function MobileController() {
               </span>
             </div>
 
-            {/* Secret Card for Clue Giver or Host */}
-            {(isClueGiverInR2 || isRefereeInR2) && (
+            <div className="bg-arena-darker/80 rounded-xl border border-white/10 px-3 py-2 text-[10px] text-center space-y-0.5">
+              <div className="font-black text-arena-cyan">دور {activeTeamNameInR2} — المرشد: {activeClueGiverInR2?.name || 'غير معيّن'}</div>
+              <div className="text-gray-400">الحكم: {refereeInR2?.name || 'غير معيّن'} (مرشد الفريق المنافس)</div>
+            </div>
+
+            {/* Secret Card: clue-givers only */}
+            {isClueGiverInR2 && r2.currentWord?.redacted !== true && (
               <div className="bg-arena-card p-4 rounded-2xl border-2 border-arena-cyan/40 text-center space-y-2">
                 <div className="text-[10px] text-gray-400">الكلمة السرية المطلوب تخمينها:</div>
                 <div className="text-2xl font-black text-arena-cyan">
-                  {r2.currentWord?.target || 'الكلمة السرية'}
+                  {r2.currentWord?.target || '—'}
                 </div>
                 <div className="text-[10px] text-arena-red font-bold bg-arena-red/10 p-2 rounded-xl border border-arena-red/20">
-                  الممنوعات الأربعة: {r2.currentWord?.forbidden?.join(' - ') || 'ممنوع 1 - ممنوع 2 - ممنوع 3 - ممنوع 4'}
+                  الممنوعات الأربعة: {r2.currentWord?.forbidden?.join(' - ') || '—'}
                 </div>
               </div>
             )}
 
-            {!isClueGiverInR2 && !isRefereeInR2 && (
+            {!isClueGiverInR2 && (
               <div className="bg-arena-card p-6 rounded-2xl border border-white/10 text-center space-y-2">
                 <div className="text-3xl">👂</div>
                 <div className="text-sm font-black text-white">استمع للملمح وخمّن الكلمة!</div>
@@ -279,29 +294,32 @@ export default function MobileController() {
               </div>
             )}
 
-            {/* Referee Judgments */}
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => r2AwardPoint('team_a')} className="btn-arcade-cyan py-3 rounded-xl font-black text-xs">
-                نقطة للحيتان A (+500)
-              </button>
-              <button onClick={() => r2AwardPoint('team_b')} className="btn-arcade-red py-3 rounded-xl font-black text-xs">
-                نقطة للوحوش B (+500)
-              </button>
-            </div>
+            {isRefereeInR2 && (
+              <div className="space-y-2">
+                <div className="text-xs font-black text-arena-yellow text-center">
+                  أنت الحكم الآن — احسم محاولة {activeTeamNameInR2} فقط
+                </div>
+                <button onClick={() => r2AwardPoint(activeTurnTeamInR2)} className="w-full btn-arcade-green py-3 rounded-xl font-black text-xs">
+                  نقطة لـ {activeTeamNameInR2} (+500) 🎯
+                </button>
+                <button onClick={() => r2Foul(activeTurnTeamInR2)} className="w-full btn-arcade-dark py-2.5 rounded-xl font-bold text-xs text-arena-red border border-arena-red/30">
+                  مخالفة على {activeTeamNameInR2} (-200)
+                </button>
+                <button onClick={r2TimeFreeze} className="w-full btn-arcade-yellow py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 fill-current" />
+                  <span>تجميد الوقت الفندقي (+10 ثواني) 🛎️</span>
+                </button>
+                <button onClick={r2SkipCard} className="w-full btn-arcade-dark py-2.5 rounded-xl font-bold text-xs text-gray-300">
+                  تخطي البطاقة الحالية
+                </button>
+              </div>
+            )}
 
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => r2Foul('team_a')} className="btn-arcade-dark py-2.5 rounded-xl font-bold text-xs text-arena-red border border-arena-red/30">
-                مخالفة الحيتان (-200)
-              </button>
-              <button onClick={() => r2Foul('team_b')} className="btn-arcade-dark py-2.5 rounded-xl font-bold text-xs text-arena-red border border-arena-red/30">
-                مخالفة الوحوش (-200)
-              </button>
-            </div>
-
-            <button onClick={r2TimeFreeze} className="w-full btn-arcade-yellow py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5">
-              <Zap className="w-3.5 h-3.5 fill-current" />
-              <span>تجميد الوقت الفندقي (+10 ثواني) 🛎️</span>
-            </button>
+            {!isRefereeInR2 && isClueGiverInR2 && (
+              <div className="bg-arena-darker/80 rounded-xl border border-dashed border-gray-600 p-3 text-center text-[10px] text-gray-400">
+                أنت مرشد الآن — الحكم هو مرشد الفريق المنافس فقط.
+              </div>
+            )}
           </div>
         )}
 
@@ -391,23 +409,16 @@ export default function MobileController() {
                         <button
                           key={i}
                           onClick={() => {
-                            const isIntercepted = !!r3.interceptBuzzedBy;
-                            const normOpt = opt.trim().toLowerCase();
-                            const normAns = (r3.currentQuestion?.answer || '').trim().toLowerCase();
-                            const isCorrect = normOpt === normAns || normAns.includes(normOpt) || normOpt.includes(normAns);
-
-                            if (isIntercepted) {
-                              showToast('🧤 تصدي حارس المرمى!', 'الحارس كان ضاغط على الصد وخطف النقطة!');
-                              r3RecordShot('saved');
-                            } else if (isCorrect) {
-                              showToast('⚽ هدف في الجول!', 'تسديدة صاروخية سكنت الشباك!');
-                              r3RecordShot('goal');
-                            } else {
-                              showToast('❌ ضاعت الركلة!', 'التسديدة راحت بعيد عن المرمى!');
-                              r3RecordShot('missed');
-                            }
+                            if (!isKickerInR3 || r3.tieBreakActive) return;
+                            showToast('تم إرسال إجابتك ⚽', 'السيرفر هو من يحسم الهدف أو التصدي.');
+                            r3SubmitAnswer(opt);
                           }}
-                          className="p-3 rounded-xl font-bold text-gray-200 bg-arena-darker hover:bg-arena-cyan/20 border border-white/10 hover:border-arena-cyan transition-all text-right flex items-center justify-between cursor-pointer active:scale-95 shadow-sm"
+                          disabled={!isKickerInR3 || r3.tieBreakActive}
+                          className={`p-3 rounded-xl font-bold text-gray-200 border border-white/10 transition-all text-right flex items-center justify-between shadow-sm ${
+                            isKickerInR3 && !r3.tieBreakActive
+                              ? 'bg-arena-darker hover:bg-arena-cyan/20 hover:border-arena-cyan cursor-pointer active:scale-95'
+                              : 'bg-arena-darker/50 text-gray-500 cursor-not-allowed'
+                          }`}
                         >
                           <span className="truncate">{opt}</span>
                           <span className="text-arena-cyan font-mono font-black text-[10px]">.{i + 1}</span>
@@ -424,15 +435,20 @@ export default function MobileController() {
                   </div>
                   <button
                     onClick={r3InterceptBuzz}
-                    className="w-full py-8 rounded-3xl btn-arcade-red font-black text-xl flex flex-col items-center justify-center gap-2 animate-buzzer cursor-pointer"
+                    disabled={!isGoalieInR3 || !!r3.interceptBuzzedBy}
+                    className={`w-full py-8 rounded-3xl font-black text-xl flex flex-col items-center justify-center gap-2 ${
+                      isGoalieInR3 && !r3.interceptBuzzedBy
+                        ? 'btn-arcade-red animate-buzzer cursor-pointer'
+                        : 'bg-arena-card text-gray-500 cursor-not-allowed'
+                    }`}
                   >
                     <Shield className="w-8 h-8 fill-current" />
                     <span>صد يا بربخ! (Intercept) 🛡️</span>
                   </button>
                 </div>
 
-                {/* Validation quick buttons for referee/host */}
-                {(player?.isHost || !isKickingTeamInR3) && (
+                {/* Neutral referee tie-break decision only */}
+                {isRefereeInR3 && r3.tieBreakActive && (
                   <div className="grid grid-cols-3 gap-2">
                     <button onClick={() => r3RecordShot('goal')} className="btn-arcade-green py-2.5 rounded-xl font-black text-xs">
                       هدف ⚽

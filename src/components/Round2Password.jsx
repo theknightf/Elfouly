@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
-import { PASSWORD_WORDS } from '../data/questions';
 import { sounds } from '../utils/soundEffects';
 import { Lock, Eye, EyeOff, AlertTriangle, Timer, Award, ArrowRight, Snowflake, ShieldAlert } from 'lucide-react';
 
 export default function Round2Password() {
   const {
     roomState,
+    currentPlayer,
     r2AwardPoint,
     r2Foul,
     r2TimeFreeze,
@@ -15,7 +15,13 @@ export default function Round2Password() {
   } = useGame();
 
   const r2 = roomState?.round2 || {};
-  const currentWord = r2.currentWord || PASSWORD_WORDS[0];
+  const currentWord = r2.currentWord || {
+    target: '—',
+    forbidden: [],
+    category: '—',
+    clueIdea: '',
+    redacted: true
+  };
   const [timeLeft, setTimeLeft] = useState(r2.timer || 45);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [hideSecretOnScreen, setHideSecretOnScreen] = useState(false);
@@ -23,8 +29,16 @@ export default function Round2Password() {
   const teamA = roomState?.teams?.team_a || { name: 'فريق الحيتان', score: 0 };
   const teamB = roomState?.teams?.team_b || { name: 'فريق الوحوش', score: 0 };
 
-  const clueGiverA = roomState?.players?.find(p => p.id === r2.activeClueGiverA) || roomState?.players?.[0];
-  const clueGiverB = roomState?.players?.find(p => p.id === r2.activeClueGiverB) || roomState?.players?.[1];
+  const viewerId = roomState?.viewerId || currentPlayer?.id;
+  const clueGiverA = roomState?.players?.find(p => p.id === r2.activeClueGiverA);
+  const clueGiverB = roomState?.players?.find(p => p.id === r2.activeClueGiverB);
+  const isLocalPreview = !viewerId;
+  const isClueGiver = isLocalPreview || viewerId === r2.activeClueGiverA || viewerId === r2.activeClueGiverB;
+  const isReferee = isLocalPreview || viewerId === r2.refereePlayerId;
+  const activeTeamKey = r2.activeTurnTeam === 'team_b' ? 'team_b' : 'team_a';
+  const activeTeam = activeTeamKey === 'team_a' ? teamA : teamB;
+  const activeClueGiver = activeTeamKey === 'team_a' ? clueGiverA : clueGiverB;
+  const referee = roomState?.players?.find(p => p.id === r2.refereePlayerId);
 
   // Timer countdown
   useEffect(() => {
@@ -116,6 +130,22 @@ export default function Round2Password() {
         </div>
       </div>
 
+      {/* Active turn + judge */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="bg-arena-cyan/10 border border-arena-cyan/30 rounded-xl px-4 py-2 text-center">
+          <div className="text-[10px] text-gray-400 font-bold">الفريق اللي بيلمّح دلوقتي</div>
+          <div className="text-sm font-black text-arena-cyan">{activeTeam.name}</div>
+        </div>
+        <div className="bg-arena-darker border border-white/10 rounded-xl px-4 py-2 text-center">
+          <div className="text-[10px] text-gray-400 font-bold">المرشد صاحب الدور</div>
+          <div className="text-sm font-black text-white">{activeClueGiver?.name || 'في انتظار المرشد'}</div>
+        </div>
+        <div className="bg-arena-purple/10 border border-arena-purple/30 rounded-xl px-4 py-2 text-center">
+          <div className="text-[10px] text-gray-400 font-bold">الحكم (مرشد الفريق المنافس)</div>
+          <div className="text-sm font-black text-arena-purple">{referee?.name || 'غير معيّن'}</div>
+        </div>
+      </div>
+
       {/* Main Secret Card */}
       <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-2 border-arena-yellow/40 shadow-2xl space-y-6">
         
@@ -149,8 +179,9 @@ export default function Round2Password() {
             </button>
             <button
               onClick={r2TimeFreeze}
-              className="btn-arcade-purple px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md"
-              title="تجميد الوقت +10 ثواني (خاصية زياد الفندقي)"
+              disabled={!isReferee}
+              className={`btn-arcade-purple px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md ${!isReferee ? 'opacity-40 cursor-not-allowed' : ''}`}
+              title={isReferee ? 'تجميد الوقت +10 ثواني (خاصية زياد الفندقي)' : 'متاح للحكم فقط'}
             >
               <Snowflake className="w-3.5 h-3.5 animate-spin" />
               <span>تجميد +10ث</span>
@@ -159,11 +190,17 @@ export default function Round2Password() {
         </div>
 
         {/* Secret Word Display */}
-        {hideSecretOnScreen ? (
+        {!isClueGiver || currentWord.redacted ? (
+          <div className="p-12 text-center bg-arena-darker/90 rounded-2xl border-2 border-dashed border-gray-600">
+            <div className="text-4xl mb-2">🤫</div>
+            <div className="text-lg font-black text-gray-300">الكلمة السرية محجوبة عن جهازك</div>
+            <p className="text-xs text-gray-500 mt-1">مرشدو الفريقين فقط هما اللي بيشوفوا الكلمة والممنوعات الأربعة.</p>
+          </div>
+        ) : hideSecretOnScreen ? (
           <div className="p-12 text-center bg-arena-darker/90 rounded-2xl border-2 border-dashed border-gray-600">
             <div className="text-4xl mb-2">🙈</div>
             <div className="text-lg font-black text-gray-400">الكلمة السرية مخفية الآن</div>
-            <p className="text-xs text-gray-500 mt-1">اضغط "كشف الكلمات" بالأعلى للمرشدين أو الحكم فقط</p>
+            <p className="text-xs text-gray-500 mt-1">اضغط "كشف الكلمات" بالأعلى للمرشدين فقط</p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -206,61 +243,48 @@ export default function Round2Password() {
 
       </div>
 
-      {/* Host / Referee Control Console */}
+      {/* Referee Control Console */}
       <div className="bg-arena-card/90 rounded-2xl p-5 border border-white/20 shadow-xl space-y-4">
         <div className="flex items-center justify-between border-b border-white/10 pb-2">
           <div className="text-sm font-black text-white flex items-center gap-2">
             <Award className="w-4 h-4 text-arena-yellow" />
-            <span>لوحة تحكم الحكم الخارجي (Referee Console)</span>
+            <span>لوحة تحكم الحكم (Referee Console)</span>
           </div>
           <span className="text-xs text-gray-400">
-            سجل النقاط أو احسب المخالفات عند نطق أي كلمة ممنوعة!
+            الحكم هو مرشد الفريق المنافس للفريق اللي بيلمّح دلوقتي
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Team A Point */}
-          <button
-            onClick={() => r2AwardPoint('team_a')}
-            className="btn-arcade-cyan py-3.5 px-4 rounded-xl font-black text-sm flex flex-col items-center justify-center gap-1 cursor-pointer hover:brightness-110"
-          >
-            <span>نقطة لفريق أ (+500) 🎯</span>
-            <span className="text-[10px] font-mono font-bold text-arena-darker">فريق الحيتان</span>
-          </button>
+        {isReferee ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              onClick={() => r2AwardPoint(activeTeamKey)}
+              className={`${activeTeamKey === 'team_a' ? 'btn-arcade-cyan' : 'btn-arcade-red'} py-3.5 px-4 rounded-xl font-black text-sm flex flex-col items-center justify-center gap-1 cursor-pointer hover:brightness-110`}
+            >
+              <span>نقطة لـ {activeTeam.name} (+500) 🎯</span>
+              <span className="text-[10px] font-bold opacity-80">تأكيد إن {activeClueGiver?.name || 'المرشد'} وصّل الكلمة صح</span>
+            </button>
 
-          {/* Team B Point */}
-          <button
-            onClick={() => r2AwardPoint('team_b')}
-            className="btn-arcade-red py-3.5 px-4 rounded-xl font-black text-sm flex flex-col items-center justify-center gap-1 cursor-pointer hover:brightness-110"
-          >
-            <span>نقطة لفريق ب (+500) 🎯</span>
-            <span className="text-[10px] font-mono font-bold text-white">فريق الوحوش</span>
-          </button>
-
-          {/* Team A Foul */}
-          <button
-            onClick={() => r2Foul('team_a')}
-            className="btn-arcade-dark py-3.5 px-4 rounded-xl font-black text-sm text-arena-yellow hover:text-white border-arena-yellow/40 flex flex-col items-center justify-center gap-1 cursor-pointer"
-          >
-            <div className="flex items-center gap-1">
-              <AlertTriangle className="w-3.5 h-3.5 text-arena-red" />
-              <span>مخالفة على فريق أ (-200) ⚠️</span>
-            </div>
-            <span className="text-[10px] text-gray-400 font-mono">نطق كلمة ممنوعة</span>
-          </button>
-
-          {/* Team B Foul */}
-          <button
-            onClick={() => r2Foul('team_b')}
-            className="btn-arcade-dark py-3.5 px-4 rounded-xl font-black text-sm text-arena-yellow hover:text-white border-arena-yellow/40 flex flex-col items-center justify-center gap-1 cursor-pointer"
-          >
-            <div className="flex items-center gap-1">
-              <AlertTriangle className="w-3.5 h-3.5 text-arena-red" />
-              <span>مخالفة على فريق ب (-200) ⚠️</span>
-            </div>
-            <span className="text-[10px] text-gray-400 font-mono">نطق كلمة ممنوعة</span>
-          </button>
-        </div>
+            <button
+              onClick={() => r2Foul(activeTeamKey)}
+              className="btn-arcade-dark py-3.5 px-4 rounded-xl font-black text-sm text-arena-yellow hover:text-white border-arena-yellow/40 flex flex-col items-center justify-center gap-1 cursor-pointer"
+            >
+              <div className="flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5 text-arena-red" />
+                <span>مخالفة على {activeTeam.name} (-200) ⚠️</span>
+              </div>
+              <span className="text-[10px] text-gray-400 font-mono">نطق كلمة ممنوعة</span>
+            </button>
+          </div>
+        ) : (
+          <div className="bg-arena-darker/80 rounded-xl border border-dashed border-gray-600 p-5 text-center space-y-1">
+            <div className="text-2xl">🔒</div>
+            <div className="text-sm font-black text-gray-300">لوحة التحكيم مقفولة على جهازك</div>
+            <p className="text-xs text-gray-500">
+              الحكم الحالي: {referee?.name || 'غير معيّن'} — مرشد الفريق المنافس فقط هو اللي يقدر يحسب النقطة أو المخالفة.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Navigation to Round 3 */}

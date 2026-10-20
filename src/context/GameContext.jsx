@@ -1,42 +1,220 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 import confetti from 'canvas-confetti';
-import { CHARACTERS } from '../data/characters';
-import { TRIVIA_BANK, PASSWORD_WORDS, PENALTY_QUESTIONS, AUCTION_TOPICS, PENALTY_CATEGORIES } from '../data/questions';
+import { PASSWORD_WORDS, AUCTION_TOPICS, PENALTY_CATEGORIES } from '../data/questions';
 import { TOURNAMENT_STRUCTURE } from '../data/tournamentStructure';
+import {
+  buildLocalR1TurnPlan,
+  drawLocalR1Question,
+  drawLocalRandomQuestion,
+  drawLocalCategoryQuestion,
+  resetLocalQuestionSession,
+  shuffleLocal
+} from '../utils/localQuestionEngine';
 import { sounds } from '../utils/soundEffects';
+import { getServerUrl } from '../utils/serverUrl';
+
+export const CONNECTION_STATUS_MESSAGES = {
+  connecting: 'بنتصل بالسيرفر…',
+  connected: 'لايف',
+  waking_up: 'السيرفر بيصحى، استنى لحد دقيقة',
+  failed: 'مش قادرين نوصل للسيرفر',
+  misconfigured: 'السيرفر مش متظبط. صاحب اللعبة لازم يضبط VITE_SERVER_URL'
+};
 
 const GameContext = createContext();
+
+const SESSION_STORAGE_KEY = 'quizArenaSession';
+const LOCAL_ROOM_ID = 'local_room';
+
+function mapLocalR1Question(question, slot) {
+  return {
+    question: question.question_text,
+    answer: question.correct_answer,
+    categoryName: question.category,
+    slotType: slot.slotType,
+    funFact: slot.slotType === 'specialty'
+      ? 'سؤال من تخصص اللاعب المجيب.'
+      : 'سؤال عشوائي من بنك الجولة الأولى كله.'
+  };
+}
+
+function dispatchLocalR1Question(r1, players) {
+  if (r1.totalQuestionsAnswered >= 48) {
+    r1.currentQuestion = null;
+    return false;
+  }
+
+  const answeringPlayer = players.find(player => player.id === r1.answeringPlayerId);
+  const turnKey = `${r1.segmentIndex}:${r1.subBatchIndex}:${r1.answeringPlayerId}`;
+
+  if (!Array.isArray(r1.turnPlan) || r1.turnPlanKey !== turnKey || r1.turnPlanIndex >= r1.turnPlan.length) {
+    r1.turnPlan = buildLocalR1TurnPlan(answeringPlayer?.character?.id);
+    r1.turnPlanKey = turnKey;
+    r1.turnPlanIndex = 0;
+  }
+
+  const slot = r1.turnPlan[r1.turnPlanIndex];
+  if (!slot) {
+    r1.currentQuestion = null;
+    return false;
+  }
+
+  const question = drawLocalR1Question({
+    roomId: LOCAL_ROOM_ID,
+    mode: 'one_two_bank',
+    characterId: answeringPlayer?.character?.id,
+    slotType: slot.slotType,
+    category: slot.category
+  });
+
+  if (!question) {
+    r1.currentQuestion = null;
+    return false;
+  }
+
+  r1.turnPlanIndex += 1;
+  r1.currentQuestionIndex += 1;
+  r1.currentQuestion = mapLocalR1Question(question, slot);
+  return true;
+}
+
+function mapLocalPasswordCard(question) {
+  return {
+    target: question.question_text,
+    forbidden: question.forbidden_words || ['كلمة 1', 'كلمة 2', 'كلمة 3', 'كلمة 4'],
+    category: question.category,
+    clueIdea: 'خمن الكلمة بدون نطق الممنوعات الأربعة!'
+  };
+}
+
+function drawLocalPasswordCard() {
+  const question = drawLocalRandomQuestion('edini_fi_seri', LOCAL_ROOM_ID);
+  return question ? mapLocalPasswordCard(question) : PASSWORD_WORDS[0];
+}
+
+function nextLocalR2Card(r2, players) {
+  const nextIndex = (r2.currentWordIndex || 0) + 1;
+  const nextCard = {
+    ...r2,
+    currentWordIndex: nextIndex,
+    timeFreezeUsed: false,
+    isComplete: nextIndex >= 5
+  };
+  if (nextIndex < 5) {
+    Object.assign(nextCard, buildLocalR2Roles(players, nextIndex, {
+      toggleTurn: true,
+      activeTurnTeam: r2.activeTurnTeam
+    }));
+    nextCard.currentWord = drawLocalPasswordCard();
+  } else {
+    nextCard.currentWord = null;
+    nextCard.isTimerRunning = false;
+  }
+  return nextCard;
+}
+
+function buildLocalR2Roles(players, cardIndex, { toggleTurn = false, activeTurnTeam = 'team_a' } = {}) {
+  const teamA = players.filter(player => player.team === 'team_a');
+  const teamB = players.filter(player => player.team === 'team_b');
+  const teamARoster = teamA.length > 0 ? teamA : [{ id: 'p1' }, { id: 'p2' }];
+  const teamBRoster = teamB.length > 0 ? teamB : [{ id: 'p3' }, { id: 'p4' }];
+  const nextTurn = toggleTurn
+    ? (activeTurnTeam === 'team_a' ? 'team_b' : 'team_a')
+    : activeTurnTeam;
+
+  const activeClueGiverA = teamARoster[cardIndex % teamARoster.length].id;
+  const activeClueGiverB = teamBRoster[cardIndex % teamBRoster.length].id;
+
+  return {
+    activeClueGiverA,
+    activeClueGiverB,
+    activeTurnTeam: nextTurn,
+    refereePlayerId: nextTurn === 'team_a' ? activeClueGiverB : activeClueGiverA
+  };
+}
+
+function mapLocalAuctionTopic(question) {
+  return {
+    topic: question.question_text,
+    validItems: question.acceptable_answers || [],
+    category: question.category,
+    minBid: 3,
+    maxPossible: question.acceptable_answers?.length || 3,
+    hint: 'أعلى مزايدة تكسب التحدي!'
+  };
+}
+
+function buildLocalAuctionDeck() {
+  const topics = [];
+  for (let index = 0; index < 4; index++) {
+    const question = drawLocalRandomQuestion('meen_yezawwed', LOCAL_ROOM_ID);
+    if (!question) break;
+    topics.push(mapLocalAuctionTopic(question));
+  }
+  if (topics.length === 0) return shuffleLocal(AUCTION_TOPICS).slice(0, 4);
+  return topics;
+}
+
+function readSavedSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.roomCode || !parsed?.playerToken) return null;
+    return parsed;
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveSession(roomCode, playerToken) {
+  if (!roomCode || !playerToken) return;
+  try {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ roomCode, playerToken }));
+  } catch (e) {
+    // ignore storage failures
+  }
+}
+
+function clearSavedSession() {
+  try {
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch (e) {
+    // ignore storage failures
+  }
+}
 
 export function GameProvider({ children }) {
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const [reconnectCounter, setReconnectCounter] = useState(0);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [roomCode, setRoomCode] = useState('');
   const [currentPlayer, setCurrentPlayer] = useState(null);
-  const [isHost, setIsHost] = useState(true);
+  const [isHost, setIsHost] = useState(false);
   const [activeTabMode, setActiveTabMode] = useState('arena'); // 'arena' (TV/host view) | 'mobile_controller'
+
+  const reconnect = () => {
+    setReconnectCounter(prev => prev + 1);
+  };
 
   // Notification toast
   const [toast, setToast] = useState(null);
 
+  // Last server-side action error (shown under the relevant form field)
+  const [actionError, setActionError] = useState(null);
+
   // Match countdown state: null | 3 | 2 | 1 | 0
   const [countdown, setCountdown] = useState(null);
 
-  // Fallback / Offline local game state (so the entire app is 100% playable standalone or synced)
+  // Clean room state (the server is the only source of truth)
   const [roomState, setRoomState] = useState({
-    code: 'ARENA',
+    code: '',
     status: 'lobby',
     tournamentStructure: TOURNAMENT_STRUCTURE,
-    players: [
-      { id: 'p1', name: 'فارس الفولي', character: CHARACTERS[0], team: 'team_a', isHost: true, scoreContribution: 0 },
-      { id: 'p2', name: 'عبد الرحمن التوني', character: CHARACTERS[1], team: 'team_a', isHost: false, scoreContribution: 0 },
-      { id: 'p3', name: 'خالد البربخ', character: CHARACTERS[2], team: 'team_b', isHost: false, scoreContribution: 0 },
-      { id: 'p4', name: 'زياد الفندقي', character: CHARACTERS[3], team: 'team_b', isHost: false, scoreContribution: 0 },
-      { id: 'p5', name: 'إياد الأسد', character: CHARACTERS[4], team: 'team_a', isHost: false, scoreContribution: 0 },
-      { id: 'p6', name: 'مازن الجيمر', character: CHARACTERS[5], team: 'team_b', isHost: false, scoreContribution: 0 },
-      { id: 'p7', name: 'علي التوربو', character: CHARACTERS[6], team: 'team_a', isHost: false, scoreContribution: 0 }
-    ],
+    players: [],
     teams: {
       team_a: { id: 'team_a', name: 'فريق الحيتان (Team A)', score: 0, bank: 0, penaltyScore: 0 },
       team_b: { id: 'team_b', name: 'فريق الوحوش (Team B)', score: 0, bank: 0, penaltyScore: 0 }
@@ -56,18 +234,18 @@ export function GameProvider({ children }) {
       streak: 0,
       pendingPoints: 0,
       streakLadder: [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000],
-      currentQuestion: TRIVIA_BANK[0],
+      currentQuestion: null,
       timer: 30,
       isTimerRunning: false,
       history: []
     },
     round2: {
-      activeClueGiverA: 'p1',
-      activeClueGiverB: 'p3',
-      hostRefereeId: 'p1',
+      ...buildLocalR2Roles([], 0),
       currentWordIndex: 0,
       totalQuestions: 5,
-      currentWord: PASSWORD_WORDS[0],
+      currentWord: null,
+      isComplete: false,
+      timeFreezeUsed: false,
       timer: 45,
       isTimerRunning: false,
       fouls: { team_a: 0, team_b: 0 }
@@ -80,39 +258,39 @@ export function GameProvider({ children }) {
       kickerTeam: 'team_a',
       currentCategory: PENALTY_CATEGORIES[0],
       phase: 'duelist_selection', // 'duelist_selection' | 'shootout'
-      currentQuestion: PENALTY_QUESTIONS[0],
+      currentQuestion: null,
       timer: 20,
       isTimerRunning: false,
       interceptBuzzedBy: null,
+      tieBreakActive: false,
+      tieBreakData: null,
+      isComplete: false,
       shotsHistory: []
     },
     round4: {
       currentTopicIndex: 0,
       currentTopic: AUCTION_TOPICS[0],
+      topicId: 'local-topic-0',
       highestBid: 3,
-      highestBidderTeam: 'team_a',
-      highestBidderPlayerId: 'p1',
+      highestBidderTeam: null,
+      highestBidderPlayerId: null,
       timer: 60,
       isTimerRunning: false,
       phase: 'bidding',
+      topicDeck: [],
       itemsNamed: [],
       usedLifelines: { team_a: [], team_b: [] }
     },
     messages: []
   });
 
-  // Check URL parameters for dynamic screen separation (?view=controller & ?room=ARENA)
+  // Check URL parameters for dynamic screen separation (?view=controller)
   useEffect(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const viewParam = urlParams.get('view') || urlParams.get('mode');
       if (viewParam === 'controller' || viewParam === 'mobile') {
         setActiveTabMode('mobile_controller');
-      }
-      const roomParam = urlParams.get('room');
-      if (roomParam) {
-        setRoomCode(roomParam.toUpperCase());
-        setRoomState(prev => ({ ...prev, code: roomParam.toUpperCase() }));
       }
     } catch (e) {
       // ignore
@@ -121,107 +299,256 @@ export function GameProvider({ children }) {
 
   // Socket setup
   useEffect(() => {
-    // Connect to server (supports VITE_SERVER_URL for cloud deployments like Vercel)
-    const serverUrl = import.meta.env.VITE_SERVER_URL || (
-      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-        ? 'http://localhost:3001'
-        : `http://${window.location.hostname}:3001`
-    );
+    let isCancelled = false;
+    let wakingTimer = null;
+    let failureTimer = null;
+    let pingTimer = null;
+    let socketInstance = null;
 
-    const s = io(serverUrl, {
-      reconnectionAttempts: 5,
-      timeout: 3000
-    });
-
-    s.on('connect', () => {
-      console.log('Connected to Quiz Arena server!');
-      setIsConnected(true);
-    });
-
-    s.on('disconnect', () => {
-      console.log('Disconnected from Quiz Arena server');
+    const serverUrl = getServerUrl();
+    if (!serverUrl) {
+      setConnectionStatus('misconfigured');
       setIsConnected(false);
-    });
+      return;
+    }
 
-    s.on('room_state_updated', (updatedRoom) => {
-      setRoomState(updatedRoom);
-    });
+    setConnectionStatus('connecting');
+    setIsConnected(false);
 
-    s.on('room_created', ({ roomCode, player, room }) => {
-      setRoomCode(roomCode);
-      setCurrentPlayer(player);
-      setIsHost(true);
-      setRoomState(room);
-      showToast('تم إنشاء الساحة!', `كود الغرفة: ${roomCode}`);
-    });
-
-    s.on('joined_room', ({ roomCode, player, room }) => {
-      setRoomCode(roomCode);
-      setCurrentPlayer(player);
-      setIsHost(player.isHost);
-      setRoomState(room);
-      showToast('نورت الساحة يا كابتن!', `دخلت كود: ${roomCode}`);
-    });
-
-    s.on('sound_trigger', ({ sound, streak }) => {
-      if (sound === 'whistle') sounds.playWhistle();
-      else if (sound === 'bank_safe') sounds.playBankSafe();
-      else if (sound === 'goal_roar') sounds.playGoalRoar();
-      else if (sound === 'buzzer') sounds.playBuzzer();
-      else if (sound === 'correct') {
-        if (streak) sounds.playStreakUp(streak);
-        else sounds.playCorrect();
+    // If first connection takes > 4 seconds, show "السيرفر بيصحى، استنى لحد دقيقة"
+    wakingTimer = setTimeout(() => {
+      if (!isCancelled) {
+        setConnectionStatus((curr) => (curr === 'connecting' ? 'waking_up' : curr));
       }
-      else if (sound === 'save') sounds.playSave();
-      else if (sound === 'bid') sounds.playBid();
-    });
+    }, 4000);
 
-    s.on('confetti_trigger', () => {
-      fireConfetti();
-    });
+    // After 60 seconds of retries, switch to 'failed' if not connected
+    failureTimer = setTimeout(() => {
+      if (!isCancelled) {
+        setConnectionStatus((curr) => (curr !== 'connected' && curr !== 'misconfigured' ? 'failed' : curr));
+      }
+    }, 60000);
 
-    s.on('notification', ({ title, message }) => {
-      showToast(title, message);
-    });
+    const initConnection = async () => {
+      // Wake-up: call /api/health to wake sleeping host, retrying up to 20 times, 5 seconds apart
+      let healthy = false;
+      const maxRetries = 20;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        if (isCancelled) return;
+        try {
+          const controller = new AbortController();
+          const fetchTimer = setTimeout(() => controller.abort(), 4500);
+          const res = await fetch(`${serverUrl}/api/health`, { signal: controller.signal });
+          clearTimeout(fetchTimer);
+          if (res.ok) {
+            healthy = true;
+            break;
+          }
+        } catch (e) {
+          // Host is sleeping or still starting
+        }
 
-    s.on('error_message', (msg) => {
-      showToast('تنبيه الساحة ⚠️', msg);
-    });
+        if (attempt < maxRetries - 1 && !isCancelled) {
+          setConnectionStatus('waking_up');
+          await new Promise((r) => setTimeout(r, 5000));
+        }
+      }
 
-    s.on('countdown_tick', ({ count }) => {
-      setCountdown(count);
-      if (count === 3) sounds.playWhistle();
-      else if (count === 2) sounds.playStreakUp(2);
-      else if (count === 1) sounds.playStreakUp(4);
-      else if (count === 0) {
-        sounds.playGoalRoar();
+      // In production, if health check fails after all 10 retries, mark failed
+      if (!healthy && !isCancelled && import.meta.env.PROD) {
+        clearTimeout(wakingTimer);
+        clearTimeout(failureTimer);
+        setConnectionStatus('failed');
+        return;
+      }
+
+      if (isCancelled) return;
+
+      const s = io(serverUrl, {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelayMax: 5000,
+        timeout: 10000
+      });
+      socketInstance = s;
+
+      const tryRejoin = () => {
+        const saved = readSavedSession();
+        if (saved) {
+          s.emit('rejoin_room', { roomCode: saved.roomCode, playerToken: saved.playerToken });
+        }
+      };
+
+      s.on('connect', () => {
+        console.log('Connected to Quiz Arena server!');
+        clearTimeout(wakingTimer);
+        clearTimeout(failureTimer);
+        setConnectionStatus('connected');
+        setIsConnected(true);
+        tryRejoin();
+
+        // Fair timing: send ping every 3 seconds to measure RTT
+        clearInterval(pingTimer);
+        pingTimer = setInterval(() => {
+          if (s.connected) {
+            s.emit('latency_ping', { start: Date.now() });
+          }
+        }, 3000);
+      });
+
+      s.on('latency_pong', ({ start } = {}) => {
+        if (typeof start === 'number') {
+          const rtt = Math.max(0, Date.now() - start);
+          s.emit('latency_report', { rtt });
+        }
+      });
+
+      s.on('disconnect', (reason) => {
+        console.log('Disconnected from Quiz Arena server:', reason);
+        clearInterval(pingTimer);
+        setIsConnected(false);
+        if (reason !== 'io client disconnect') {
+          setConnectionStatus('connecting');
+          clearTimeout(wakingTimer);
+          wakingTimer = setTimeout(() => {
+            if (!isCancelled) {
+              setConnectionStatus((curr) => (curr === 'connecting' ? 'waking_up' : curr));
+            }
+          }, 4000);
+        }
+      });
+
+      s.on('room_state_updated', (updatedRoom) => {
+        setRoomState(updatedRoom);
+        if (updatedRoom?.viewerId) {
+          setIsHost(updatedRoom.hostId === updatedRoom.viewerId);
+        }
+      });
+
+      s.on('room_created', ({ roomCode, playerToken, player, room }) => {
+        setRoomCode(roomCode);
+        setCurrentPlayer(player);
+        setIsHost(true);
+        setRoomState(room);
+        setActionError(null);
+        saveSession(roomCode, playerToken);
+        showToast('تم إنشاء الساحة!', `كود الغرفة: ${roomCode}`);
+      });
+
+      s.on('joined_room', ({ roomCode, playerToken, player, room }) => {
+        setRoomCode(roomCode);
+        setCurrentPlayer(player);
+        setIsHost(player.isHost);
+        setRoomState(room);
+        setActionError(null);
+        saveSession(roomCode, playerToken);
+        showToast('نورت الساحة يا كابتن!', `دخلت كود: ${roomCode}`);
+      });
+
+      s.on('rejoined_room', ({ roomCode, playerToken, player, room }) => {
+        setRoomCode(roomCode);
+        setCurrentPlayer(player);
+        setIsHost(player.isHost);
+        setRoomState(room);
+        setActionError(null);
+        saveSession(roomCode, playerToken);
+        showToast('رجعت تاني يا كابتن! ⚡', `اتصلت بساحة: ${roomCode}`);
+      });
+
+      s.on('rejoin_failed', ({ message, field, reason } = {}) => {
+        clearSavedSession();
+        const isRoomGone = reason === 'room_not_found' || /Room not found|مش موجودة|اتقفلت|خلصت/i.test(message || '');
+        const displayMessage = isRoomGone
+          ? 'الغرفة دي خلصت، اعمل غرفة جديدة'
+          : (message || 'جلسة الاستعادة مش صالحة');
+        setActionError({ message: displayMessage, field: 'general', action: 'rejoin', at: Date.now() });
+        setRoomCode('');
+        setCurrentPlayer(null);
+        setIsHost(false);
+        setRoomState(prev => ({ ...prev, code: '', status: 'lobby', players: [], messages: [] }));
+      });
+
+      s.on('action_error', (payload = {}) => {
+        setActionError({ ...payload, at: payload.at || Date.now() });
+      });
+
+      s.on('profile_updated', ({ player } = {}) => {
+        if (!player) return;
+        setCurrentPlayer(player);
+        setActionError(null);
+        showToast('تم تثبيت الاختيار! ✨', `اخترت: ${player.character?.name || 'شخصيتك'}`);
+      });
+
+      s.on('sound_trigger', ({ sound, streak }) => {
+        if (sound === 'whistle') sounds.playWhistle();
+        else if (sound === 'bank_safe') sounds.playBankSafe();
+        else if (sound === 'goal_roar') sounds.playGoalRoar();
+        else if (sound === 'buzzer') sounds.playBuzzer();
+        else if (sound === 'correct') {
+          if (streak) sounds.playStreakUp(streak);
+          else sounds.playCorrect();
+        }
+        else if (sound === 'save') sounds.playSave();
+        else if (sound === 'bid') sounds.playBid();
+      });
+
+      s.on('confetti_trigger', () => {
         fireConfetti();
-        setTimeout(() => setCountdown(null), 1200);
-      }
-    });
+      });
 
-    s.on('countdown_cancelled', ({ reason }) => {
-      setCountdown(null);
-      showToast('إلغاء العد التنازلي ⚠️', reason || 'انقطع اتصال أحد اللاعبين!');
-    });
+      s.on('notification', ({ title, message }) => {
+        showToast(title, message);
+      });
 
-    s.on('match_started', () => {
-      setCountdown(null);
-    });
+      s.on('error_message', (msg) => {
+        const message = typeof msg === 'string' ? msg : (msg?.message || '');
+        if (message) showToast('تنبيه الساحة ⚠️', message);
+      });
 
-    s.on('chat_received', (msg) => {
-      setRoomState(prev => ({
-        ...prev,
-        messages: [...(prev.messages || []), msg]
-      }));
-    });
+      s.on('countdown_tick', ({ count }) => {
+        setCountdown(count);
+        if (count === 3) sounds.playWhistle();
+        else if (count === 2) sounds.playStreakUp(2);
+        else if (count === 1) sounds.playStreakUp(4);
+        else if (count === 0) {
+          sounds.playGoalRoar();
+          fireConfetti();
+          setTimeout(() => setCountdown(null), 1200);
+        }
+      });
 
-    setSocket(s);
+      s.on('countdown_cancelled', ({ reason }) => {
+        setCountdown(null);
+        showToast('إلغاء العد التنازلي ⚠️', reason || 'انقطع اتصال أحد اللاعبين!');
+      });
+
+      s.on('match_started', () => {
+        setCountdown(null);
+      });
+
+      s.on('chat_received', (msg) => {
+        setRoomState(prev => ({
+          ...prev,
+          messages: [...(prev.messages || []), msg]
+        }));
+      });
+
+      setSocket(s);
+    };
+
+    initConnection();
 
     return () => {
-      s.disconnect();
+      isCancelled = true;
+      clearTimeout(wakingTimer);
+      clearTimeout(failureTimer);
+      clearInterval(pingTimer);
+      if (socketInstance) {
+        socketInstance.disconnect();
+      }
     };
-  }, []);
+  }, [reconnectCounter]);
 
   const showToast = (title, message) => {
     setToast({ title, message });
@@ -241,137 +568,77 @@ export function GameProvider({ children }) {
 
   // Host action: triggers 3-second synchronized countdown
   const startMatchCountdown = () => {
-    const currentCode = roomCode || roomState.code || 'ARENA';
-    if (socket && isConnected) {
-      socket.emit('start_match_countdown', { roomCode: currentCode });
-    } else {
-      // Local fallback countdown
-      const connectedCount = (roomState.players || []).length;
-      if (connectedCount < 4) {
-        showToast('العدد غير مكتمل ⚠️', `الساحة تحتاج 4 لاعبين على الأقل لبدء المباراة (${connectedCount}/4)`);
-        return;
-      }
+    const currentCode = roomCode || roomState.code;
+    if (!currentCode) return;
 
-      setCountdown(3);
-      sounds.playWhistle();
-      setTimeout(() => {
-        setCountdown(2);
-        sounds.playStreakUp(2);
-        setTimeout(() => {
-          setCountdown(1);
-          sounds.playStreakUp(4);
-          setTimeout(() => {
-            setCountdown(0);
-            sounds.playGoalRoar();
-            fireConfetti();
-            setTimeout(() => {
-              setCountdown(null);
-              changeRound('round1');
-            }, 800);
-          }, 1000);
-        }, 1000);
-      }, 1000);
+    if (!socket || !isConnected) {
+      showToast('مش متصل بالسيرفر', CONNECTION_STATUS_MESSAGES[connectionStatus] || 'بنتصل بالسيرفر…');
+      return;
     }
+
+    socket.emit('start_match_countdown', { roomCode: currentCode });
   };
 
   // Create room action
   const createRoom = (playerName, characterId) => {
-    if (socket && isConnected) {
-      socket.emit('create_room', { playerName, characterId });
-    } else {
-      const digits = '0123456789';
-      let num = '';
-      for (let i = 0; i < 4; i++) {
-        num += digits.charAt(Math.floor(Math.random() * digits.length));
-      }
-      const newCode = `QZ-${num}`;
-      setRoomCode(newCode);
-      setIsHost(true);
-      const char = CHARACTERS.find(c => c.id === characterId) || CHARACTERS[0];
-      const hostPlayer = {
-        id: 'host_p1',
-        name: playerName || char.name,
-        character: char,
-        team: 'team_a',
-        isHost: true,
-        scoreContribution: 0
-      };
-      setCurrentPlayer(hostPlayer);
-      setRoomState(prev => ({
-        ...prev,
-        code: newCode,
-        status: 'lobby',
-        players: [hostPlayer]
-      }));
-      showToast('تم إنشاء الساحة!', `كود الغرفة: ${newCode}`);
+    if (!socket || !isConnected) {
+      showToast('مش متصل بالسيرفر', CONNECTION_STATUS_MESSAGES[connectionStatus] || 'بنتصل بالسيرفر…');
+      return;
     }
+
+    setActionError(null);
+    socket.emit('create_room', { playerName, characterId });
   };
 
   // Join room action
   const joinRoom = (code, playerName, characterId, teamPreference) => {
-    const cleanCode = String(code || '').toUpperCase().trim();
-    if (socket && isConnected) {
-      socket.emit('join_room', {
-        roomCode: cleanCode,
-        playerName,
-        characterId,
-        teamPreference
-      });
-    } else {
-      setRoomCode(cleanCode);
-      setIsHost(false);
-      const char = CHARACTERS.find(c => c.id === characterId) || CHARACTERS[1];
-      const newPlayer = {
-        id: `p_${Date.now()}`,
-        name: playerName || char.name,
-        character: char,
-        team: teamPreference || 'team_b',
-        isHost: false,
-        scoreContribution: 0
-      };
-      setCurrentPlayer(newPlayer);
-      setRoomState(prev => {
-        const filtered = (prev.players || []).filter(p => p.id !== newPlayer.id);
-        return {
-          ...prev,
-          code: cleanCode,
-          players: [...filtered, newPlayer]
-        };
-      });
-      showToast('نورت الساحة يا كابتن!', `دخلت كود: ${cleanCode}`);
+    if (!socket || !isConnected) {
+      showToast('مش متصل بالسيرفر', CONNECTION_STATUS_MESSAGES[connectionStatus] || 'بنتصل بالسيرفر…');
+      return;
     }
+
+    const cleanCode = String(code || '').toUpperCase().trim();
+    setActionError(null);
+    socket.emit('join_room', {
+      roomCode: cleanCode,
+      playerName,
+      characterId,
+      teamPreference
+    });
+  };
+
+  // Choose character / team inside the lobby (server validates uniqueness and caps)
+  const updatePlayerProfile = (characterId, team) => {
+    const currentCode = roomCode || roomState.code;
+    if (!currentCode) return;
+
+    if (!socket || !isConnected) {
+      showToast('بنتصل بالسيرفر… ثانية واحدة ⏳', 'استنى لحظة لحد ما الاتصال يرجع.');
+      return;
+    }
+
+    setActionError(null);
+    socket.emit('update_player_profile', {
+      roomCode: currentCode,
+      characterId,
+      team
+    });
   };
 
   // Quick bot player generator to help solo testing reach 4/4
   const addDemoPlayer = () => {
-    const currentCode = roomCode || roomState.code || 'ARENA';
-    if (socket && isConnected) {
-      socket.emit('add_demo_player', { roomCode: currentCode });
-    } else {
-      setRoomState(prev => {
-        const currentPlayers = prev.players || [];
-        if (currentPlayers.length >= 4) return prev;
-        const availableChars = CHARACTERS.filter(c => !currentPlayers.some(p => p.character?.id === c.id));
-        const nextChar = availableChars[0] || CHARACTERS[currentPlayers.length % CHARACTERS.length];
-        const teamACount = currentPlayers.filter(p => p.team === 'team_a').length;
-        const teamBCount = currentPlayers.filter(p => p.team === 'team_b').length;
-        const team = teamACount <= teamBCount ? 'team_a' : 'team_b';
-        const botPlayer = {
-          id: `demo_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
-          name: nextChar.name,
-          character: nextChar,
-          team: team,
-          isHost: false,
-          scoreContribution: 0
-        };
-        return {
-          ...prev,
-          players: [...currentPlayers, botPlayer]
-        };
-      });
-      showToast('انضمام لاعب محاكي 🤖', 'تمت إضافة لاعب جديد لاكتمال نصاب الـ 4 لاعبين!');
+    const currentCode = roomCode || roomState.code;
+    if (!currentCode) return;
+
+    if (!socket || !isConnected) {
+      showToast('بنتصل بالسيرفر… ثانية واحدة ⏳', 'استنى لحظة لحد ما الاتصال يرجع.');
+      return;
     }
+
+    socket.emit('add_demo_player', { roomCode: currentCode });
   };
+
+  const clearActionError = () => setActionError(null);
 
   // Socket or local fallback dispatchers
   const changeRound = (targetRound) => {
@@ -380,35 +647,68 @@ export function GameProvider({ children }) {
     } else {
       // Local execution
       sounds.playWhistle();
+      if (targetRound === 'round1') {
+        resetLocalQuestionSession(LOCAL_ROOM_ID);
+      }
       setRoomState(prev => {
         const next = { ...prev, status: targetRound };
         if (targetRound === 'round1') {
-          next.round1.activeTeam = 'team_a';
-          next.round1.streak = 0;
-          next.round1.pendingPoints = 0;
-          next.round1.currentQuestionIndex = 0;
-          next.round1.currentQuestion = TRIVIA_BANK[0];
+          next.round1 = {
+            ...prev.round1,
+            activeTeam: 'team_a',
+            answeringPlayerId: prev.players.find(player => player.team === 'team_a')?.id || prev.players[0]?.id,
+            segmentIndex: 0,
+            subBatchIndex: 0,
+            subBatchQuestionsAnswered: 0,
+            segmentQuestionsAnswered: 0,
+            totalQuestionsAnswered: 0,
+            currentQuestionIndex: 0,
+            streak: 0,
+            pendingPoints: 0,
+            currentQuestion: null,
+            turnPlan: null,
+            turnPlanKey: null,
+            turnPlanIndex: 0,
+            history: []
+          };
+          dispatchLocalR1Question(next.round1, next.players);
         } else if (targetRound === 'round2') {
-          next.round2.currentWordIndex = 0;
-          next.round2.currentWord = PASSWORD_WORDS[0];
-          next.round2.timer = 45;
+          next.round2 = {
+            ...next.round2,
+            ...buildLocalR2Roles(next.players, 0),
+            currentWordIndex: 0,
+            currentWord: drawLocalPasswordCard(),
+            isComplete: false,
+            timeFreezeUsed: false,
+            timer: 45,
+            isTimerRunning: false,
+            fouls: { team_a: 0, team_b: 0 }
+          };
         } else if (targetRound === 'round3') {
           next.round3.turnIndex = 0;
           next.round3.kickerTeam = 'team_a';
           const randomCat = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
           next.round3.currentCategory = randomCat;
           next.round3.phase = 'duelist_selection';
-          const matchingQ = PENALTY_QUESTIONS.find(q => q.category === randomCat.id) || PENALTY_QUESTIONS[0];
-          next.round3.currentQuestion = matchingQ;
+          next.round3.currentQuestion = null;
           next.round3.interceptBuzzedBy = null;
+          next.round3.tieBreakActive = false;
+          next.round3.tieBreakData = null;
+          next.round3.isComplete = false;
           next.round3.shotsHistory = [];
         } else if (targetRound === 'round4') {
+          const topicDeck = buildLocalAuctionDeck();
           next.round4.currentTopicIndex = 0;
-          next.round4.currentTopic = AUCTION_TOPICS[0];
-          next.round4.highestBid = AUCTION_TOPICS[0].minBid;
+          next.round4.currentTopic = topicDeck[0] || AUCTION_TOPICS[0];
+          next.round4.topicId = 'local-topic-0';
+          next.round4.topicDeck = topicDeck;
+          next.round4.highestBid = (topicDeck[0] || AUCTION_TOPICS[0]).minBid;
           next.round4.phase = 'bidding';
           next.round4.timer = 60;
           next.round4.itemsNamed = [];
+          next.round4.usedLifelines = { team_a: [], team_b: [] };
+          next.round4.highestBidderTeam = null;
+          next.round4.highestBidderPlayerId = null;
         }
         return next;
       });
@@ -418,6 +718,7 @@ export function GameProvider({ children }) {
 
   // Local helper to advance Round 1 quota offline
   const advanceR1LocalQuota = (r1, players, teams) => {
+    if ((r1.totalQuestionsAnswered || 0) >= 48) return false;
     r1.subBatchQuestionsAnswered = (r1.subBatchQuestionsAnswered || 0) + 1;
     r1.segmentQuestionsAnswered = (r1.segmentQuestionsAnswered || 0) + 1;
     r1.totalQuestionsAnswered = (r1.totalQuestionsAnswered || 0) + 1;
@@ -428,7 +729,7 @@ export function GameProvider({ children }) {
     if (r1.totalQuestionsAnswered >= 48) {
       sounds.playWhistle();
       showToast('🏁 اكتملت جولة "1 تو"!', 'تم إنجاز حصة الـ 48 سؤالاً بالتساوي (24 لكل فريق)!');
-      return;
+      return false;
     }
 
     if (r1.subBatchQuestionsAnswered >= 6) {
@@ -467,22 +768,16 @@ export function GameProvider({ children }) {
   // Round 1 Handlers
   const r1Score = () => {
     if (socket && isConnected && roomCode) {
-      socket.emit('r1_action_score', { roomCode });
+      socket.emit('r1_action_score', { roomCode, actionToken: roomState?.round1?.actionToken });
     } else {
       setRoomState(prev => {
+        if ((prev.round1?.totalQuestionsAnswered || 0) >= 48 || !prev.round1?.currentQuestion) return prev;
         const r1 = { ...prev.round1 };
         const nextStreak = Math.min(r1.streak + 1, 10);
         r1.streak = nextStreak;
-        let points = r1.streakLadder[nextStreak];
-        const answeringPlayer = prev.players.find(p => p.id === r1.answeringPlayerId);
-        if (answeringPlayer?.character?.id === 'fares_elfouly') {
-          points = Math.round(points * 1.2);
-        }
-        r1.pendingPoints = points;
+        r1.pendingPoints = r1.streakLadder[nextStreak];
         advanceR1LocalQuota(r1, prev.players, prev.teams);
-        const nextIdx = (r1.currentQuestionIndex + 1) % TRIVIA_BANK.length;
-        r1.currentQuestionIndex = nextIdx;
-        r1.currentQuestion = TRIVIA_BANK[nextIdx];
+        dispatchLocalR1Question(r1, prev.players);
         sounds.playStreakUp(nextStreak);
         return { ...prev, round1: r1 };
       });
@@ -491,10 +786,11 @@ export function GameProvider({ children }) {
 
   const r1Break = () => {
     if (socket && isConnected && roomCode) {
-      socket.emit('r1_action_break', { roomCode });
+      socket.emit('r1_action_break', { roomCode, actionToken: roomState?.round1?.actionToken });
     } else {
       sounds.playBuzzer();
       setRoomState(prev => {
+        if ((prev.round1?.totalQuestionsAnswered || 0) >= 48 || !prev.round1?.currentQuestion) return prev;
         const r1 = { ...prev.round1 };
         const answeringPlayer = prev.players.find(p => p.id === r1.answeringPlayerId);
         if (answeringPlayer?.character?.id === 'abdelrahman_eltouny' && r1.streak > 1) {
@@ -506,9 +802,7 @@ export function GameProvider({ children }) {
           r1.pendingPoints = 0;
         }
         advanceR1LocalQuota(r1, prev.players, prev.teams);
-        const nextIdx = (r1.currentQuestionIndex + 1) % TRIVIA_BANK.length;
-        r1.currentQuestionIndex = nextIdx;
-        r1.currentQuestion = TRIVIA_BANK[nextIdx];
+        dispatchLocalR1Question(r1, prev.players);
         return { ...prev, round1: r1 };
       });
     }
@@ -542,7 +836,7 @@ export function GameProvider({ children }) {
 
   const r1PassTurn = () => {
     if (socket && isConnected && roomCode) {
-      socket.emit('r1_pass_turn', { roomCode });
+      socket.emit('r1_pass_turn', { roomCode, actionToken: roomState?.round1?.actionToken });
     } else {
       sounds.playWhistle();
       setRoomState(prev => {
@@ -558,16 +852,18 @@ export function GameProvider({ children }) {
   // Round 2 Handlers
   const r2AwardPoint = (team) => {
     if (socket && isConnected && roomCode) {
-      socket.emit('r2_award_point', { roomCode, team });
+      socket.emit('r2_award_point', { roomCode, team, actionToken: roomState?.round2?.actionToken });
     } else {
       sounds.playCorrect();
       setRoomState(prev => {
-        const r2 = { ...prev.round2 };
+        if (prev.round2.isComplete || (prev.round2.currentWordIndex || 0) >= 5) return prev;
+        if (team !== (prev.round2.activeTurnTeam || 'team_a')) {
+          showToast('🚫 دور الفريق الآخر', 'الحكم يحسم دور الفريق اللي بيلمّح دلوقتي فقط.');
+          return prev;
+        }
+        const r2 = nextLocalR2Card(prev.round2, prev.players);
         const teams = { ...prev.teams };
         teams[team] = { ...teams[team], score: teams[team].score + 500 };
-        r2.currentWordIndex = (r2.currentWordIndex || 0) + 1;
-        const nextIdx = r2.currentWordIndex % PASSWORD_WORDS.length;
-        r2.currentWord = PASSWORD_WORDS[nextIdx];
         if (r2.currentWordIndex >= 5) {
           sounds.playWhistle();
           showToast('🏁 اكتملت جولة "اديني في سري"!', 'تم إنجاز 5 بطاقات سرية!');
@@ -579,14 +875,12 @@ export function GameProvider({ children }) {
 
   const r2SkipCard = () => {
     if (socket && isConnected && roomCode) {
-      socket.emit('r2_skip_card', { roomCode });
+      socket.emit('r2_skip_card', { roomCode, actionToken: roomState?.round2?.actionToken });
     } else {
       sounds.playBuzzer();
       setRoomState(prev => {
-        const r2 = { ...prev.round2 };
-        r2.currentWordIndex = (r2.currentWordIndex || 0) + 1;
-        const nextIdx = r2.currentWordIndex % PASSWORD_WORDS.length;
-        r2.currentWord = PASSWORD_WORDS[nextIdx];
+        if (prev.round2.isComplete || (prev.round2.currentWordIndex || 0) >= 5) return prev;
+        const r2 = nextLocalR2Card(prev.round2, prev.players);
         if (r2.currentWordIndex >= 5) {
           sounds.playWhistle();
           showToast('🏁 اكتملت جولة "اديني في سري"!', 'تم إنجاز 5 بطاقات سرية!');
@@ -598,12 +892,22 @@ export function GameProvider({ children }) {
 
   const r2Foul = (team) => {
     if (socket && isConnected && roomCode) {
-      socket.emit('r2_foul', { roomCode, team });
+      socket.emit('r2_foul', { roomCode, team, actionToken: roomState?.round2?.actionToken });
     } else {
       sounds.playBuzzer();
       setRoomState(prev => {
-        const r2 = { ...prev.round2 };
-        r2.fouls[team] = (r2.fouls[team] || 0) + 1;
+        if (team !== (prev.round2.activeTurnTeam || 'team_a')) {
+          showToast('🚫 دور الفريق الآخر', 'الحكم يحسم دور الفريق اللي بيلمّح دلوقتي فقط.');
+          return prev;
+        }
+        const r2 = {
+          ...prev.round2,
+          fouls: { ...prev.round2.fouls, [team]: (prev.round2.fouls[team] || 0) + 1 },
+          ...buildLocalR2Roles(prev.players, prev.round2.currentWordIndex || 0, {
+            toggleTurn: true,
+            activeTurnTeam: prev.round2.activeTurnTeam
+          })
+        };
         const teams = { ...prev.teams };
         teams[team] = { ...teams[team], score: Math.max(0, teams[team].score - 200) };
         return { ...prev, teams, round2: r2 };
@@ -615,11 +919,14 @@ export function GameProvider({ children }) {
     if (socket && isConnected && roomCode) {
       socket.emit('r2_time_freeze', { roomCode });
     } else {
-      showToast('تجميد الوقت الفندقي 🛎️', 'زياد الفندقي مد الوقت +10 ثواني كاملة!');
-      setRoomState(prev => ({
-        ...prev,
-        round2: { ...prev.round2, timer: prev.round2.timer + 10 }
-      }));
+      setRoomState(prev => {
+        if (prev.round2.isComplete || prev.round2.timeFreezeUsed || !prev.round2.currentWord) return prev;
+        showToast('تجميد الوقت الفندقي 🛎️', 'زياد الفندقي مد الوقت +10 ثواني كاملة!');
+        return {
+          ...prev,
+          round2: { ...prev.round2, timer: prev.round2.timer + 10, timeFreezeUsed: true }
+        };
+      });
     }
   };
 
@@ -651,6 +958,7 @@ export function GameProvider({ children }) {
       }
 
       setRoomState(prev => {
+        if (prev.round3.isComplete || prev.round3.turnIndex >= 10 || prev.round3.phase !== 'shootout') return prev;
         const r3 = { ...prev.round3 };
         const teams = { ...prev.teams };
         const kickingTeam = r3.kickerTeam;
@@ -685,21 +993,49 @@ export function GameProvider({ children }) {
           r3.currentGoalieId = teamAPlayers[r3.turnIndex % teamAPlayers.length]?.id;
         }
 
-        const nextCat = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
-        r3.currentCategory = nextCat;
-        r3.phase = 'duelist_selection';
-
-        const matchingNextQ = PENALTY_QUESTIONS.find(q => q.category === nextCat.id) || PENALTY_QUESTIONS[0];
-        r3.currentQuestion = matchingNextQ;
-
         if (r3.turnIndex >= 10) {
+          r3.phase = 'complete';
+          r3.isComplete = true;
+          r3.currentQuestion = null;
+          r3.currentKickerId = null;
+          r3.currentGoalieId = null;
           sounds.playWhistle();
           showToast('🏁 انتهت ركلات الجزاء (10 ركلات)!', 'جاهزون لجولة المزاد مين يزوّد!');
+          return { ...prev, teams, round3: r3 };
         }
+
+        const nextCat = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
+        const nextPenaltyQuestion = drawLocalCategoryQuestion('hat_fi_qoraybi', nextCat.id, LOCAL_ROOM_ID);
+        r3.currentCategory = nextCat;
+        r3.phase = 'duelist_selection';
+        r3.currentQuestion = nextPenaltyQuestion ? {
+          question: nextPenaltyQuestion.question_text,
+          answer: nextPenaltyQuestion.correct_answer,
+          options: nextPenaltyQuestion.options || [],
+          category: nextPenaltyQuestion.category,
+          kickerHint: nextCat.name
+        } : null;
+        r3.tieBreakActive = false;
+        r3.tieBreakData = null;
 
         return { ...prev, teams, round3: r3 };
       });
     }
+  };
+
+  const r3SubmitAnswer = (option) => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('r3_submit_answer', { roomCode, option });
+      return;
+    }
+
+    const currentQuestion = roomState?.round3?.currentQuestion;
+    const norm = (value) => String(value || '').trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, ' ');
+    const submitted = norm(option);
+    const expected = norm(currentQuestion?.answer);
+    const isCorrect = !!submitted && !!expected && submitted === expected;
+    const intercepted = !!roomState?.round3?.interceptBuzzedBy;
+    r3RecordShot(intercepted ? 'saved' : isCorrect ? 'goal' : 'missed');
   };
 
   const r3SelectDuelists = (kickerId, goalieId) => {
@@ -720,14 +1056,32 @@ export function GameProvider({ children }) {
     if (socket && isConnected && roomCode) {
       socket.emit('r3_start_shootout', { roomCode });
     } else {
-      setRoomState(prev => ({
-        ...prev,
-        round3: {
-          ...prev.round3,
-          phase: 'shootout',
-          interceptBuzzedBy: null
-        }
-      }));
+      setRoomState(prev => {
+        const r3 = prev.round3;
+        if (r3.isComplete || r3.turnIndex >= 10 || r3.phase !== 'duelist_selection') return prev;
+        const category = r3.currentCategory || PENALTY_CATEGORIES[0];
+        const question = drawLocalCategoryQuestion('hat_fi_qoraybi', category.id, LOCAL_ROOM_ID);
+        if (!question) return prev;
+        return {
+          ...prev,
+          round3: {
+            ...r3,
+            phase: 'shootout',
+            currentQuestion: {
+              question: question.question_text,
+              answer: question.correct_answer,
+              options: question.options || [],
+              category: question.category,
+              kickerHint: category.name
+            },
+            interceptBuzzedBy: null,
+            interceptAt: null,
+            shotStartedAt: Date.now(),
+            tieBreakActive: false,
+            tieBreakData: null
+          }
+        };
+      });
     }
   };
 
@@ -735,12 +1089,21 @@ export function GameProvider({ children }) {
   const r4Bid = (increment) => {
     sounds.playBid();
     if (socket && isConnected && roomCode) {
-      socket.emit('r4_bid', { roomCode, increment });
+      socket.emit('r4_bid', {
+        roomCode,
+        increment,
+        expectedBid: roomState?.round4?.highestBid,
+        topicId: roomState?.round4?.topicId
+      });
     } else {
       setRoomState(prev => {
         const r4 = { ...prev.round4 };
+        const playerTeam = currentPlayer?.team;
+        if (!playerTeam || r4.phase !== 'bidding' || r4.highestBidderTeam === playerTeam) return prev;
+        if (![1, 2, 5].includes(increment)) return prev;
         r4.highestBid += increment;
-        r4.highestBidderTeam = r4.highestBidderTeam === 'team_a' ? 'team_b' : 'team_a';
+        r4.highestBidderTeam = playerTeam;
+        r4.highestBidderPlayerId = currentPlayer?.id || null;
         return { ...prev, round4: r4 };
       });
     }
@@ -749,21 +1112,31 @@ export function GameProvider({ children }) {
   const r4UseLifeline = (lifelineType) => {
     const team = currentPlayer?.team || roomState?.round4?.highestBidderTeam || 'team_a';
     if (socket && isConnected && roomCode) {
-      socket.emit('r4_use_lifeline', { roomCode, team, lifelineType });
+      socket.emit('r4_use_lifeline', {
+        roomCode,
+        team,
+        lifelineType,
+        topicId: roomState?.round4?.topicId
+      });
     } else {
       setRoomState(prev => {
         const r4 = { ...prev.round4 };
+        const callerTeam = currentPlayer?.team;
+        if (!callerTeam || !r4.currentTopic || !['bidding', 'execution'].includes(r4.phase)) return prev;
+        if (!['call_friend', 'rival_hint'].includes(lifelineType)) return prev;
         if (!r4.usedLifelines) r4.usedLifelines = { team_a: [], team_b: [] };
-        if (!r4.usedLifelines[team]) r4.usedLifelines[team] = [];
-        if (r4.usedLifelines[team].includes(lifelineType)) return prev;
-        r4.usedLifelines[team].push(lifelineType);
+        if (!r4.usedLifelines[callerTeam]) r4.usedLifelines[callerTeam] = [];
+        if (r4.usedLifelines[callerTeam].includes(lifelineType)) return prev;
+        const validItems = r4.currentTopic.validItems || [];
+        if (lifelineType === 'rival_hint' && validItems.length === 0) return prev;
+        r4.usedLifelines[callerTeam].push(lifelineType);
         if (lifelineType === 'call_friend') {
           r4.timer += 20;
           sounds.playBid();
           showToast('📞 اتصل بصديق (+20 ثانية)', 'تم تمديد الوقت 20 ثانية إضافية!');
-        } else if (lifelineType === 'rival_hint') {
+        } else {
           sounds.playBid();
-          const hint = r4.currentTopic?.validItems?.[0] || 'إجابة مفتاحية';
+          const hint = validItems.find(item => !r4.itemsNamed?.includes(item)) || validItems[0];
           showToast('💡 هينت من الخصم!', `تلميح الخصم يكشف: "${hint}"`);
         }
         return { ...prev, round4: r4 };
@@ -773,10 +1146,12 @@ export function GameProvider({ children }) {
 
   const r4ToggleItem = (item) => {
     if (socket && isConnected && roomCode) {
-      socket.emit('r4_toggle_item', { roomCode, item });
+      socket.emit('r4_toggle_item', { roomCode, item, topicId: roomState?.round4?.topicId });
     } else {
       setRoomState(prev => {
         const r4 = { ...prev.round4 };
+        const validItems = r4.currentTopic?.validItems || [];
+        if (r4.phase === 'resolved' || !validItems.includes(item)) return prev;
         if (!r4.itemsNamed) r4.itemsNamed = [];
         if (r4.itemsNamed.includes(item)) {
           r4.itemsNamed = r4.itemsNamed.filter(i => i !== item);
@@ -791,41 +1166,50 @@ export function GameProvider({ children }) {
 
   const r4ResolveBid = (success) => {
     if (socket && isConnected && roomCode) {
-      socket.emit('r4_resolve_bid', { roomCode, success });
+      socket.emit('r4_resolve_bid', { roomCode, success, topicId: roomState?.round4?.topicId });
     } else {
       setRoomState(prev => {
         const r4 = { ...prev.round4 };
         const teams = { ...prev.teams };
-        const winningTeam = r4.highestBidderTeam || 'team_a';
+        const winningTeam = r4.highestBidderTeam;
+
+        if (!winningTeam || r4.phase === 'resolved' || !r4.currentTopic) return prev;
+        if (success && (r4.itemsNamed?.length || 0) < r4.highestBid) {
+          showToast('🚫 لم يكتمل الرقم', `الفريق سمّى ${r4.itemsNamed?.length || 0} من ${r4.highestBid}.`);
+          return prev;
+        }
 
         if (success) {
           const reward = r4.highestBid * 400;
-          teams[winningTeam].score += reward;
+          teams[winningTeam] = { ...teams[winningTeam], score: teams[winningTeam].score + reward };
           sounds.playGoalRoar();
           fireConfetti();
           showToast('أنا قدها ونص! 🏆', `${teams[winningTeam].name} نفذ المزاد وكسب ${reward} نقطة!`);
         } else {
-          const penalty = r4.highestBid * 250;
-          teams[winningTeam].score = Math.max(0, teams[winningTeam].score - penalty);
           sounds.playBuzzer();
-          showToast('المزاد طار! ❌', `${teams[winningTeam].name} مقدرش يوفي بالمزاد وخسر ${penalty} نقطة!`);
+          showToast('المزاد لم يكتمل', `${teams[winningTeam].name} لم يوفِ بالمزاد. لا توجد نقاط مخصومة.`);
         }
 
         r4.currentTopicIndex = (r4.currentTopicIndex || 0) + 1;
         r4.phase = 'resolved';
 
         if (r4.currentTopicIndex >= 4) {
+          r4.currentTopic = null;
+          r4.topicId = null;
           sounds.playFanfare();
           fireConfetti();
           showToast('🏁 اكتملت جولة المزاد (4 موضوعات)!', 'حان وقت تتويج بطل الساحة وإعلان النتائج النهائية 👑');
         } else {
           const nextTopic = AUCTION_TOPICS[r4.currentTopicIndex % AUCTION_TOPICS.length];
           r4.currentTopic = nextTopic;
+          r4.topicId = `local-topic-${r4.currentTopicIndex}`;
           r4.highestBid = nextTopic.minBid;
           r4.timer = 60;
           r4.itemsNamed = [];
           r4.phase = 'bidding';
           r4.usedLifelines = { team_a: [], team_b: [] };
+          r4.highestBidderTeam = null;
+          r4.highestBidderPlayerId = null;
         }
 
         return { ...prev, teams, round4: r4 };
@@ -862,6 +1246,9 @@ export function GameProvider({ children }) {
       value={{
         socket,
         isConnected,
+        connectionStatus,
+        connectionStatusMessage: CONNECTION_STATUS_MESSAGES[connectionStatus] || '',
+        reconnect,
         isAudioMuted,
         setIsAudioMuted: () => {
           const muted = sounds.toggleMute();
@@ -876,6 +1263,8 @@ export function GameProvider({ children }) {
         setActiveTabMode,
         toast,
         showToast,
+        actionError,
+        clearActionError,
         fireConfetti,
         roomState,
         setRoomState,
@@ -885,6 +1274,7 @@ export function GameProvider({ children }) {
         startMatchCountdown,
         createRoom,
         joinRoom,
+        updatePlayerProfile,
         addDemoPlayer,
         // Round actions
         r1Score,
@@ -897,6 +1287,7 @@ export function GameProvider({ children }) {
         r2TimeFreeze,
         r3InterceptBuzz,
         r3RecordShot,
+        r3SubmitAnswer,
         r3SelectDuelists,
         r3StartShootout,
         r4Bid,

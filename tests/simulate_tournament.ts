@@ -16,6 +16,8 @@
  * 6. Final Victory Podium & Leaderboard aggregation.
  */
 
+import fs from 'fs';
+import path from 'path';
 import { triviaEngine, CHARACTER_ATTRIBUTES } from '../services/triviaEngine';
 import { CHARACTERS } from '../src/data/characters';
 import { TOURNAMENT_STRUCTURE } from '../src/data/tournamentStructure';
@@ -47,6 +49,19 @@ function assert(condition: boolean, message: string) {
 }
 
 async function simulateTournament() {
+  // The simulation intentionally exhausts some categories, which triggers the
+  // engine's asynchronous fallback. Always restore the production bank even if
+  // the process exits or the simulation fails mid-way.
+  const bankPath = path.resolve('data/questions_bank.json');
+  const originalBankRaw = fs.readFileSync(bankPath, 'utf-8');
+  process.once('exit', () => {
+    try {
+      fs.writeFileSync(bankPath, originalBankRaw, 'utf-8');
+    } catch {
+      // Best-effort cleanup during process shutdown.
+    }
+  });
+
   console.log('\n================================================================================');
   console.log('🏆 QUIZ ARENA (ساحة الكويز) - FULL 4-TEAM TOURNAMENT SIMULATION');
   console.log('================================================================================\n');
@@ -109,6 +124,7 @@ async function simulateTournament() {
   for (const char of CHARACTERS) {
     assert(char.attributes && char.attributes.length > 0, `Character ${char.name} must have primary attributes`);
     assert(!!char.bonus, `Character ${char.name} must have a specialized in-game bonus`);
+    assert(!(char.bonus as any).multiplier, `Character ${char.name} must not have a scoring multiplier`);
     assert(!!CHARACTER_ATTRIBUTES[char.id], `Character ${char.id} must be mapped in engine`);
     console.log(`   ✨ Loaded Player: ${char.avatar} ${char.name} (${char.nickname}) -> [${char.attributes.join(', ')}]`);
   }
@@ -171,11 +187,7 @@ async function simulateTournament() {
         questionsServedInR1.add(q!.id);
 
         subBatchStreak = Math.min(subBatchStreak + 1, 10);
-        let pts = streakLadder[subBatchStreak];
-        if (activePlayer.id === 'fares_elfouly') {
-          pts = Math.round(pts * 1.2); // Fares's +20% bonus
-        }
-        pendingPoints = pts;
+        pendingPoints = streakLadder[subBatchStreak];
       }
 
       // Bank points at the end of the sub-batch

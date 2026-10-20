@@ -8,7 +8,12 @@
  * 4. Character Attribute Targeting accuracy.
  */
 
-import { triviaEngine, CHARACTER_ATTRIBUTES, QuestionItem } from '../services/triviaEngine';
+import {
+  triviaEngine,
+  CHARACTER_ATTRIBUTES,
+  QuestionItem,
+  buildRound1TurnPlan
+} from '../services/triviaEngine';
 import fs from 'fs';
 import path from 'path';
 
@@ -154,63 +159,91 @@ async function main() {
     console.log(`     ↳ Served ${servedIds.size} distinct questions consecutively with 0 repetitions.`);
   });
 
+  const bankPath = path.resolve('data/questions_bank.json');
+  const snapshotBank = () => ({
+    raw: fs.readFileSync(bankPath, 'utf-8'),
+    memory: JSON.parse(JSON.stringify((triviaEngine as any).inMemoryBank))
+  });
+  const restoreBank = (snapshot: { raw: string; memory: QuestionItem[] }) => {
+    fs.writeFileSync(bankPath, snapshot.raw, 'utf-8');
+    (triviaEngine as any).inMemoryBank = snapshot.memory;
+  };
+
   // Test 4: Dynamic Fallback ("القلاية" Low-Inventory Async Replenish)
   await runTest('Dynamic Fallback ("القلاية" Infinite Bank Replenishment)', async () => {
-    const roomId = 'replenish_test_room';
-    triviaEngine.resetRoomSession(roomId);
+    const snapshot = snapshotBank();
+    try {
+      const roomId = 'replenish_test_room';
+      triviaEngine.resetRoomSession(roomId);
 
-    const initialCount = (triviaEngine as any).inMemoryBank.length;
+      const initialCount = (triviaEngine as any).inMemoryBank.length;
 
-    // Trigger replenish directly or through low inventory query
-    await (triviaEngine as any).triggerAsyncReplenish('capitals_and_flags', 'one_two_bank');
+      // Trigger replenish directly or through low inventory query
+      await (triviaEngine as any).triggerAsyncReplenish('capitals_and_flags', 'one_two_bank');
 
-    // Wait 250ms for background replenishment task to process
-    await new Promise(resolve => setTimeout(resolve, 350));
+      // Wait for the background replenishment task to finish, including persistence.
+      await new Promise(resolve => setTimeout(resolve, 450));
 
-    const finalCount = (triviaEngine as any).inMemoryBank.length;
-    assert(finalCount > initialCount, `Bank should have expanded. Initial: ${initialCount}, Final: ${finalCount}`);
-    console.log(`     ↳ Bank expanded from ${initialCount} to ${finalCount} items asynchronously in background.`);
+      const finalCount = (triviaEngine as any).inMemoryBank.length;
+      assert(finalCount > initialCount, `Bank should have expanded. Initial: ${initialCount}, Final: ${finalCount}`);
+      console.log(`     ↳ Bank expanded from ${initialCount} to ${finalCount} items asynchronously in background.`);
+    } finally {
+      restoreBank(snapshot);
+    }
   });
 
   // Test 5: MD5 Content Hashing and Duplicate Insertion Guard
   await runTest('MD5 Content Hashing & Duplicate Ingestion Prevention', () => {
-    const testItem: QuestionItem = {
-      id: 'test-hash-id-1',
-      mode: 'one_two_bank',
-      category: 'general_knowledge',
-      question_text: 'سؤال اختبار الهاش والتكرار',
-      correct_answer: 'نعم',
-      content_hash: 'test_hash_unique_123',
-      is_post_2010_football: false
-    };
+    const snapshot = snapshotBank();
+    try {
+      const testItem: QuestionItem = {
+        id: 'test-hash-id-1',
+        mode: 'one_two_bank',
+        category: 'general_knowledge',
+        question_text: 'سؤال اختبار الهاش والتكرار',
+        correct_answer: 'نعم',
+        content_hash: 'test_hash_unique_123',
+        is_post_2010_football: false
+      };
 
-    // First insertion
-    const addedFirst = triviaEngine.upsertQuestions([testItem]);
-    assert(addedFirst === 1 || addedFirst === 0, 'Initial upsert should execute cleanly');
+      // First insertion
+      const addedFirst = triviaEngine.upsertQuestions([testItem]);
+      assert(addedFirst === 1 || addedFirst === 0, 'Initial upsert should execute cleanly');
 
-    // Second insertion of identical content_hash
-    const addedSecond = triviaEngine.upsertQuestions([testItem]);
-    assert(addedSecond === 0, 'Duplicate content_hash MUST be rejected (0 added)');
-    console.log('     ↳ Duplicate item with identical MD5 hash was successfully rejected.');
+      // Second insertion of identical content_hash
+      const addedSecond = triviaEngine.upsertQuestions([testItem]);
+      assert(addedSecond === 0, 'Duplicate content_hash MUST be rejected (0 added)');
+      console.log('     ↳ Duplicate item with identical MD5 hash was successfully rejected.');
+    } finally {
+      restoreBank(snapshot);
+    }
   });
 
   // Test 6: Category Replacement Audit (Zero CS/Hospitality, 100% General Knowledge)
   await runTest('Category Replacement Audit (Zero computer_science/tourism, valid general_knowledge)', () => {
-    const bankPath = path.resolve('data/questions_bank.json');
     const questions: QuestionItem[] = JSON.parse(fs.readFileSync(bankPath, 'utf-8'));
 
     const forbiddenCategories = ['computer_science', 'programming', 'tourism_and_hospitality', 'tourism_hospitality'];
     const forbiddenMatches = questions.filter(q => forbiddenCategories.includes(q.category));
+    const fillerMatches = questions.filter(q =>
+      String(q.question_text || '').includes('سؤال إضافي متقدم في') ||
+      String(q.correct_answer || '').includes('إجابة صحيحة نموذجية') ||
+      String(q.question_text || '').includes('سؤال اختبار الهاش') ||
+      q.content_hash === 'test_hash_unique_123' ||
+      q.id === 'test-hash-id-1'
+    );
 
     assert(
       forbiddenMatches.length === 0,
       `Found ${forbiddenMatches.length} questions with deprecated categories: ${forbiddenMatches.map(q => q.category).join(', ')}`
     );
+    assert(fillerMatches.length === 0, `Found ${fillerMatches.length} generated filler/test questions in the production bank`);
+    assert(questions.length >= 250, `Expected at least 250 real questions, found ${questions.length}`);
 
     const gkQuestions = questions.filter(q => q.category === 'general_knowledge');
-    assert(gkQuestions.length >= 100, `Expected at least 100 general_knowledge questions, found ${gkQuestions.length}`);
+    assert(gkQuestions.length >= 60, `Expected at least 60 general_knowledge questions, found ${gkQuestions.length}`);
 
-    console.log(`     ↳ Audited bank: 0 obsolete categories found. Active general_knowledge count: ${gkQuestions.length}.`);
+    console.log(`     ↳ Audited bank: ${questions.length} real questions, 0 filler, 0 obsolete categories. Active general_knowledge count: ${gkQuestions.length}.`);
   });
 
   // Test 7: All 7 Character Attribute Profiles & Fallback Verification
@@ -292,6 +325,95 @@ async function main() {
       );
     }
     console.log(`     ↳ Successfully verified 100% synchronization across all ${penaltyCategories.length} penalty categories.`);
+  });
+
+  // Test 9: Round 1 Turn Composition (3 Specialty + 3 Random)
+  await runTest('Round 1 turns are exactly 3 specialty + 3 random slots', () => {
+    const characters = [
+      'fares_elfouly',
+      'ziad_ashraf',
+      'khaled_elbarbakh',
+      'eyad_mohamed',
+      'mazen_hazem',
+      'ali_ahmed'
+    ];
+
+    for (const characterId of characters) {
+      for (let turn = 0; turn < 20; turn++) {
+        const plan = buildRound1TurnPlan(characterId);
+        assert(plan.length === 6, `Turn plan for ${characterId} must contain 6 slots`);
+        assert(
+          plan.filter(slot => slot.slotType === 'specialty').length === 3,
+          `Turn plan for ${characterId} must contain exactly 3 specialty slots`
+        );
+        assert(
+          plan.filter(slot => slot.slotType === 'random').length === 3,
+          `Turn plan for ${characterId} must contain exactly 3 random slots`
+        );
+
+        const specialtyCategories = plan
+          .filter(slot => slot.slotType === 'specialty')
+          .map(slot => slot.category);
+        assert(
+          specialtyCategories.every(Boolean),
+          `Every specialty slot for ${characterId} must have a category`
+        );
+        assert(
+          new Set(specialtyCategories).size === 3,
+          `Specialty slots for ${characterId} must spread across 3 distinct categories`
+        );
+      }
+    }
+    console.log('     ↳ Every R1 turn plan contains 3 specialty + 3 random slots across all characters.');
+  });
+
+  // Test 10: Full Round 1 Quota and Per-Player Distribution
+  await runTest('Round 1 full quota: 48 questions, 24 random, 24 specialty, 12 per player', () => {
+    const roomId = 'round1_full_quota_room';
+    triviaEngine.resetRoomSession(roomId);
+
+    const teamAPlayers = ['fares_elfouly', 'eyad_mohamed'];
+    const teamBPlayers = ['khaled_elbarbakh', 'ziad_ashraf'];
+    const turnPlayers = [
+      teamAPlayers[0], teamAPlayers[1],
+      teamBPlayers[0], teamBPlayers[1],
+      teamAPlayers[0], teamAPlayers[1],
+      teamBPlayers[0], teamBPlayers[1]
+    ];
+    const servedIds = new Set<string>();
+    const perPlayer = new Map<string, number>();
+    let specialtyCount = 0;
+    let randomCount = 0;
+
+    for (const characterId of turnPlayers) {
+      const plan = buildRound1TurnPlan(characterId);
+      for (const slot of plan) {
+        const q = triviaEngine.getQuestionBySlot({
+          roomId,
+          characterId,
+          mode: 'one_two_bank',
+          slotType: slot.slotType,
+          preferredCategory: slot.category
+        });
+        assert(q !== null, `Round 1 question must be served for ${characterId}`);
+        assert(!servedIds.has(q!.id), `Round 1 question ${q!.id} must not repeat`);
+        servedIds.add(q!.id);
+        perPlayer.set(characterId, (perPlayer.get(characterId) || 0) + 1);
+        if (slot.slotType === 'specialty') specialtyCount += 1;
+        else randomCount += 1;
+      }
+    }
+
+    assert(servedIds.size === 48, `Round 1 must serve exactly 48 unique questions, got ${servedIds.size}`);
+    assert(specialtyCount === 24, `Round 1 must serve 24 specialty questions, got ${specialtyCount}`);
+    assert(randomCount === 24, `Round 1 must serve 24 random questions, got ${randomCount}`);
+    for (const characterId of new Set(turnPlayers)) {
+      assert(
+        perPlayer.get(characterId) === 12,
+        `${characterId} must answer exactly 12 Round 1 questions, got ${perPlayer.get(characterId)}`
+      );
+    }
+    console.log('     ↳ Served 48 unique R1 questions: 24 specialty, 24 random, 12 per player.');
   });
 
   // Print Summary

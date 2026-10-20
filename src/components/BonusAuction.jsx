@@ -10,6 +10,8 @@ export default function BonusAuction() {
     currentPlayer,
     r4Bid,
     r4ResolveBid,
+    r4ToggleItem,
+    r4UseLifeline,
     changeRound,
     showToast
   } = useGame();
@@ -24,12 +26,7 @@ export default function BonusAuction() {
 
   const [timeLeft, setTimeLeft] = useState(r4.timer || 60);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [checkedItems, setCheckedItems] = useState({});
-  const [usedLifelines, setUsedLifelines] = useState({
-    callFriend: false,
-    opponentHint: false,
-    opponentHelp: false
-  });
+  const usedLifelines = r4.usedLifelines?.[currentPlayer?.team] || [];
 
   // Countdown timer
   useEffect(() => {
@@ -51,21 +48,18 @@ export default function BonusAuction() {
     return () => clearInterval(interval);
   }, [isTimerRunning, timeLeft]);
 
+  const checkedItems = r4.itemsNamed || [];
   const toggleItemCheck = (item) => {
     sounds.playCorrect();
-    setCheckedItems(prev => ({
-      ...prev,
-      [item]: !prev[item]
-    }));
+    r4ToggleItem(item);
   };
 
-  const countNamed = Object.values(checkedItems).filter(Boolean).length;
+  const countNamed = checkedItems.length;
 
-  const handleUseLifeline = (key, name) => {
-    if (usedLifelines[key]) return;
+  const handleUseLifeline = (lifelineType) => {
+    if (usedLifelines.includes(lifelineType)) return;
     sounds.playWhistle();
-    setUsedLifelines(prev => ({ ...prev, [key]: true }));
-    showToast('تم تفعيل وسيلة المساعدة! 🎁', `استخدمت: ${name}`);
+    r4UseLifeline(lifelineType);
   };
 
   return (
@@ -189,10 +183,10 @@ export default function BonusAuction() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {/* Call a friend */}
               <button
-                onClick={() => handleUseLifeline('callFriend', 'اتصل بصديق 📞')}
-                disabled={usedLifelines.callFriend}
+                onClick={() => handleUseLifeline('call_friend')}
+                disabled={usedLifelines.includes('call_friend')}
                 className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                  usedLifelines.callFriend
+                  usedLifelines.includes('call_friend')
                     ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed'
                     : 'bg-arena-darker hover:bg-arena-cyan/20 border-arena-cyan text-arena-cyan'
                 }`}
@@ -203,10 +197,10 @@ export default function BonusAuction() {
 
               {/* Opponent hint */}
               <button
-                onClick={() => handleUseLifeline('opponentHint', 'هينت من الخصم 💡')}
-                disabled={usedLifelines.opponentHint}
+                onClick={() => handleUseLifeline('rival_hint')}
+                disabled={usedLifelines.includes('rival_hint')}
                 className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                  usedLifelines.opponentHint
+                  usedLifelines.includes('rival_hint')
                     ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed'
                     : 'bg-arena-darker hover:bg-arena-yellow/20 border-arena-yellow text-arena-yellow'
                 }`}
@@ -217,10 +211,10 @@ export default function BonusAuction() {
 
               {/* Opponent help */}
               <button
-                onClick={() => handleUseLifeline('opponentHelp', 'استعين بالخصم 🤝')}
-                disabled={usedLifelines.opponentHelp}
+                onClick={() => handleUseLifeline('opponent_help')}
+                disabled={usedLifelines.includes('opponent_help')}
                 className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                  usedLifelines.opponentHelp
+                  usedLifelines.includes('opponent_help')
                     ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed'
                     : 'bg-arena-darker hover:bg-arena-green/20 border-arena-green text-arena-green'
                 }`}
@@ -284,7 +278,7 @@ export default function BonusAuction() {
 
               <div className="max-h-[360px] overflow-y-auto space-y-1.5 pr-1">
                 {currentTopic.validItems.map((item, idx) => {
-                  const isChecked = !!checkedItems[item];
+                  const isChecked = checkedItems.includes(item);
                   return (
                     <div
                       key={idx}
@@ -316,7 +310,7 @@ export default function BonusAuction() {
                   className="btn-arcade-red py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
-                  <span>فشل في المزاد (-{highestBid * 250}ن)</span>
+                  <span>فشل في المزاد (بدون خصم)</span>
                 </button>
               </div>
             </>

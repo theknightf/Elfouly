@@ -69,7 +69,7 @@ async function runUiAudit() {
   const r2Jsx = fs.readFileSync(path.resolve('src/components/Round2Password.jsx'), 'utf-8');
   check('5. Round 2 Password Mode', '4 Forbidden Words Layout', r2Jsx.includes('forbidden.map') && r2Jsx.includes('الكلمات الممنوعة الأربعة'), 'Renders 4 forbidden words with hazard warning');
   check('5. Round 2 Password Mode', '45s Countdown Timer Bar', r2Jsx.includes('timeLeft') && r2Jsx.includes('toggleTimer'), 'Live ticking timer with urgent audio alerts');
-  check('5. Round 2 Password Mode', 'Host Referee Controller', r2Jsx.includes('نقطة لفريق أ') && r2Jsx.includes('مخالفة على فريق'), 'Buttons for team points and foul penalties');
+  check('5. Round 2 Password Mode', 'Opposing Clue-Giver Referee Console', r2Jsx.includes('isReferee') && r2Jsx.includes('activeTeamKey') && r2Jsx.includes('نقطة لـ') && r2Jsx.includes('مخالفة على'), 'Only the opposing clue-giver can score or call a foul on the active team');
   check('5. Round 2 Password Mode', 'Time Freeze Lifeline', r2Jsx.includes('r2TimeFreeze') && r2Jsx.includes('تجميد +10ث'), 'Ziad El-Fondoqy +10s freeze button');
 
   // 6. Audit Round 3 ("حط في قريبي" / Penalty Shootouts)

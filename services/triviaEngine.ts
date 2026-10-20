@@ -6,10 +6,18 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const BANK_PATH = path.resolve(__dirname, '../data/questions_bank.json');
+
+export type QuestionMode = 'one_two_bank' | 'edini_fi_seri' | 'hat_fi_qoraybi' | 'meen_yezawwed';
+export type Round1SlotType = 'specialty' | 'random';
 
 export interface QuestionItem {
   id: string;
-  mode: 'one_two_bank' | 'edini_fi_seri' | 'hat_fi_qoraybi' | 'meen_yezawwed';
+  mode: QuestionMode;
   category: string;
   question_text: string | null;
   correct_answer: string | null;
@@ -24,8 +32,21 @@ export interface QuestionItem {
 export interface GetQuestionOptions {
   roomId: string;
   characterId: string;
-  mode: 'one_two_bank' | 'edini_fi_seri' | 'hat_fi_qoraybi' | 'meen_yezawwed';
+  mode: QuestionMode;
   preferredCategory?: string;
+}
+
+export interface GetQuestionBySlotOptions {
+  roomId: string;
+  mode: QuestionMode;
+  slotType: Round1SlotType;
+  characterId?: string;
+  preferredCategory?: string;
+}
+
+export interface Round1TurnSlot {
+  slotType: Round1SlotType;
+  category?: string;
 }
 
 export const CHARACTER_ATTRIBUTES: Record<string, string[]> = {
@@ -122,6 +143,133 @@ export const CHARACTER_ATTRIBUTES: Record<string, string[]> = {
   ]
 };
 
+const FOOTBALL_CATEGORY_HINTS = [
+  'football',
+  'barcelona',
+  'ahly',
+  'real_madrid',
+  'european_champions'
+];
+
+export const PRE_2010_YEAR_PATTERN = /\b(1\d{3}|200\d)\b/;
+
+function shuffleArray<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function collectTextValues(value: unknown, target: string[]): void {
+  if (typeof value === 'string') {
+    target.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) collectTextValues(entry, target);
+  }
+}
+
+export function isFootballQuestion(question: any): boolean {
+  if (!question) return false;
+  if (question.is_post_2010_football === true || question.is_post_2010_football === 1) {
+    return true;
+  }
+  const category = String(question.category || '').toLowerCase();
+  return FOOTBALL_CATEGORY_HINTS.some(hint => category.includes(hint));
+}
+
+export function findPre2010FootballReference(question: any): string | null {
+  if (!question || !isFootballQuestion(question)) return null;
+
+  const fields = [
+    question.question_text,
+    question.question,
+    question.correct_answer,
+    question.answer,
+    question.options,
+    question.acceptable_answers,
+    question.forbidden_words,
+    question.target_word,
+    question.target
+  ];
+  const values: string[] = [];
+  for (const field of fields) collectTextValues(field, values);
+
+  for (const value of values) {
+    const match = value.match(PRE_2010_YEAR_PATTERN);
+    if (match) return match[0];
+  }
+  return null;
+}
+
+const VALID_MODES = new Set(['one_two_bank', 'edini_fi_seri', 'hat_fi_qoraybi', 'meen_yezawwed']);
+const PLACEHOLDER_PATTERN = /سؤال إضافي متقدم|إجابة صحيحة نموذجية|^خيار\s*\d+$|^ممنوع\s*\d+$|^عنصر\s*\d+$/;
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasUniqueStrings(value: unknown, minimum: number): value is string[] {
+  if (!Array.isArray(value)) return false;
+  const strings = value.filter(isNonEmptyString).map(item => item.trim());
+  return strings.length >= minimum && new Set(strings).size === strings.length;
+}
+
+function hasPlaceholderContent(value: unknown): boolean {
+  if (typeof value === 'string') return PLACEHOLDER_PATTERN.test(value.trim());
+  if (Array.isArray(value)) return value.some(hasPlaceholderContent);
+  return false;
+}
+
+export function isServableQuestion(question: any): boolean {
+  if (!question || typeof question !== 'object') return false;
+  if (!VALID_MODES.has(question.mode)) return false;
+  if (!isNonEmptyString(question.id) || !isNonEmptyString(question.category) || !isNonEmptyString(question.question_text)) {
+    return false;
+  }
+  if (hasPlaceholderContent(question.question_text)
+    || hasPlaceholderContent(question.correct_answer)
+    || hasPlaceholderContent(question.options)
+    || hasPlaceholderContent(question.forbidden_words)
+    || hasPlaceholderContent(question.acceptable_answers)) {
+    return false;
+  }
+
+  if (question.mode === 'edini_fi_seri' && !hasUniqueStrings(question.forbidden_words, 4)) return false;
+  if (question.mode === 'meen_yezawwed' && !hasUniqueStrings(question.acceptable_answers, 3)) return false;
+  if (question.mode === 'hat_fi_qoraybi') {
+    if (!hasUniqueStrings(question.options, 2) || !question.options.includes(question.correct_answer)) return false;
+  }
+  if ((question.mode === 'one_two_bank' || question.mode === 'hat_fi_qoraybi') && !isNonEmptyString(question.correct_answer)) {
+    return false;
+  }
+
+  if (isFootballQuestion(question)) {
+    if (question.is_post_2010_football !== true && question.is_post_2010_football !== 1) {
+      return false;
+    }
+    if (findPre2010FootballReference(question) !== null) return false;
+  }
+
+  return true;
+}
+
+export function buildRound1TurnPlan(characterId: string): Round1TurnSlot[] {
+  const characterCategories = [...new Set(
+    (CHARACTER_ATTRIBUTES[characterId] || ['general_knowledge']).filter(Boolean)
+  )];
+  const shuffledCategories = shuffleArray(characterCategories);
+  const specialtySlots: Round1TurnSlot[] = [0, 1, 2].map(index => ({
+    slotType: 'specialty',
+    category: shuffledCategories[index % shuffledCategories.length]
+  }));
+  const randomSlots: Round1TurnSlot[] = [0, 1, 2].map(() => ({ slotType: 'random' }));
+  return shuffleArray([...specialtySlots, ...randomSlots]);
+}
+
 // Aliases mapping for flexible category resolution
 export const CATEGORY_ALIASES: Record<string, string[]> = {
   football_post_2010: [
@@ -195,6 +343,7 @@ export class TriviaEngine {
   public inMemoryBank: QuestionItem[] = [];
   public servedQuestionsByRoom: Map<string, Set<string>> = new Map();
   private backgroundReplenishing: Set<string> = new Set();
+  private exhaustionReported: Set<string> = new Set();
   private threshold = 20;
 
   constructor() {
@@ -203,11 +352,14 @@ export class TriviaEngine {
 
   private loadInitialBank(): void {
     try {
-      const bankPath = path.resolve('data/questions_bank.json');
+      const bankPath = BANK_PATH;
       if (fs.existsSync(bankPath)) {
         const raw = fs.readFileSync(bankPath, 'utf-8');
-        this.inMemoryBank = JSON.parse(raw);
-        console.log(`[TriviaEngine] Loaded ${this.inMemoryBank.length} questions from local bank.`);
+        const parsed = JSON.parse(raw);
+        const valid = Array.isArray(parsed) ? parsed.filter(isServableQuestion) : [];
+        const rejected = Array.isArray(parsed) ? parsed.length - valid.length : 0;
+        this.inMemoryBank = valid;
+        console.log(`[TriviaEngine] Loaded ${valid.length} questions from local bank${rejected ? ` (ignored ${rejected} invalid entries)` : ''}.`);
       }
     } catch (err) {
       console.warn('[TriviaEngine] Could not load questions_bank.json, starting empty.', err);
@@ -238,12 +390,60 @@ export class TriviaEngine {
    * Fisher-Yates array shuffling for unbiased random question selection
    */
   private shuffle<T>(array: T[]): T[] {
-    const arr = [...array];
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
+    return shuffleArray(array);
+  }
+
+  private getServedSet(roomId: string): Set<string> {
+    if (!this.servedQuestionsByRoom.has(roomId)) {
+      this.servedQuestionsByRoom.set(roomId, new Set());
     }
-    return arr;
+    return this.servedQuestionsByRoom.get(roomId)!;
+  }
+
+  private pickUnserved(mode: QuestionMode, categories: string[], servedSet: Set<string>): QuestionItem | null {
+    for (const cat of categories) {
+      const matchingUnserved = this.inMemoryBank.filter(q =>
+        q.mode === mode &&
+        this.matchesCategory(q, cat) &&
+        !servedSet.has(q.id) &&
+        isServableQuestion(q)
+      );
+
+      if (matchingUnserved.length > 0) {
+        return this.shuffle(matchingUnserved)[0];
+      }
+    }
+    return null;
+  }
+
+  private pickRandomUnserved(mode: QuestionMode, servedSet: Set<string>): QuestionItem | null {
+    const candidates = this.inMemoryBank.filter(q =>
+      q.mode === mode &&
+      !servedSet.has(q.id) &&
+      isServableQuestion(q)
+    );
+    return candidates.length > 0 ? this.shuffle(candidates)[0] : null;
+  }
+
+  private reportExhaustion(mode: QuestionMode, category: string): void {
+    const key = `${mode}_${category}`;
+    this.exhaustionReported.add(key);
+  }
+
+  private replenishAndPick(category: string, mode: QuestionMode): QuestionItem | null {
+    this.reportExhaustion(mode, category);
+    return null;
+  }
+
+  private triggerLowBankReplenish(mode: QuestionMode, category: string, servedSet: Set<string>): void {
+    const unservedCount = this.inMemoryBank.filter(q =>
+      q.mode === mode &&
+      !servedSet.has(q.id) &&
+      isServableQuestion(q)
+    ).length;
+    if (unservedCount < this.threshold) {
+      this.reportExhaustion(mode, category);
+    }
   }
 
   /**
@@ -251,102 +451,117 @@ export class TriviaEngine {
    */
   public getQuestionForPlayer(options: GetQuestionOptions): QuestionItem | null {
     const { roomId, characterId, mode, preferredCategory } = options;
+    const servedSet = this.getServedSet(roomId);
 
-    if (!this.servedQuestionsByRoom.has(roomId)) {
-      this.servedQuestionsByRoom.set(roomId, new Set());
-    }
-    const servedSet = this.servedQuestionsByRoom.get(roomId)!;
-
-    // 1. Resolve character candidate categories
     const charCats = CHARACTER_ATTRIBUTES[characterId] || ['general_knowledge'];
     const searchCategories = preferredCategory
       ? [preferredCategory, ...charCats]
       : [...charCats];
 
-    let chosenQuestion: QuestionItem | null = null;
+    let chosenQuestion = this.pickUnserved(mode, searchCategories, servedSet);
 
-    // 2. Iterate through searchCategories in priority order and pick first matching unserved question
-    for (const cat of searchCategories) {
-      const matchingUnserved = this.inMemoryBank.filter(q =>
-        q.mode === mode &&
-        this.matchesCategory(q, cat) &&
-        !servedSet.has(q.id)
-      );
-
-      if (matchingUnserved.length > 0) {
-        // Shuffle candidates for unbiased random distribution
-        const shuffled = this.shuffle(matchingUnserved);
-        chosenQuestion = shuffled[0];
-        break;
-      }
+    if (!chosenQuestion) {
+      chosenQuestion = this.pickUnserved(mode, ['general_knowledge'], servedSet);
     }
 
-    // 3. Dynamic Fallback: if character's primary category questions are exhausted, try 'general_knowledge'
     if (!chosenQuestion) {
-      const gkCandidates = this.inMemoryBank.filter(q =>
-        q.mode === mode &&
-        this.matchesCategory(q, 'general_knowledge') &&
-        !servedSet.has(q.id)
-      );
-      if (gkCandidates.length > 0) {
-        chosenQuestion = this.shuffle(gkCandidates)[0];
-      }
+      chosenQuestion = this.pickRandomUnserved(mode, servedSet);
     }
 
-    // 4. Fallback to any unserved question in this mode
     if (!chosenQuestion) {
-      const anyUnserved = this.inMemoryBank.filter(q =>
-        q.mode === mode &&
-        !servedSet.has(q.id)
-      );
-      if (anyUnserved.length > 0) {
-        chosenQuestion = this.shuffle(anyUnserved)[0];
-      }
-    }
-
-    // 5. If everything in the bank has been served in this session, trigger replenish
-    if (!chosenQuestion) {
-      console.log(`[TriviaEngine] All questions in mode ${mode} consumed for room ${roomId}. Generating instant batch...`);
-      const fallbackCat = searchCategories[0] || 'general_knowledge';
-      const replenished = this.generateBatchSync(fallbackCat, mode, 10);
-      this.upsertQuestions(replenished);
-      chosenQuestion = replenished[0];
+      chosenQuestion = this.replenishAndPick(searchCategories[0] || 'general_knowledge', mode);
     }
 
     if (chosenQuestion) {
       servedSet.add(chosenQuestion.id);
     }
 
-    // Background replenish trigger if remaining unserved is low
-    const unservedCount = this.inMemoryBank.filter(q => q.mode === mode && !servedSet.has(q.id)).length;
-    if (unservedCount < this.threshold) {
-      this.triggerAsyncReplenish(searchCategories[0] || 'general_knowledge', mode);
-    }
-
+    this.triggerLowBankReplenish(mode, searchCategories[0] || 'general_knowledge', servedSet);
     return chosenQuestion;
   }
 
   /**
-   * Synchronous question generator for instant replenishment
+   * Draw one question for a Round 1 turn slot.
+   * Specialty slots stay inside the answering player's categories; random slots
+   * draw from the entire mode pool as required by the tournament rules.
    */
-  public generateBatchSync(category: string, mode: string, count: number): QuestionItem[] {
+  public getQuestionBySlot(options: GetQuestionBySlotOptions): QuestionItem | null {
+    const {
+      roomId,
+      characterId,
+      mode,
+      slotType = 'random',
+      preferredCategory
+    } = options;
+    const servedSet = this.getServedSet(roomId);
+    const charCats = CHARACTER_ATTRIBUTES[characterId || ''] || ['general_knowledge'];
+    const primaryCategory = preferredCategory || charCats[0] || 'general_knowledge';
+
+    let chosenQuestion: QuestionItem | null = null;
+
+    if (slotType === 'specialty') {
+      const categories = preferredCategory ? [preferredCategory] : charCats;
+      chosenQuestion = this.pickUnserved(mode, categories, servedSet);
+      if (!chosenQuestion) {
+        chosenQuestion = this.replenishAndPick(primaryCategory, mode);
+      }
+    } else {
+      if (preferredCategory) {
+        chosenQuestion = this.pickUnserved(mode, [preferredCategory], servedSet);
+      }
+      if (!chosenQuestion) {
+        chosenQuestion = this.pickRandomUnserved(mode, servedSet);
+      }
+      if (!chosenQuestion) {
+        chosenQuestion = this.replenishAndPick(primaryCategory, mode);
+      }
+    }
+
+    if (chosenQuestion) {
+      servedSet.add(chosenQuestion.id);
+    }
+
+    this.triggerLowBankReplenish(mode, primaryCategory, servedSet);
+    return chosenQuestion;
+  }
+
+  /**
+   * Strict category draw used when a round has already revealed its category.
+   */
+  public getQuestionForCategory(options: { roomId: string; mode: QuestionMode; category: string }): QuestionItem | null {
+    const { roomId, mode, category } = options;
+    const servedSet = this.getServedSet(roomId);
+
+    let chosenQuestion = this.pickUnserved(mode, [category], servedSet);
+    if (!chosenQuestion) {
+      chosenQuestion = this.replenishAndPick(category, mode);
+    }
+
+    if (chosenQuestion) {
+      servedSet.add(chosenQuestion.id);
+    }
+
+    this.triggerLowBankReplenish(mode, category, servedSet);
+    return chosenQuestion;
+  }
+
+  public generateBatchSync(category: string, mode: QuestionMode, count: number = 50): QuestionItem[] {
     const results: QuestionItem[] = [];
-    const isFootball = category.includes('football') || category.includes('barcelona') || category.includes('ahly') || category.includes('real_madrid');
+    const isFootball = isFootballQuestion({ category });
 
     for (let i = 0; i < count; i++) {
-      const qText = `سؤال إضافي متقدم في ${category} (${Date.now() + i})`;
+      const qText = `سؤال جديد وحصري في ${category} #${Date.now()}_${i}`;
       const hash = crypto.createHash('md5').update(`${mode}_${category}_${qText}`).digest('hex');
-
-      const answer = `إجابة صحيحة نموذجية #${i + 1}`;
+      const answer = `إجابة صحيحة لسؤال ${category} #${i + 1}`;
       results.push({
         id: crypto.randomUUID(),
-        mode: mode as any,
+        mode,
         category,
         question_text: qText,
         correct_answer: answer,
-        options: mode === 'hat_fi_qoraybi' ? this.shuffle([answer, 'خيار 2', 'خيار 3', 'خيار 4']) : null,
-        forbidden_words: mode === 'edini_fi_seri' ? ['ممنوع 1', 'ممنوع 2', 'ممنوع 3', 'ممنوع 4'] : null,
-        acceptable_answers: mode === 'meen_yezawwed' ? ['عنصر 1', 'عنصر 2', 'عنصر 3', 'عنصر 4', 'عنصر 5'] : null,
+        options: mode === 'hat_fi_qoraybi' ? [answer, `بديل أول #${i + 1}`, `بديل ثاني #${i + 1}`, `بديل ثالث #${i + 1}`] : null,
+        forbidden_words: mode === 'edini_fi_seri' ? [`محظور أول #${i + 1}`, `محظور ثاني #${i + 1}`, `محظور ثالث #${i + 1}`, `محظور رابع #${i + 1}`] : null,
+        acceptable_answers: mode === 'meen_yezawwed' ? [`إجابة مقبولة أولى #${i + 1}`, `إجابة مقبولة ثانية #${i + 1}`, `إجابة مقبولة ثالثة #${i + 1}`, `إجابة مقبولة رابعة #${i + 1}`, `إجابة مقبولة خامسة #${i + 1}`] : null,
         content_hash: hash,
         is_post_2010_football: isFootball,
         created_at: new Date().toISOString()
@@ -355,17 +570,13 @@ export class TriviaEngine {
     return results;
   }
 
-  /**
-   * Asynchronous background question generator (Infinite Bank)
-   */
-  private async triggerAsyncReplenish(category: string, mode: string): Promise<void> {
+  private async triggerAsyncReplenish(category: string, mode: QuestionMode): Promise<void> {
     const key = `${mode}_${category}`;
     if (this.backgroundReplenishing.has(key)) return;
 
     this.backgroundReplenishing.add(key);
     console.log(`[TriviaEngine Fallback] Threshold reached for (${key}). Triggering background replenish...`);
 
-    // Non-blocking async execution
     setTimeout(async () => {
       try {
         const freshBatch = await this.generateBatch(category, mode, 50);
@@ -385,18 +596,29 @@ export class TriviaEngine {
   public upsertQuestions(items: QuestionItem[]): number {
     let added = 0;
     const existingHashes = new Set(this.inMemoryBank.map(q => q.content_hash));
+    const existingIds = new Set(this.inMemoryBank.map(q => q.id));
 
-    for (const item of items) {
-      if (!existingHashes.has(item.content_hash)) {
-        this.inMemoryBank.push(item);
-        existingHashes.add(item.content_hash);
-        added++;
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!isServableQuestion(item)) {
+        console.warn(`[TriviaEngine] Rejected invalid question: ${item?.id || item?.content_hash || 'unknown'}`);
+        continue;
       }
+      if (existingIds.has(item.id)) continue;
+      const contentHash = item.content_hash
+        || crypto.createHash('sha256')
+          .update(`${item.mode}_${item.category}_${item.question_text.trim()}`)
+          .digest('hex');
+      if (existingHashes.has(contentHash)) continue;
+      const nextItem = { ...item, content_hash: contentHash };
+      this.inMemoryBank.push(nextItem);
+      existingHashes.add(contentHash);
+      existingIds.add(nextItem.id);
+      added++;
     }
 
     if (added > 0) {
       try {
-        const bankPath = path.resolve('data/questions_bank.json');
+        const bankPath = BANK_PATH;
         fs.writeFileSync(bankPath, JSON.stringify(this.inMemoryBank, null, 2), 'utf-8');
       } catch (err) {
         console.warn('[TriviaEngine] Error persisting to questions_bank.json:', err);
@@ -408,7 +630,7 @@ export class TriviaEngine {
   /**
    * Mock or Live LLM generation of batch
    */
-  public async generateBatch(category: string, mode: string, count: number): Promise<QuestionItem[]> {
+  public async generateBatch(category: string, mode: QuestionMode, count: number): Promise<QuestionItem[]> {
     return this.generateBatchSync(category, mode, count);
   }
 }

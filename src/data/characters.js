@@ -13,9 +13,9 @@ export const CHARACTERS = [
     attributes: ['football_post_2010', 'capitals_and_flags', 'general_knowledge'],
     attributesDisplay: ['كرة قدم بعد 2010 ⚽', 'عواصم وأعلام الدول 🌍', 'معلومات عامة ومنوعات 💡'],
     bonus: {
-      title: 'بونص الفولي +20%',
-      description: 'مضاعف +20% على أسئلة الجغرافيا والمعلومات العامة السريعة',
-      multiplier: 1.2,
+      title: 'بوصلة الفولي',
+      description: 'معاينة تصنيف السؤال قبل بدء العد التنازلي (بدون أي مضاعف نقاط)',
+      categoryPeek: true,
       appliedCategories: ['capitals_and_flags', 'general_knowledge', 'football_post_2010']
     }
   },

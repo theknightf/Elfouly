@@ -1,28 +1,211 @@
+import 'dotenv/config';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import { CHARACTERS, TEAMS } from '../src/data/characters.js';
-import { TRIVIA_BANK, PASSWORD_WORDS, PENALTY_QUESTIONS, AUCTION_TOPICS, PENALTY_CATEGORIES } from '../src/data/questions.js';
-import { TOURNAMENT_STRUCTURE, TOURNAMENT_CONFIG } from '../src/data/tournamentStructure.js';
-import { triviaEngine } from '../services/triviaEngine.js';
+import crypto from 'crypto';
+import { pathToFileURL } from 'url';
+import { CHARACTERS } from '../src/data/characters.js';
+import { PASSWORD_WORDS, AUCTION_TOPICS, PENALTY_CATEGORIES } from '../src/data/questions.js';
+import { TOURNAMENT_STRUCTURE } from '../src/data/tournamentStructure.js';
+import { triviaEngine, buildRound1TurnPlan } from '../services/triviaEngine.js';
+
+// Resolve CORS allowed origins
+const rawAllowedOrigins = process.env.ALLOWED_ORIGINS;
+let corsOrigins;
+
+if (rawAllowedOrigins && rawAllowedOrigins.trim() !== '') {
+  const parsed = rawAllowedOrigins
+    .split(',')
+    .map(s => s.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  corsOrigins = parsed.length === 1 ? parsed[0] : parsed;
+} else {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ [CONFIGURATION ERROR] ALLOWED_ORIGINS is required in production. Set it to the exact frontend origin(s), separated by commas.');
+    process.exit(1);
+  }
+  corsOrigins = '*';
+}
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: corsOrigins,
+  methods: ['GET', 'POST']
+}));
 app.use(express.json());
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: '*',
+    origin: corsOrigins,
     methods: ['GET', 'POST']
-  }
+  },
+  pingInterval: 20000,
+  pingTimeout: 25000
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
 
 // Global rooms store
 const rooms = new Map();
+
+// =================== ROOM / RECONNECT CONSTANTS ===================
+const DISCONNECT_GRACE_MS = 20000;
+const JOIN_RATE_LIMIT = 10;
+const JOIN_RATE_WINDOW_MS = 60000;
+const JOIN_ATTEMPTS = new Map();
+const LAST_CHAT_AT = new Map();
+const LOBBY_STATUSES = ['lobby', 'waiting'];
+const MATCH_STATUSES = ['round1', 'round2', 'round3', 'round4', 'game_over'];
+const TARGET_ROUNDS = ['lobby', 'round1', 'round2', 'round3', 'round4', 'game_over'];
+const MAX_ROOM_PLAYERS = 4;
+const TEAM_PLAYERS = 2;
+const MAX_CHAT_LENGTH = 240;
+const CHAT_RATE_LIMIT_MS = 500;
+const ROOM_CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'; // no 0, O, 1, I, L
+
+function sanitizePlayerName(inputName) {
+  if (typeof inputName !== 'string') return '';
+  return inputName
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 20);
+}
+
+function createPlayerToken() {
+  return crypto.randomUUID();
+}
+
+function getTeamCounts(room) {
+  const counts = { team_a: 0, team_b: 0 };
+  for (const player of room.players) {
+    if (counts[player.team] !== undefined) counts[player.team] += 1;
+  }
+  return counts;
+}
+
+// The server always decides the team. A preference is honoured only while
+// that team still has room; every team is capped at 2 players.
+function pickTeamForNewPlayer(room, teamPreference) {
+  const counts = getTeamCounts(room);
+  const preferred = teamPreference === 'team_a' || teamPreference === 'team_b'
+    ? teamPreference
+    : null;
+
+  if (preferred && counts[preferred] < TEAM_PLAYERS) return preferred;
+
+  if (preferred) {
+    const other = preferred === 'team_a' ? 'team_b' : 'team_a';
+    if (counts[other] < TEAM_PLAYERS) return other;
+    return null;
+  }
+
+  if (counts.team_a < TEAM_PLAYERS) return 'team_a';
+  if (counts.team_b < TEAM_PLAYERS) return 'team_b';
+  return null;
+}
+
+function resolveCharacterForPlayer(room, characterId, socketId = null) {
+  const takenByAnother = (charId) => room.players.some(
+    p => p.character?.id === charId && p.id !== socketId
+  );
+
+  if (characterId) {
+    const character = CHARACTERS.find(c => c.id === characterId);
+    if (!character) {
+      return { error: 'الشخصية دي مش موجودة في الساحة! اختار شخصية تانية — Character not found.' };
+    }
+    if (takenByAnother(character.id)) {
+      return { error: 'الشخصية دي محجوزة بالفعل! اختار شخصية تانية — Character already taken.' };
+    }
+    return { character };
+  }
+
+  const available = CHARACTERS.find(c => !takenByAnother(c.id));
+  if (!available) {
+    return { error: 'كل الشخصيات محجوزة بالفعل! — All characters are taken.' };
+  }
+  return { character: available };
+}
+
+function getStartReadiness(room) {
+  const teamA = room.players.filter(p => p.team === 'team_a');
+  const teamB = room.players.filter(p => p.team === 'team_b');
+
+  if (room.players.length !== MAX_ROOM_PLAYERS) {
+    return {
+      ok: false,
+      message: `العدد مش مكتمل! لازم ${MAX_ROOM_PLAYERS} لاعبين بالظبط، والتوزيع ${TEAM_PLAYERS} ضد ${TEAM_PLAYERS} (${room.players.length}/${MAX_ROOM_PLAYERS}).`
+    };
+  }
+
+  if (teamA.length !== TEAM_PLAYERS || teamB.length !== TEAM_PLAYERS) {
+    return {
+      ok: false,
+      message: `التوزيع مش ${TEAM_PLAYERS} ضد ${TEAM_PLAYERS}! لازم فريقين كل واحد فيهم ${TEAM_PLAYERS} لاعبين بالظبط (${teamA.length} ضد ${teamB.length}).`
+    };
+  }
+
+  const offlineHumans = room.players.filter(p => !p.isBot && p.connected === false);
+  if (offlineHumans.length > 0) {
+    return {
+      ok: false,
+      message: `كل اللاعبين لازم يكونوا متصلين! في لاعب مش متصل: ${offlineHumans.map(p => p.name).join('، ')}.`
+    };
+  }
+
+  return { ok: true };
+}
+
+function isJoinRateLimited(socketId) {
+  const now = Date.now();
+  const attempts = (JOIN_ATTEMPTS.get(socketId) || []).filter(t => now - t < JOIN_RATE_WINDOW_MS);
+
+  if (attempts.length >= JOIN_RATE_LIMIT) {
+    JOIN_ATTEMPTS.set(socketId, attempts);
+    return true;
+  }
+
+  attempts.push(now);
+  JOIN_ATTEMPTS.set(socketId, attempts);
+  return false;
+}
+
+function emitActionError(socket, message, field = null, action = null) {
+  socket.emit('error_message', message);
+  socket.emit('action_error', { message, field, action, at: Date.now() });
+}
+
+function remapPlayerId(room, oldId, newId) {
+  if (!oldId || oldId === newId) return;
+
+  const oldSamples = playerLatencySamples.get(oldId);
+  if (oldSamples) {
+    playerLatencySamples.set(newId, oldSamples);
+    playerLatencySamples.delete(oldId);
+  }
+
+  for (const roundKey of ROUND_KEYS) {
+    const state = room[roundKey];
+    if (!state) continue;
+
+    if (state.refereePlayerId === oldId) state.refereePlayerId = newId;
+    if (Array.isArray(state.refereeQueue)) {
+      state.refereeQueue = state.refereeQueue.map(id => (id === oldId ? newId : id));
+    }
+    if (state.readerPlayerId === oldId) state.readerPlayerId = newId;
+    if (state.answeringPlayerId === oldId) state.answeringPlayerId = newId;
+    if (state.activeClueGiverA === oldId) state.activeClueGiverA = newId;
+    if (state.activeClueGiverB === oldId) state.activeClueGiverB = newId;
+    if (state.currentKickerId === oldId) state.currentKickerId = newId;
+    if (state.currentGoalieId === oldId) state.currentGoalieId = newId;
+    if (state.highestBidderPlayerId === oldId) state.highestBidderPlayerId = newId;
+    if (state.interceptBuzzedBy === oldId) state.interceptBuzzedBy = newId;
+  }
+}
 
 // =================== REFEREE / ANTI-CHEAT ENGINE ===================
 // A referee device is the ONLY device allowed to grade the current round.
@@ -30,7 +213,70 @@ const rooms = new Map();
 // for this grace period, the server rotates refereeing to the next device.
 const REFEREE_FAILOVER_MS = 6000; // inside the required 5-8 seconds window
 const REFEREE_WATCHDOG_MS = 2000;
-const R3_TIE_WINDOW_MS = 300; // both clicks inside this window require neutral confirmation
+export const R3_TIE_WINDOW_MS = 300; // both clicks inside this window require neutral confirmation
+export const MAX_LATENCY_COMPENSATION_MS = 250;
+export const LATENCY_SAMPLE_TTL_MS = 15000;
+
+// =================== FAIR TIMING (ROUND 3 INTERNET LATENCY) ===================
+export const playerLatencySamples = new Map(); // socket.id -> [{ rtt: number, timestamp: number }]
+
+export function recordPlayerRtt(socketId, rtt) {
+  if (typeof rtt !== 'number' || isNaN(rtt) || rtt < 0) return;
+  const now = Date.now();
+  let samples = playerLatencySamples.get(socketId) || [];
+  samples = samples.filter(s => now - s.timestamp <= LATENCY_SAMPLE_TTL_MS);
+  samples.push({ rtt, timestamp: now });
+  if (samples.length > 5) samples = samples.slice(-5);
+  playerLatencySamples.set(socketId, samples);
+}
+
+export function getPlayerSmoothedRtt(socketId) {
+  const now = Date.now();
+  const samples = (playerLatencySamples.get(socketId) || []).filter(s => now - s.timestamp <= LATENCY_SAMPLE_TTL_MS);
+  if (samples.length === 0) return 0;
+  const sorted = samples.map(s => s.rtt).sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+export function getPlayerCompensation(socketId) {
+  const smoothedRtt = getPlayerSmoothedRtt(socketId);
+  return Math.min(MAX_LATENCY_COMPENSATION_MS, Math.max(0, smoothedRtt / 2));
+}
+
+export function resolveShootoutTimings({
+  answerAt,
+  interceptAt,
+  kickerCompensation = 0,
+  goalieCompensation = 0,
+  isCorrect = true,
+  tieWindowMs = R3_TIE_WINDOW_MS
+}) {
+  const answerCompensatedAt = answerAt - kickerCompensation;
+  const interceptCompensatedAt = interceptAt != null ? (interceptAt - goalieCompensation) : null;
+
+  let provisional;
+  if (isCorrect) {
+    provisional = (interceptCompensatedAt != null && interceptCompensatedAt < answerCompensatedAt)
+      ? 'saved'
+      : 'goal';
+  } else {
+    provisional = interceptCompensatedAt != null ? 'saved' : 'missed';
+  }
+
+  const bothClicked = interceptAt != null;
+  const nearlySimultaneous = bothClicked && Math.abs(answerCompensatedAt - interceptCompensatedAt) <= tieWindowMs;
+
+  return {
+    provisional,
+    nearlySimultaneous,
+    answerCompensatedAt,
+    interceptCompensatedAt
+  };
+}
+
 const ROUND_KEYS = ['round1', 'round2', 'round3', 'round4'];
 
 function createRefereeSlot() {
@@ -48,6 +294,17 @@ function isConnectedHuman(player) {
   return !!player && !player.isBot && player.connected !== false;
 }
 
+function getR2ActiveTurnTeam(room) {
+  return room?.round2?.activeTurnTeam === 'team_b' ? 'team_b' : 'team_a';
+}
+
+function getR2RefereeId(room) {
+  const activeTeam = getR2ActiveTurnTeam(room);
+  return activeTeam === 'team_a'
+    ? room?.round2?.activeClueGiverB || null
+    : room?.round2?.activeClueGiverA || null;
+}
+
 function getRoundRefereePool(room, roundKey) {
   const humans = room.players.filter(isConnectedHuman);
 
@@ -56,8 +313,10 @@ function getRoundRefereePool(room, roundKey) {
   }
 
   if (roundKey === 'round2') {
-    const clueGiverIds = [room.round2.activeClueGiverA, room.round2.activeClueGiverB];
-    return humans.filter(p => !clueGiverIds.includes(p.id));
+    // The only judge is the opposing team's clue-giver for the active turn.
+    // Guessers must never hold the secret card or the judging console.
+    const refereeId = getR2RefereeId(room);
+    return humans.filter(p => p.id === refereeId);
   }
 
   if (roundKey === 'round3') {
@@ -112,6 +371,22 @@ function assignReferee(room, roundKey, { rotate = false, reason = 'assign', excl
   if (!state) return null;
 
   const previousId = state.refereePlayerId;
+
+  if (roundKey === 'round2') {
+    // Password mode has a fixed judge for the active clue turn: the opposing
+    // clue-giver. There is no independent referee rotation and never a fallback
+    // to a guesser, because that would leak the secret card.
+    const candidateId = getR2RefereeId(room);
+    const candidate = room.players.find(p => p.id === candidateId && isConnectedHuman(p));
+    state.refereePlayerId = candidate?.id || null;
+    state.refereeQueue = candidate ? [candidate.id] : [];
+    state.refereeAssignedAt = Date.now();
+    state.refereeLastSeen = Date.now();
+    state.refereeFallback = false;
+    if (reason === 'failover') state.refereeFailovers = (state.refereeFailovers || 0) + 1;
+    return { previousId, refereeId: state.refereePlayerId, fallback: false, reason };
+  }
+
   const { refereeId, poolIds, fallback } = pickRefereeId(room, roundKey, { rotate, excludeIds });
 
   state.refereePlayerId = refereeId || null;
@@ -172,11 +447,19 @@ function notifyRefereeChange(room, roundKey, previousId, reason) {
 // for players who are not the current referee (or, in Password mode, clue givers).
 function sanitizeRoomForViewer(room, socketId) {
   // countdownInterval is a Node timer with circular internals; never serialize it.
-  const snapshot = JSON.parse(JSON.stringify({ ...room, countdownInterval: null }));
+  // Player tokens and disconnect timers are private server-side reconnect data.
+  const roomData = { ...room };
+  delete roomData.countdownInterval;
+  delete roomData.disconnectTimers;
+  const snapshot = JSON.parse(JSON.stringify({ ...roomData, countdownInterval: null }));
+  snapshot.players = (snapshot.players || []).map(player => {
+    delete player.playerToken;
+    delete player.disconnectAt;
+    return player;
+  });
   const viewer = room.players.find(p => p.id === socketId);
 
   const r1Ref = room.round1?.refereePlayerId === socketId;
-  const r2Ref = room.round2?.refereePlayerId === socketId;
   const r3Ref = room.round3?.refereePlayerId === socketId;
   const r4Ref = room.round4?.refereePlayerId === socketId;
   const r2ClueGiver =
@@ -187,12 +470,12 @@ function sanitizeRoomForViewer(room, socketId) {
     snapshot.round1.currentQuestion.answer = null;
   }
 
-  if (!r2Ref && !r2ClueGiver) {
+  if (!r2ClueGiver) {
     snapshot.round2.currentWord = {
       target: '🤫 محجوبة',
       forbidden: ['••••', '••••', '••••', '••••'],
       category: 'سري',
-      clueIdea: 'الكلمة السرية مرئية فقط للحكم والمرشدين.',
+      clueIdea: 'الكلمة السرية مرئية فقط لمرشدي الفريقين في هذه البطاقة.',
       redacted: true
     };
   }
@@ -229,30 +512,32 @@ function emitRoomState(room) {
   }
 }
 
-// Helper to generate a unique 6-character alphanumeric room code (e.g., QZ-7842)
+// Helper to generate a unique 6-character alphanumeric room code (e.g., QZ-AB2C9D)
 function generateRoomCode() {
-  const digits = '0123456789';
-  let num = '';
-  for (let i = 0; i < 4; i++) {
-    num += digits.charAt(Math.floor(Math.random() * digits.length));
+  let body = '';
+  for (let i = 0; i < 6; i++) {
+    body += ROOM_CODE_ALPHABET.charAt(crypto.randomInt(0, ROOM_CODE_ALPHABET.length));
   }
-  return `QZ-${num}`;
+  return `QZ-${body}`;
 }
 
-// Flexible room lookup supporting hyphenated and raw codes
+// Flexible room lookup supporting hyphenated and raw codes, with or without QZ prefix
 function findRoom(inputCode) {
   if (!inputCode) return null;
-  const clean = String(inputCode).toUpperCase().trim();
+  const clean = String(inputCode).toUpperCase().trim().replace(/\s+/g, '');
+  if (!clean) return null;
   if (rooms.has(clean)) return rooms.get(clean);
 
-  // Try formatted with hyphen (e.g. QZ7842 -> QZ-7842)
-  if (!clean.includes('-') && clean.startsWith('QZ') && clean.length === 6) {
-    const formatted = `QZ-${clean.slice(2)}`;
+  const stripped = clean.replace(/-/g, '');
+  const body = stripped.startsWith('QZ') ? stripped.slice(2) : stripped;
+
+  // Try formatted with hyphen (e.g. QZAB2C9D or AB2C9D -> QZ-AB2C9D)
+  if (body.length === 6) {
+    const formatted = `QZ-${body}`;
     if (rooms.has(formatted)) return rooms.get(formatted);
   }
 
   // Search case-insensitively ignoring hyphens
-  const stripped = clean.replace(/-/g, '');
   for (const [key, val] of rooms.entries()) {
     if (key.replace(/-/g, '') === stripped) {
       return val;
@@ -261,14 +546,52 @@ function findRoom(inputCode) {
   return null;
 }
 
+function stopCountdown(room, reason = null) {
+  if (!room?.countdownInterval) return false;
+  clearInterval(room.countdownInterval);
+  room.countdownInterval = null;
+  room.countdown = null;
+  if (reason) {
+    io.to(room.code).emit('countdown_cancelled', { reason });
+  }
+  return true;
+}
+
+function isValidActionToken(expectedToken, receivedToken) {
+  if (!expectedToken) return true;
+  if (receivedToken === undefined || receivedToken === null) return true;
+  return typeof receivedToken === 'string' && receivedToken === expectedToken;
+}
+
+function requireRoundStatus(room, expectedStatus, socket, actionLabel) {
+  if (room?.status === expectedStatus) return true;
+  socket.emit('error_message', `🚫 ${actionLabel} متاح في ${expectedStatus} فقط.`);
+  return false;
+}
+
+function getRoomAndPlayer(roomCode, socket) {
+  const room = findRoom(roomCode);
+  if (!room) {
+    emitActionError(socket, 'الغرفة غير موجودة!', 'roomCode', 'room_lookup');
+    return null;
+  }
+  const player = room.players.find(p => p.id === socket.id);
+  if (!player) {
+    emitActionError(socket, 'أنت لست عضواً في هذه الغرفة.', 'roomCode', 'room_membership');
+    return null;
+  }
+  return { room, player };
+}
+
 // Initial state for a room
-function createInitialRoomState(roomCode, hostId, hostName) {
+function createInitialRoomState(roomCode, hostId) {
   return {
     code: roomCode,
     hostId: hostId,
     status: 'lobby', // 'lobby' | 'round1' | 'round2' | 'round3' | 'round4' | 'game_over'
     countdown: null,
     countdownInterval: null,
+    disconnectTimers: new Map(),
     tournamentStructure: TOURNAMENT_STRUCTURE,
     players: [],
     teams: {
@@ -292,6 +615,7 @@ function createInitialRoomState(roomCode, hostId, hostName) {
       pendingPoints: 0,
       streakLadder: [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000],
       currentQuestion: null,
+      actionToken: null,
       timer: 30,
       isTimerRunning: false,
       history: []
@@ -301,9 +625,13 @@ function createInitialRoomState(roomCode, hostId, hostName) {
       ...createRefereeSlot(),
       activeClueGiverA: null,
       activeClueGiverB: null,
+      activeTurnTeam: 'team_a',
       currentWordIndex: 0,
       totalQuestions: 5,
       currentWord: null,
+      actionToken: null,
+      isComplete: false,
+      timeFreezeUsed: false,
       timer: 45,
       isTimerRunning: false,
       fouls: { team_a: 0, team_b: 0 }
@@ -326,6 +654,7 @@ function createInitialRoomState(roomCode, hostId, hostName) {
       shotStartedAt: null,
       tieBreakActive: false,
       tieBreakData: null,
+      isComplete: false,
       shotsHistory: []
     },
     // Round 4: "مين يزوّد؟" (Blind Auction)
@@ -333,6 +662,7 @@ function createInitialRoomState(roomCode, hostId, hostName) {
       ...createRefereeSlot(),
       currentTopicIndex: 0,
       currentTopic: null,
+      topicId: null,
       highestBid: 0,
       highestBidderTeam: null,
       highestBidderPlayerId: null,
@@ -368,6 +698,18 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Fair timing: RTT measurement ping/pong and report
+  socket.on('latency_ping', ({ start } = {}, callback) => {
+    socket.emit('latency_pong', { start });
+    if (typeof callback === 'function') callback({ start });
+  });
+
+  socket.on('latency_report', ({ rtt } = {}) => {
+    if (typeof rtt === 'number') {
+      recordPlayerRtt(socket.id, rtt);
+    }
+  });
+
   // Create room
   socket.on('create_room', ({ playerName, characterId }) => {
     let roomCode = generateRoomCode();
@@ -375,80 +717,178 @@ io.on('connection', (socket) => {
       roomCode = generateRoomCode();
     }
 
-    const room = createInitialRoomState(roomCode, socket.id, playerName);
-    const char = CHARACTERS.find(c => c.id === characterId) || CHARACTERS[0];
+    const room = createInitialRoomState(roomCode, socket.id);
+    const { character, error } = resolveCharacterForPlayer(room, characterId);
+    if (error) {
+      emitActionError(socket, error, 'character', 'create_room');
+      return;
+    }
+
+    const cleanName = sanitizePlayerName(playerName) || 'كابتن الساحة';
 
     const player = {
       id: socket.id,
-      name: playerName || 'كابتن الساحة',
-      character: char,
+      name: cleanName,
+      character,
       team: 'team_a',
       isHost: true,
       isBot: false,
       connected: true,
       lastSeen: Date.now(),
-      scoreContribution: 0
+      scoreContribution: 0,
+      playerToken: createPlayerToken()
     };
 
     room.players.push(player);
     rooms.set(roomCode, room);
     socket.join(roomCode);
 
-    socket.emit('room_created', { roomCode, player, room: sanitizeRoomForViewer(room, socket.id) });
+    socket.emit('room_created', {
+      roomCode,
+      playerToken: player.playerToken,
+      player,
+      room: sanitizeRoomForViewer(room, socket.id)
+    });
     console.log(`[Room Created] ${roomCode} by ${player.name}`);
   });
 
   // Join room
   socket.on('join_room', ({ roomCode, playerName, characterId, teamPreference }) => {
-    const room = findRoom(roomCode);
-
-    if (!room) {
-      socket.emit('error_message', 'كود الغرفة غير موجود يا بطل! اتأكد من الكود.');
+    if (isJoinRateLimited(socket.id)) {
+      emitActionError(socket, 'محاولات دخول كتير في وقت قصير! استنى دقيقة وجرب تاني — Too many join attempts.', 'roomCode', 'join_room');
       return;
     }
 
-    // Auto assign team if not preferred
-    const teamACount = room.players.filter(p => p.team === 'team_a').length;
-    const teamBCount = room.players.filter(p => p.team === 'team_b').length;
-    const team = teamPreference || (teamACount <= teamBCount ? 'team_a' : 'team_b');
+    const room = findRoom(roomCode);
 
-    // Pick character or default
-    const char = CHARACTERS.find(c => c.id === characterId) || 
-      CHARACTERS.find(c => !room.players.some(p => p.character.id === c.id)) || 
-      CHARACTERS[0];
+    if (!room) {
+      emitActionError(socket, 'كود الغرفة غير موجود يا بطل! اتأكد من الكود — Room not found.', 'roomCode', 'join_room');
+      return;
+    }
+
+    if (!LOBBY_STATUSES.includes(room.status)) {
+      emitActionError(socket, 'الماتش بدأ بالفعل! مينفعش تنضم دلوقتي — Match already started.', 'roomCode', 'join_room');
+      return;
+    }
+
+    if (room.players.length >= MAX_ROOM_PLAYERS) {
+      emitActionError(socket, `الغرفة ممتلئة بالفعل (${MAX_ROOM_PLAYERS}/${MAX_ROOM_PLAYERS})! — Room is full.`, 'roomCode', 'join_room');
+      return;
+    }
+
+    const { character, error } = resolveCharacterForPlayer(room, characterId);
+    if (error) {
+      emitActionError(socket, error, 'character', 'join_room');
+      return;
+    }
+
+    const team = pickTeamForNewPlayer(room, teamPreference);
+    if (!team) {
+      emitActionError(socket, `الغرفة ممتلئة بالفعل (${MAX_ROOM_PLAYERS}/${MAX_ROOM_PLAYERS})! — Room is full.`, 'roomCode', 'join_room');
+      return;
+    }
+
+    const cleanName = sanitizePlayerName(playerName) || `لاعب ${room.players.length + 1}`;
 
     const player = {
       id: socket.id,
-      name: playerName || `لاعب ${room.players.length + 1}`,
-      character: char,
-      team: team,
+      name: cleanName,
+      character,
+      team,
       isHost: false,
       isBot: false,
       connected: true,
       lastSeen: Date.now(),
-      scoreContribution: 0
+      scoreContribution: 0,
+      playerToken: createPlayerToken()
     };
 
     room.players.push(player);
     socket.join(room.code);
 
-    socket.emit('joined_room', { roomCode: room.code, player, room: sanitizeRoomForViewer(room, socket.id) });
+    socket.emit('joined_room', {
+      roomCode: room.code,
+      playerToken: player.playerToken,
+      player,
+      room: sanitizeRoomForViewer(room, socket.id)
+    });
     emitRoomState(room);
     console.log(`[Player Joined] ${player.name} joined ${room.code} in ${team}`);
   });
 
+  // Reconnect to a room using the private player token issued on create/join
+  socket.on('rejoin_room', ({ roomCode, playerToken } = {}) => {
+    const room = findRoom(roomCode);
+
+    if (!room) {
+      socket.emit('rejoin_failed', { message: 'الغرفة دي خلصت، اعمل غرفة جديدة', field: 'roomCode', reason: 'room_not_found' });
+      socket.emit('error_message', 'الغرفة دي خلصت، اعمل غرفة جديدة');
+      return;
+    }
+
+    const player = typeof playerToken === 'string' && playerToken
+      ? room.players.find(p => p.playerToken === playerToken && !p.isBot)
+      : null;
+
+    if (!player) {
+      socket.emit('rejoin_failed', { message: 'جلسة الاستعادة مش صالحة! ادخل بكود الغرفة من جديد — Invalid rejoin token.', field: 'roomCode' });
+      socket.emit('error_message', 'جلسة الاستعادة مش صالحة! ادخل بكود الغرفة من جديد — Invalid rejoin token.');
+      return;
+    }
+
+    const previousId = player.id;
+    const pendingTimer = room.disconnectTimers?.get(player.playerToken);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      room.disconnectTimers.delete(player.playerToken);
+    }
+
+    const previousSocket = previousId !== socket.id ? io.sockets.sockets.get(previousId) : null;
+    if (previousSocket) previousSocket.leave(room.code);
+
+    player.id = socket.id;
+    player.connected = true;
+    player.lastSeen = Date.now();
+
+    if (player.isHost) room.hostId = socket.id;
+    remapPlayerId(room, previousId, socket.id);
+
+    socket.join(room.code);
+
+    socket.emit('rejoined_room', {
+      roomCode: room.code,
+      playerToken: player.playerToken,
+      player,
+      room: sanitizeRoomForViewer(room, socket.id)
+    });
+    emitRoomState(room);
+
+    io.to(room.code).emit('notification', {
+      title: 'رجوع الساحة ⚡',
+      message: `${player.name} رجع تاني واتصل بالساحة.`
+    });
+  });
+
   // Add demo simulated bot player to room (helps solo testing 4/4)
   socket.on('add_demo_player', ({ roomCode }) => {
+    const demoAllowed = process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEMO_BOTS === 'true';
+    if (!demoAllowed) {
+      socket.emit('error_message', '🚫 اللاعبين التجريبيين متاحين في بيئة التطوير فقط.');
+      return;
+    }
+
     const room = findRoom(roomCode);
-    if (!room || room.players.length >= 4) return;
-    if (socket.id !== room.hostId || !['lobby', 'waiting'].includes(room.status)) {
+    if (!room || room.players.length >= MAX_ROOM_PLAYERS) return;
+    if (socket.id !== room.hostId || !LOBBY_STATUSES.includes(room.status)) {
       socket.emit('error_message', '🚫 إضافة اللاعبين التجريبيين متاحة للهوست داخل صالة الانتظار فقط.');
       return;
     }
 
     const availableChars = CHARACTERS.filter(c => !room.players.some(p => p.character?.id === c.id));
     const nextChar = availableChars[0] || CHARACTERS[room.players.length % CHARACTERS.length];
-    const team = room.players.filter(p => p.team === 'team_a').length <= room.players.filter(p => p.team === 'team_b').length ? 'team_a' : 'team_b';
+    const team = pickTeamForNewPlayer(room);
+
+    if (!team) return;
 
     const botPlayer = {
       id: `bot_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -471,32 +911,137 @@ io.on('connection', (socket) => {
   });
 
   // Update player character or team in lobby
-  socket.on('update_player_profile', ({ roomCode, characterId, team }) => {
-    const room = findRoom(roomCode);
-    if (!room) return;
+  socket.on('update_player_profile', ({ roomCode, characterId, team, playerName }, ack) => {
+    const respond = (payload) => {
+      if (typeof ack === 'function') ack(payload);
+    };
 
-    if (!['lobby', 'waiting'].includes(room.status)) {
-      socket.emit('error_message', '🚫 لا يمكن تغيير الفريق أو الشخصية بعد انطلاق الماتش.');
+    const room = findRoom(roomCode);
+    if (!room) {
+      emitActionError(socket, 'الغرفة مش موجودة!', 'roomCode', 'update_player_profile');
+      respond({ ok: false, error: 'room_not_found' });
+      return;
+    }
+
+    if (!LOBBY_STATUSES.includes(room.status)) {
+      const message = '🚫 لا يمكن تغيير الفريق أو الشخصية بعد انطلاق الماتش.';
+      emitActionError(socket, message, 'character', 'update_player_profile');
+      respond({ ok: false, error: message });
       return;
     }
 
     const player = room.players.find(p => p.id === socket.id);
-    if (player) {
-      if (characterId) {
-        const char = CHARACTERS.find(c => c.id === characterId);
-        if (char) player.character = char;
-      }
-      if (team) {
-        player.team = team;
-      }
-      emitRoomState(room);
+    if (!player) {
+      respond({ ok: false, error: 'player_not_found' });
+      return;
     }
+
+    if (characterId) {
+      const character = CHARACTERS.find(c => c.id === characterId);
+      if (!character) {
+        const message = 'الشخصية دي مش موجودة! — Character not found.';
+        emitActionError(socket, message, 'character', 'update_player_profile');
+        respond({ ok: false, error: message });
+        return;
+      }
+
+      const takenByAnother = room.players.some(
+        p => p.id !== player.id && p.character?.id === character.id
+      );
+      if (takenByAnother) {
+        const message = 'الشخصية دي محجوزة بالفعل! اختار شخصية تانية — Character already taken.';
+        emitActionError(socket, message, 'character', 'update_player_profile');
+        respond({ ok: false, error: message });
+        return;
+      }
+    }
+
+    if (team && team !== player.team) {
+      if (team !== 'team_a' && team !== 'team_b') {
+        const message = 'الفريق المطلوب غير صالح!';
+        emitActionError(socket, message, 'team', 'update_player_profile');
+        respond({ ok: false, error: message });
+        return;
+      }
+
+      const counts = getTeamCounts(room);
+      if (counts[team] >= 2) {
+        const message = 'الفريق ده كامل (2/2)! اختار الفريق التاني أو استنى حد يخرج.';
+        emitActionError(socket, message, 'team', 'update_player_profile');
+        respond({ ok: false, error: message });
+        return;
+      }
+    }
+
+    if (characterId) {
+      player.character = CHARACTERS.find(c => c.id === characterId);
+    }
+    if (team) player.team = team;
+
+    const cleanName = sanitizePlayerName(playerName);
+    if (cleanName) player.name = cleanName;
+
+    emitRoomState(room);
+    socket.emit('profile_updated', { player });
+    respond({ ok: true, player });
   });
+
+  function getR1TurnKey(room) {
+    const r1 = room.round1;
+    return `${r1.segmentIndex}:${r1.subBatchIndex}:${r1.answeringPlayerId}`;
+  }
+
+  function dispatchR1Question(room) {
+    const r1 = room.round1;
+    if (r1.totalQuestionsAnswered >= 48) {
+      r1.currentQuestion = null;
+      r1.actionToken = null;
+      return false;
+    }
+
+    const answeringPlayer = room.players.find(p => p.id === r1.answeringPlayerId);
+    const turnKey = getR1TurnKey(room);
+    if (!Array.isArray(r1.turnPlan) || r1.turnPlanKey !== turnKey || r1.turnPlanIndex >= r1.turnPlan.length) {
+      r1.turnPlan = buildRound1TurnPlan(answeringPlayer?.character?.id);
+      r1.turnPlanKey = turnKey;
+      r1.turnPlanIndex = 0;
+    }
+
+    const slot = r1.turnPlan[r1.turnPlanIndex];
+    if (!slot) return false;
+
+    const dispatchedQ = triviaEngine.getQuestionBySlot({
+      roomId: room.code,
+      characterId: answeringPlayer?.character?.id,
+      mode: 'one_two_bank',
+      slotType: slot.slotType,
+      preferredCategory: slot.category
+    });
+
+    if (!dispatchedQ) {
+      r1.currentQuestion = null;
+      r1.actionToken = null;
+      return false;
+    }
+
+    r1.turnPlanIndex += 1;
+    r1.currentQuestionIndex += 1;
+    r1.currentQuestion = {
+      question: dispatchedQ.question_text,
+      answer: dispatchedQ.correct_answer,
+      categoryName: dispatchedQ.category,
+      slotType: slot.slotType,
+      funFact: slot.slotType === 'specialty'
+        ? 'سؤال من تخصص اللاعب المجيب.'
+        : 'سؤال عشوائي من بنك الجولة الأولى كله.'
+    };
+    r1.actionToken = crypto.randomUUID();
+    return true;
+  }
 
   // Helper to initialize Round 1
   function setupRound1(room) {
     const teamAPlayers = room.players.filter(p => p.team === 'team_a');
-    const teamBPlayers = room.players.filter(p => p.team === 'team_b');
     room.round1.activeTeam = 'team_a';
     room.round1.answeringPlayerId = teamAPlayers[0]?.id || room.players[0]?.id;
     room.round1.streak = 0;
@@ -507,23 +1052,128 @@ io.on('connection', (socket) => {
     room.round1.subBatchQuestionsAnswered = 0;
     room.round1.segmentQuestionsAnswered = 0;
     room.round1.totalQuestionsAnswered = 0;
+    room.round1.turnPlan = null;
+    room.round1.turnPlanKey = null;
+    room.round1.turnPlanIndex = 0;
     room.round1.history = [];
+    room.round1.currentQuestion = null;
+    room.round1.actionToken = null;
+    room.round1.timer = 30;
+    room.round1.isTimerRunning = false;
 
     // Round-robin referee from the opposing team (never the answering team).
     assignReferee(room, 'round1', { reason: 'round_start' });
+    dispatchR1Question(room);
+  }
 
-    const answeringPlayer = teamAPlayers[0] || room.players[0];
-    const dispatchedQ = triviaEngine.getQuestionForPlayer({
+  function setR2CardRoles(room, { toggleTurn = false, reason = 'card_roles' } = {}) {
+    const r2 = room.round2;
+    const teamAPlayers = room.players.filter(p => p.team === 'team_a');
+    const teamBPlayers = room.players.filter(p => p.team === 'team_b');
+    const cardIndex = Math.max(0, r2.currentWordIndex || 0);
+
+    if (toggleTurn) {
+      r2.activeTurnTeam = getR2ActiveTurnTeam(room) === 'team_a' ? 'team_b' : 'team_a';
+    } else if (r2.activeTurnTeam !== 'team_a' && r2.activeTurnTeam !== 'team_b') {
+      r2.activeTurnTeam = 'team_a';
+    }
+
+    r2.activeClueGiverA = teamAPlayers.length > 0
+      ? teamAPlayers[cardIndex % teamAPlayers.length].id
+      : null;
+    r2.activeClueGiverB = teamBPlayers.length > 0
+      ? teamBPlayers[cardIndex % teamBPlayers.length].id
+      : null;
+
+    assignReferee(room, 'round2', { reason });
+  }
+
+  function dispatchR2Card(room) {
+    const dispatchedWord = triviaEngine.getQuestionBySlot({
       roomId: room.code,
-      characterId: answeringPlayer?.character?.id || 'fares_elfouly',
-      mode: 'one_two_bank'
+      mode: 'edini_fi_seri',
+      slotType: 'random'
     });
-    room.round1.currentQuestion = dispatchedQ ? {
-      question: dispatchedQ.question_text,
-      answer: dispatchedQ.correct_answer,
-      categoryName: dispatchedQ.category,
-      funFact: 'سؤال مستهدف بحسب تخصص الشخصية والمحرك الديناميكي!'
-    } : TRIVIA_BANK[0];
+
+    if (dispatchedWord) {
+      room.round2.currentWord = {
+        target: dispatchedWord.question_text,
+        forbidden: dispatchedWord.forbidden_words || [],
+        category: dispatchedWord.category,
+        clueIdea: 'خمن الكلمة بدون نطق الممنوعات الأربعة!'
+      };
+      room.round2.actionToken = crypto.randomUUID();
+      room.round2.timeFreezeUsed = false;
+      return true;
+    }
+
+    const fallbackWord = PASSWORD_WORDS[(room.round2.currentWordIndex || 0) % PASSWORD_WORDS.length];
+    room.round2.currentWord = fallbackWord ? { ...fallbackWord } : null;
+    room.round2.actionToken = fallbackWord ? crypto.randomUUID() : null;
+    room.round2.timeFreezeUsed = false;
+    return false;
+  }
+
+  function dispatchR3PenaltyQuestion(room) {
+    const category = room.round3.currentCategory;
+    if (!category?.id) return false;
+
+    const dispatchedPenalty = triviaEngine.getQuestionForCategory({
+      roomId: room.code,
+      mode: 'hat_fi_qoraybi',
+      category: category.id
+    });
+
+    if (!dispatchedPenalty) {
+      room.round3.currentQuestion = null;
+      return false;
+    }
+
+    const options = Array.isArray(dispatchedPenalty.options)
+      ? dispatchedPenalty.options.filter(option => typeof option === 'string' && option.trim())
+      : [];
+    const answer = typeof dispatchedPenalty.correct_answer === 'string'
+      ? dispatchedPenalty.correct_answer
+      : '';
+
+    if (!answer || options.length < 2 || !options.includes(answer)) {
+      room.round3.currentQuestion = null;
+      return false;
+    }
+
+    room.round3.currentQuestion = {
+      question: dispatchedPenalty.question_text,
+      answer,
+      options,
+      category: dispatchedPenalty.category,
+      kickerHint: category.name
+    };
+    return true;
+  }
+
+  function dispatchR4Topic(room) {
+    const dispatchedAuction = triviaEngine.getQuestionBySlot({
+      roomId: room.code,
+      mode: 'meen_yezawwed',
+      slotType: 'random'
+    });
+
+    if (dispatchedAuction) {
+      room.round4.currentTopic = {
+        topic: dispatchedAuction.question_text,
+        validItems: dispatchedAuction.acceptable_answers || [],
+        category: dispatchedAuction.category,
+        minBid: 3,
+        hint: 'أعلى مزايدة تكسب التحدي!'
+      };
+      room.round4.topicId = crypto.randomUUID();
+      return true;
+    }
+
+    const fallbackTopic = AUCTION_TOPICS[(room.round4.currentTopicIndex || 0) % AUCTION_TOPICS.length];
+    room.round4.currentTopic = fallbackTopic ? { ...fallbackTopic } : null;
+    room.round4.topicId = fallbackTopic ? crypto.randomUUID() : null;
+    return false;
   }
 
   // Host triggers synchronized 3-second match start countdown
@@ -534,18 +1184,24 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const isHost = socket.id === room.hostId || room.players.find(p => p.id === socket.id && p.isHost);
+    const isHost = socket.id === room.hostId || room.players.some(p => p.id === socket.id && p.isHost);
     if (!isHost) {
       socket.emit('error_message', 'فقط كابتن الغرفة (الهوست 👑) يملك صلاحية بدء الماتش!');
       return;
     }
 
-    if (room.players.length < 4) {
-      socket.emit('error_message', `العدد غير مكتمل! لازم 4 لاعبين في الساحة لبدء المباراة (${room.players.length}/4)`);
+    if (!LOBBY_STATUSES.includes(room.status)) {
+      socket.emit('error_message', '🚫 الماتش بدأ بالفعل، مينفعش تشغّل عد تنازلي جديد.');
       return;
     }
 
     if (room.countdownInterval) return;
+
+    const readiness = getStartReadiness(room);
+    if (!readiness.ok) {
+      socket.emit('error_message', readiness.message);
+      return;
+    }
 
     let count = 3;
     room.countdown = count;
@@ -562,6 +1218,18 @@ io.on('connection', (socket) => {
         clearInterval(room.countdownInterval);
         room.countdownInterval = null;
         room.countdown = 0;
+
+        const finalReadiness = getStartReadiness(room);
+        if (!LOBBY_STATUSES.includes(room.status) || !finalReadiness.ok) {
+          room.countdown = null;
+          io.to(room.code).emit('countdown_cancelled', {
+            reason: LOBBY_STATUSES.includes(room.status)
+              ? finalReadiness.message
+              : 'تم إلغاء العد التنازلي لأن الماتش بدأ بالفعل.'
+          });
+          return;
+        }
+
         io.to(room.code).emit('countdown_tick', { count: 0 });
 
         setupRound1(room);
@@ -583,36 +1251,43 @@ io.on('connection', (socket) => {
       return;
     }
 
+    if (!TARGET_ROUNDS.includes(targetRound)) {
+      socket.emit('error_message', '🚫 جولة غير معروفة. الاختيارات المتاحة: lobby, round1, round2, round3, round4, game_over.');
+      return;
+    }
+
+    if (room.status === targetRound && targetRound !== 'lobby') {
+      socket.emit('error_message', '🚫 الماتش في هذه الجولة بالفعل.');
+      return;
+    }
+
+    // The lobby cannot jump straight into a round unless the full start
+    // conditions are met: exactly 4 players, a strict 2v2 split, all connected.
+    if (LOBBY_STATUSES.includes(room.status) && MATCH_STATUSES.includes(targetRound)) {
+      const readiness = getStartReadiness(room);
+      if (!readiness.ok) {
+        socket.emit('error_message', `🚫 مينفعش تبدأ الجولة من غير شروط الانطلاق: ${readiness.message}`);
+        return;
+      }
+    }
+
+    stopCountdown(room, 'تم إلغاء العد التنازلي بسبب انتقال الجولة.');
     room.status = targetRound;
 
     if (targetRound === 'round1') {
       setupRound1(room);
     } else if (targetRound === 'round2') {
       // Setup Round 2: اديني في سري Password Mode
-      const teamAPlayers = room.players.filter(p => p.team === 'team_a');
-      const teamBPlayers = room.players.filter(p => p.team === 'team_b');
-      room.round2.activeClueGiverA = teamAPlayers[0]?.id || room.players[0]?.id;
-      room.round2.activeClueGiverB = teamBPlayers[0]?.id || (room.players[1] ? room.players[1].id : room.players[0]?.id);
       room.round2.currentWordIndex = 0;
+      room.round2.activeTurnTeam = 'team_a';
       room.round2.fouls = { team_a: 0, team_b: 0 };
-      assignReferee(room, 'round2', { reason: 'round_start' });
-
-      const dispatchedWord = triviaEngine.getQuestionForPlayer({
-        roomId: roomCode,
-        characterId: teamAPlayers[0]?.character?.id || 'fares_elfouly',
-        mode: 'edini_fi_seri'
-      });
-      if (dispatchedWord) {
-        room.round2.currentWord = {
-          target: dispatchedWord.question_text,
-          forbidden: dispatchedWord.forbidden_words || ['كلمة 1', 'كلمة 2', 'كلمة 3', 'كلمة 4'],
-          category: dispatchedWord.category,
-          clueIdea: 'خمن الكلمة بدون نطق الممنوعات الأربعة!'
-        };
-      } else {
-        room.round2.currentWord = PASSWORD_WORDS[0];
-      }
+      room.round2.isTimerRunning = false;
+      room.round2.isComplete = false;
+      room.round2.timeFreezeUsed = false;
+      room.round2.actionToken = null;
       room.round2.timer = 45;
+      setR2CardRoles(room, { reason: 'round_start' });
+      dispatchR2Card(room);
 
     } else if (targetRound === 'round3') {
       // Setup Round 3: حط في قريبي Penalty Shootouts
@@ -629,6 +1304,7 @@ io.on('connection', (socket) => {
       room.round3.shotStartedAt = null;
       room.round3.tieBreakActive = false;
       room.round3.tieBreakData = null;
+      room.round3.isComplete = false;
 
       // Random category generated first -> Teams select their duelists -> 1v1 speed shootout
       const randomCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
@@ -637,49 +1313,14 @@ io.on('connection', (socket) => {
 
       // Neutral referee (not the kicker or the goalie) confirms only ties/disputes.
       assignReferee(room, 'round3', { reason: 'round_start' });
-
-      const kickerPlayer = teamAPlayers[0] || room.players[0];
-      const dispatchedPenalty = triviaEngine.getQuestionForPlayer({
-        roomId: roomCode,
-        characterId: kickerPlayer?.character?.id || 'fares_elfouly',
-        mode: 'hat_fi_qoraybi',
-        preferredCategory: randomCategory.id
-      });
-      if (dispatchedPenalty) {
-        room.round3.currentQuestion = {
-          question: dispatchedPenalty.question_text,
-          answer: dispatchedPenalty.correct_answer,
-          options: dispatchedPenalty.options || ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
-          category: randomCategory.id,
-          kickerHint: randomCategory.name
-        };
-      } else {
-        const backupQ = PENALTY_QUESTIONS.find(q => q.category === randomCategory.id) || PENALTY_QUESTIONS[0];
-        room.round3.currentQuestion = backupQ;
-      }
+      room.round3.currentQuestion = null;
       room.round3.interceptBuzzedBy = null;
 
     } else if (targetRound === 'round4') {
       // Setup Round 4: مين يزوّد؟ Blind Auction
       room.round4.currentTopicIndex = 0;
-      const teamBPlayers = room.players.filter(p => p.team === 'team_b');
-      const dispatchedAuction = triviaEngine.getQuestionForPlayer({
-        roomId: roomCode,
-        characterId: teamBPlayers[0]?.character?.id || 'khaled_elbarbakh',
-        mode: 'meen_yezawwed'
-      });
-      if (dispatchedAuction) {
-        room.round4.currentTopic = {
-          topic: dispatchedAuction.question_text,
-          validItems: dispatchedAuction.acceptable_answers || [],
-          category: dispatchedAuction.category,
-          minBid: 3,
-          hint: 'أعلى مزايدة تكسب التحدي!'
-        };
-      } else {
-        room.round4.currentTopic = AUCTION_TOPICS[0];
-      }
-      room.round4.highestBid = room.round4.currentTopic.minBid;
+      dispatchR4Topic(room);
+      room.round4.highestBid = room.round4.currentTopic?.minBid || 3;
       room.round4.highestBidderTeam = null;
       room.round4.highestBidderPlayerId = null;
       room.round4.phase = 'bidding';
@@ -705,6 +1346,8 @@ io.on('connection', (socket) => {
 
     // Check if 48 questions reached (End of Round 1 quota)
     if (r1.totalQuestionsAnswered >= 48) {
+      r1.currentQuestion = null;
+      r1.actionToken = null;
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
       io.to(roomCode).emit('notification', {
         title: '🏁 اكتملت جولة "1 تو" بالكامل!',
@@ -773,10 +1416,12 @@ io.on('connection', (socket) => {
 
   // =================== ROUND 1 ACTIONS ===================
   // Score / Correct Answer
-  socket.on('r1_action_score', ({ roomCode }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('r1_action_score', ({ roomCode, actionToken }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
 
+    if (!requireRoundStatus(room, 'round1', socket, 'احتساب نقاط الجولة الأولى')) return;
     // Zero Self-Grading Anti-Cheat: only the assigned opposing referee may grade.
     if (!requireReferee(room, 'round1', socket, 'احتساب نقطة')) return;
     const caller = room.players.find(p => p.id === socket.id);
@@ -786,51 +1431,31 @@ io.on('connection', (socket) => {
     }
 
     const r1 = room.round1;
-    const answeringPlayer = room.players.find(p => p.id === r1.answeringPlayerId);
-    let nextStreak = Math.min(r1.streak + 1, 10);
+    if (!r1.currentQuestion || !isValidActionToken(r1.actionToken, actionToken)) {
+      socket.emit('error_message', '🚫 انتهت صلاحية هذا السؤال أو تم احتسابه بالفعل. انتظر السؤال الجديد.');
+      return;
+    }
+    r1.actionToken = null;
+
+    const nextStreak = Math.min(r1.streak + 1, 10);
     r1.streak = nextStreak;
+    r1.pendingPoints = r1.streakLadder[nextStreak];
 
-    // Base value from ladder
-    let points = r1.streakLadder[nextStreak];
-    // Attribute bonuses
-    if (answeringPlayer?.character?.id === 'fares_elfouly') {
-      // +20% score multiplier
-      points = Math.round(points * 1.2);
-    }
-    r1.pendingPoints = points;
-
-    // Advance Round 1 quota tracking (48 total, 2x12 segments, [6, 6] splits)
+    // Advance Round 1 quota tracking (48 total, 4x12 segments, [6, 6] splits)
     advanceR1Question(room, roomCode);
-
-    // Pick next question tailored to active player via triviaEngine ("القلاية")
-    const nextAnsweringPlayer = room.players.find(p => p.id === r1.answeringPlayerId) || answeringPlayer;
-    const nextQ = triviaEngine.getQuestionForPlayer({
-      roomId: roomCode,
-      characterId: nextAnsweringPlayer?.character?.id || 'fares_elfouly',
-      mode: 'one_two_bank'
-    });
-    if (nextQ) {
-      r1.currentQuestion = {
-        question: nextQ.question_text,
-        answer: nextQ.correct_answer,
-        categoryName: nextQ.category,
-        funFact: 'سؤال مستهدف ديناميكياً بحسب التخصص والمحرك الذكي!'
-      };
-    } else {
-      const nextIdx = (r1.currentQuestionIndex + 1) % TRIVIA_BANK.length;
-      r1.currentQuestionIndex = nextIdx;
-      r1.currentQuestion = TRIVIA_BANK[nextIdx];
-    }
+    dispatchR1Question(room);
 
     io.to(roomCode).emit('sound_trigger', { sound: 'correct', streak: nextStreak });
     emitRoomState(room);
   });
 
   // Break streak / Wrong answer
-  socket.on('r1_action_break', ({ roomCode }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('r1_action_break', ({ roomCode, actionToken }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
 
+    if (!requireRoundStatus(room, 'round1', socket, 'كسر الستريك')) return;
     // Zero Self-Grading Anti-Cheat: only the assigned opposing referee may break.
     if (!requireReferee(room, 'round1', socket, 'كسر الستريك')) return;
     const caller = room.players.find(p => p.id === socket.id);
@@ -840,6 +1465,11 @@ io.on('connection', (socket) => {
     }
 
     const r1 = room.round1;
+    if (!r1.currentQuestion || !isValidActionToken(r1.actionToken, actionToken)) {
+      socket.emit('error_message', '🚫 انتهت صلاحية هذا السؤال أو تم حسمه بالفعل. انتظر السؤال الجديد.');
+      return;
+    }
+    r1.actionToken = null;
     const answeringPlayer = room.players.find(p => p.id === r1.answeringPlayerId);
 
     // Check if player has streak shield (El-Touny) or firewall protection (Eyad)
@@ -860,39 +1490,22 @@ io.on('connection', (socket) => {
 
     // Advance Round 1 quota tracking
     advanceR1Question(room, roomCode);
-
-    // Pick next question tailored to active player via triviaEngine ("القلاية")
-    const nextAnsweringPlayer = room.players.find(p => p.id === r1.answeringPlayerId) || answeringPlayer;
-    const nextQ = triviaEngine.getQuestionForPlayer({
-      roomId: roomCode,
-      characterId: nextAnsweringPlayer?.character?.id || 'fares_elfouly',
-      mode: 'one_two_bank'
-    });
-    if (nextQ) {
-      r1.currentQuestion = {
-        question: nextQ.question_text,
-        answer: nextQ.correct_answer,
-        categoryName: nextQ.category,
-        funFact: 'سؤال مستهدف ديناميكياً بحسب التخصص والمحرك الذكي!'
-      };
-    } else {
-      const nextIdx = (r1.currentQuestionIndex + 1) % TRIVIA_BANK.length;
-      r1.currentQuestionIndex = nextIdx;
-      r1.currentQuestion = TRIVIA_BANK[nextIdx];
-    }
+    dispatchR1Question(room);
 
     emitRoomState(room);
   });
 
   // BANK points
   socket.on('r1_action_bank', ({ roomCode }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room, player: caller } = context;
+
+    if (!requireRoundStatus(room, 'round1', socket, 'حفظ النقاط')) return;
 
     // Only active answering team can bank their points. The referee is from
     // the opposing team and must never be able to bank on their behalf.
-    const caller = room.players.find(p => p.id === socket.id);
-    if (!caller || caller.team !== room.round1.activeTeam) {
+    if (caller.team !== room.round1.activeTeam) {
       socket.emit('error_message', '🚫 لا يمكنك حفظ النقاط في الخزنة لفريق الخصم!');
       return;
     }
@@ -926,16 +1539,23 @@ io.on('connection', (socket) => {
   });
 
   // Pass Round 1 turn to next player / opposite team (host control only)
-  socket.on('r1_pass_turn', ({ roomCode }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('r1_pass_turn', ({ roomCode, actionToken }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
 
+    if (!requireRoundStatus(room, 'round1', socket, 'تبديل الدور')) return;
     if (socket.id !== room.hostId) {
       socket.emit('error_message', '🚫 تبديل الدور يتم من جهاز كابتن الغرفة فقط.');
       return;
     }
 
     const r1 = room.round1;
+    if (!r1.currentQuestion || !isValidActionToken(r1.actionToken, actionToken)) {
+      socket.emit('error_message', '🚫 لا يوجد سؤال نشط لتبديل الدور عليه.');
+      return;
+    }
+    r1.actionToken = null;
     r1.pendingPoints = 0;
     r1.streak = 0;
 
@@ -951,123 +1571,162 @@ io.on('connection', (socket) => {
 
     // Assign the next opposing referee/reader automatically.
     assignReferee(room, 'round1', { reason: 'turn_change' });
+    dispatchR1Question(room);
 
     io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
     emitRoomState(room);
   });
 
   // =================== ROUND 2 ACTIONS (Password Mode) ===================
-  socket.on('r2_award_point', ({ roomCode, team }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('r2_award_point', ({ roomCode, team, actionToken }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room, player: caller } = context;
 
-    // Only the neutral referee may award the card.
-    if (!requireReferee(room, 'round2', socket, 'احتساب نقطة كلمة السر')) return;
+    if (!requireRoundStatus(room, 'round2', socket, 'احتساب نقاط كلمة السر')) return;
     if (team !== 'team_a' && team !== 'team_b') return;
+    if (team === caller.team) {
+      socket.emit('error_message', '🚫 ممنوع تحتسب نقطة أو مخالفة لفريقك. الحكم هنا هو مرشد الفريق المنافس فقط.');
+      return;
+    }
+    // Only the opposing clue-giver (current referee) may award the card.
+    if (!requireReferee(room, 'round2', socket, 'احتساب نقطة كلمة السر')) return;
 
     const r2 = room.round2;
+    if (team !== getR2ActiveTurnTeam(room)) {
+      socket.emit('error_message', '🚫 الحكم يحسم دور الفريق اللي بيلمّح دلوقتي فقط.');
+      return;
+    }
+    if (r2.isComplete || r2.currentWordIndex >= 5) {
+      socket.emit('error_message', '🚫 اكتملت بطاقات الجولة الخمسة بالفعل.');
+      return;
+    }
+    if (!isValidActionToken(r2.actionToken, actionToken)) {
+      socket.emit('error_message', '🚫 انتهت صلاحية هذه البطاقة أو تم حسمها بالفعل.');
+      return;
+    }
+    r2.actionToken = null;
+
     room.teams[team].score += 500;
     r2.currentWordIndex += 1;
 
     // Check if 5 cards quota reached
     if (r2.currentWordIndex >= 5) {
+      r2.isComplete = true;
+      r2.currentWord = null;
+      r2.isTimerRunning = false;
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
       io.to(roomCode).emit('notification', {
         title: '🏁 اكتملت جولة "اديني في سري" (5 بطاقات)!',
         message: 'تم إنجاز الـ 5 بطاقات السرية! جاهزون للانتقال لجولة ركلات الجزاء.'
       });
-    }
-
-    // Pick next secret word via triviaEngine
-    const nextWord = triviaEngine.getQuestionForPlayer({
-      roomId: roomCode,
-      characterId: room.players[0]?.character?.id || 'fares_elfouly',
-      mode: 'edini_fi_seri'
-    });
-    if (nextWord) {
-      r2.currentWord = {
-        target: nextWord.question_text,
-        forbidden: nextWord.forbidden_words || ['كلمة 1', 'كلمة 2', 'كلمة 3', 'كلمة 4'],
-        category: nextWord.category,
-        clueIdea: 'خمن الكلمة بدون نطق الممنوعات الأربعة!'
-      };
     } else {
-      const nextIdx = (r2.currentWordIndex) % PASSWORD_WORDS.length;
-      r2.currentWord = PASSWORD_WORDS[nextIdx];
-    }
-
-    // Rotate the neutral referee for the next secret card.
-    if (r2.currentWordIndex < 5) {
-      assignReferee(room, 'round2', { rotate: true, reason: 'card_complete' });
+      // Rotate the clue-giver pair for the next card and hand the judge seat
+      // to the opposing clue-giver of the new active turn.
+      setR2CardRoles(room, { toggleTurn: true, reason: 'card_complete' });
+      dispatchR2Card(room);
     }
 
     io.to(roomCode).emit('sound_trigger', { sound: 'correct' });
     emitRoomState(room);
   });
 
-  socket.on('r2_skip_card', ({ roomCode }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('r2_skip_card', ({ roomCode, actionToken }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
 
+    if (!requireRoundStatus(room, 'round2', socket, 'تخطي بطاقة كلمة السر')) return;
     if (!requireReferee(room, 'round2', socket, 'تخطي كلمة سرية')) return;
 
     const r2 = room.round2;
+    if (r2.isComplete || r2.currentWordIndex >= 5) {
+      socket.emit('error_message', '🚫 اكتملت بطاقات الجولة الخمسة بالفعل.');
+      return;
+    }
+    if (!isValidActionToken(r2.actionToken, actionToken)) {
+      socket.emit('error_message', '🚫 انتهت صلاحية هذه البطاقة أو تم حسمها بالفعل.');
+      return;
+    }
+    r2.actionToken = null;
     r2.currentWordIndex += 1;
 
     if (r2.currentWordIndex >= 5) {
+      r2.isComplete = true;
+      r2.currentWord = null;
+      r2.isTimerRunning = false;
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
       io.to(roomCode).emit('notification', {
         title: '🏁 اكتملت جولة "اديني في سري" (5 بطاقات)!',
         message: 'تم إنجاز الـ 5 بطاقات السرية! جاهزون للانتقال لجولة ركلات الجزاء.'
       });
-    }
-
-    const nextWord = triviaEngine.getQuestionForPlayer({
-      roomId: roomCode,
-      characterId: room.players[0]?.character?.id || 'fares_elfouly',
-      mode: 'edini_fi_seri'
-    });
-    if (nextWord) {
-      r2.currentWord = {
-        target: nextWord.question_text,
-        forbidden: nextWord.forbidden_words || ['كلمة 1', 'كلمة 2', 'كلمة 3', 'كلمة 4'],
-        category: nextWord.category,
-        clueIdea: 'خمن الكلمة بدون نطق الممنوعات الأربعة!'
-      };
     } else {
-      const nextIdx = (r2.currentWordIndex) % PASSWORD_WORDS.length;
-      r2.currentWord = PASSWORD_WORDS[nextIdx];
-    }
-
-    if (r2.currentWordIndex < 5) {
-      assignReferee(room, 'round2', { rotate: true, reason: 'card_skipped' });
+      setR2CardRoles(room, { toggleTurn: true, reason: 'card_skipped' });
+      dispatchR2Card(room);
     }
 
     io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
     emitRoomState(room);
   });
 
-  socket.on('r2_foul', ({ roomCode, team }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('r2_foul', ({ roomCode, team, actionToken }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room, player: caller } = context;
 
-    if (!requireReferee(room, 'round2', socket, 'احتساب مخالفة')) return;
+    if (!requireRoundStatus(room, 'round2', socket, 'احتساب مخالفة كلمة السر')) return;
     if (team !== 'team_a' && team !== 'team_b') return;
+    if (team === caller.team) {
+      socket.emit('error_message', '🚫 ممنوع تحتسب نقطة أو مخالفة لفريقك. الحكم هنا هو مرشد الفريق المنافس فقط.');
+      return;
+    }
+    if (!requireReferee(room, 'round2', socket, 'احتساب مخالفة')) return;
 
     const r2 = room.round2;
+    if (r2.isComplete || r2.currentWordIndex >= 5) {
+      socket.emit('error_message', '🚫 اكتملت بطاقات الجولة الخمسة بالفعل.');
+      return;
+    }
+    if (team !== getR2ActiveTurnTeam(room)) {
+      socket.emit('error_message', '🚫 الحكم يحسم دور الفريق اللي بيلمّح دلوقتي فقط.');
+      return;
+    }
+    if (!isValidActionToken(r2.actionToken, actionToken)) {
+      socket.emit('error_message', '🚫 انتهت صلاحية هذه البطاقة أو تم حسمها بالفعل.');
+      return;
+    }
+
     r2.fouls[team] = (r2.fouls[team] || 0) + 1;
     // Deduct 200 points on foul
     room.teams[team].score = Math.max(0, room.teams[team].score - 200);
+
+    // A foul ends this clue turn. The other clue-giver becomes the judge.
+    r2.activeTurnTeam = getR2ActiveTurnTeam(room) === 'team_a' ? 'team_b' : 'team_a';
+    r2.actionToken = crypto.randomUUID();
+    assignReferee(room, 'round2', { reason: 'clue_turn_change' });
 
     io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
     emitRoomState(room);
   });
 
   socket.on('r2_time_freeze', ({ roomCode }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
 
+    if (!requireRoundStatus(room, 'round2', socket, 'تجميد الوقت')) return;
     if (!requireReferee(room, 'round2', socket, 'تجميد الوقت')) return;
+
+    const r2 = room.round2;
+    if (r2.isComplete || r2.currentWordIndex >= 5 || !r2.currentWord) {
+      socket.emit('error_message', '🚫 لا توجد بطاقة نشطة لتجميد وقتها.');
+      return;
+    }
+    if (r2.timeFreezeUsed) {
+      socket.emit('error_message', '🚫 تم استخدام تجميد الوقت لهذه البطاقة بالفعل.');
+      return;
+    }
+    r2.timeFreezeUsed = true;
 
     // Ziad's bonus: +10s time freeze
     room.round2.timer += 10;
@@ -1080,10 +1739,17 @@ io.on('connection', (socket) => {
 
   // Select Duelists for Penalty Shootout
   socket.on('r3_select_duelists', ({ roomCode, kickerId, goalieId }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+
+    if (!requireRoundStatus(room, 'round3', socket, 'اختيار المبارزين')) return;
 
     const r3 = room.round3;
+    if (r3.isComplete || r3.turnIndex >= 10) {
+      socket.emit('error_message', '🚫 انتهت ركلات الجزاء بالفعل.');
+      return;
+    }
     if (r3.phase !== 'duelist_selection') {
       socket.emit('error_message', '🚫 لا يمكن تغيير المبارزين أثناء تنفيذ الركلة.');
       return;
@@ -1117,27 +1783,7 @@ io.on('connection', (socket) => {
       assignReferee(room, 'round3', { rotate: true, reason: 'duelists_changed' });
     }
 
-    const kickerPlayer = room.players.find(p => p.id === r3.currentKickerId);
-    const category = r3.currentCategory;
-    const dispatched = triviaEngine.getQuestionForPlayer({
-      roomId: roomCode,
-      characterId: kickerPlayer?.character?.id || 'fares_elfouly',
-      mode: 'hat_fi_qoraybi',
-      preferredCategory: category?.id
-    });
-    if (dispatched) {
-      r3.currentQuestion = {
-        question: dispatched.question_text,
-        answer: dispatched.correct_answer,
-        options: dispatched.options || ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
-        category: category?.id || dispatched.category,
-        kickerHint: category?.name || dispatched.category
-      };
-    } else {
-      const backupQ = PENALTY_QUESTIONS.find(q => q.category === category?.id) || PENALTY_QUESTIONS[0];
-      r3.currentQuestion = backupQ;
-    }
-
+    r3.currentQuestion = null;
     r3.interceptBuzzedBy = null;
     r3.interceptAt = null;
     r3.tieBreakActive = false;
@@ -1148,12 +1794,24 @@ io.on('connection', (socket) => {
 
   // Start Shootout
   socket.on('r3_start_shootout', ({ roomCode }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+
+    if (!requireRoundStatus(room, 'round3', socket, 'بدء ركلة الجزاء')) return;
 
     const r3 = room.round3;
+    if (r3.isComplete || r3.turnIndex >= 10) {
+      socket.emit('error_message', '🚫 انتهت ركلات الجزاء بالفعل.');
+      return;
+    }
     if (socket.id !== room.hostId && !isReferee(room, 'round3', socket.id)) {
       socket.emit('error_message', '🚫 بدء الركلة يتم من جهاز الهوست أو الحكم المحايد فقط.');
+      return;
+    }
+
+    if (r3.phase !== 'duelist_selection') {
+      socket.emit('error_message', '🚫 الركلة بدأت بالفعل.');
       return;
     }
 
@@ -1162,9 +1820,16 @@ io.on('connection', (socket) => {
       return;
     }
 
+    if (!dispatchR3PenaltyQuestion(room)) {
+      socket.emit('error_message', '🚫 لا يوجد سؤال متاح لهذه الركلة.');
+      return;
+    }
+
     r3.phase = 'shootout';
     r3.interceptBuzzedBy = null;
     r3.interceptAt = null;
+    r3.interceptCompensatedAt = null;
+    r3.goalieCompensation = 0;
     r3.shotStartedAt = Date.now();
     r3.tieBreakActive = false;
     r3.tieBreakData = null;
@@ -1174,8 +1839,11 @@ io.on('connection', (socket) => {
 
   // Server timestamp #1: goalkeeper's save buzz.
   socket.on('r3_intercept_buzz', ({ roomCode }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+
+    if (!requireRoundStatus(room, 'round3', socket, 'بزر الصد')) return;
 
     const r3 = room.round3;
     if (r3.phase !== 'shootout') {
@@ -1190,6 +1858,8 @@ io.on('connection', (socket) => {
 
     r3.interceptBuzzedBy = socket.id;
     r3.interceptAt = Date.now();
+    r3.goalieCompensation = getPlayerCompensation(socket.id);
+    r3.interceptCompensatedAt = r3.interceptAt - r3.goalieCompensation;
     const goalie = room.players.find(p => p.id === socket.id);
     io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
     io.to(roomCode).emit('notification', {
@@ -1201,6 +1871,8 @@ io.on('connection', (socket) => {
 
   function settlePenaltyShot(room, roomCode, result, meta = {}) {
     const r3 = room.round3;
+    if (r3.isComplete || r3.turnIndex >= 10 || r3.phase !== 'shootout') return false;
+
     const kickingTeam = r3.kickerTeam;
     const defendingTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
 
@@ -1231,22 +1903,30 @@ io.on('connection', (socket) => {
     r3.kickerTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
     r3.interceptBuzzedBy = null;
     r3.interceptAt = null;
+    r3.interceptCompensatedAt = null;
+    r3.goalieCompensation = 0;
     r3.shotStartedAt = null;
     r3.tieBreakActive = false;
     r3.tieBreakData = null;
 
-    const nextCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
-    r3.currentCategory = nextCategory;
-    r3.phase = 'duelist_selection';
     r3.isComplete = r3.turnIndex >= 10;
-
-    if (r3.turnIndex >= 10) {
+    if (r3.isComplete) {
+      r3.phase = 'complete';
+      r3.currentQuestion = null;
+      r3.currentKickerId = null;
+      r3.currentGoalieId = null;
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
       io.to(roomCode).emit('notification', {
         title: '🏁 انتهت ركلات الجزاء الترجيحية (10 ركلات)!',
         message: 'تم تسديد 10 ركلات بالتساوي (5 لكل فريق)! الانتقال لجولة المزاد مين يزوّد.'
       });
+      emitRoomState(room);
+      return true;
     }
+
+    const nextCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
+    r3.currentCategory = nextCategory;
+    r3.phase = 'duelist_selection';
 
     const teamAPlayers = room.players.filter(p => p.team === 'team_a');
     const teamBPlayers = room.players.filter(p => p.team === 'team_b');
@@ -1261,38 +1941,23 @@ io.on('connection', (socket) => {
 
     // Neutral tie-break referee must not be either duelist for the next kick.
     assignReferee(room, 'round3', { rotate: true, reason: 'shot_complete' });
-
-    const nextKickerPlayer = room.players.find(p => p.id === r3.currentKickerId);
-    const nextPenaltyQ = triviaEngine.getQuestionForPlayer({
-      roomId: roomCode,
-      characterId: nextKickerPlayer?.character?.id || 'fares_elfouly',
-      mode: 'hat_fi_qoraybi',
-      preferredCategory: nextCategory.id
-    });
-    if (nextPenaltyQ) {
-      r3.currentQuestion = {
-        question: nextPenaltyQ.question_text,
-        answer: nextPenaltyQ.correct_answer,
-        options: nextPenaltyQ.options || ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
-        category: nextCategory.id,
-        kickerHint: nextCategory.name
-      };
-    } else {
-      const backupQ = PENALTY_QUESTIONS.find(q => q.category === nextCategory.id) || PENALTY_QUESTIONS[0];
-      r3.currentQuestion = backupQ;
-    }
+    r3.currentQuestion = null;
 
     emitRoomState(room);
+    return true;
   }
 
   // Server timestamp #2: shooter's answer. The server — not the phone —
   // decides whether the answer or the goalkeeper buzz happened first.
   socket.on('r3_submit_answer', ({ roomCode, option }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+
+    if (!requireRoundStatus(room, 'round3', socket, 'تسجيل إجابة ركلة الجزاء')) return;
 
     const r3 = room.round3;
-    if (r3.phase !== 'shootout' || !r3.shotStartedAt) {
+    if (r3.isComplete || r3.phase !== 'shootout' || !r3.shotStartedAt) {
       socket.emit('error_message', '🚫 لا توجد ركلة نشطة الآن.');
       return;
     }
@@ -1302,24 +1967,37 @@ io.on('connection', (socket) => {
     }
     if (r3.tieBreakActive) return;
 
-    const answerAt = Date.now();
-    const answerMs = answerAt - r3.shotStartedAt;
-    const interceptMs = r3.interceptAt ? r3.interceptAt - r3.shotStartedAt : null;
-    const norm = (value) => String(value || '').trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, ' ');
-    const submitted = norm(option);
-    const expected = norm(r3.currentQuestion?.answer);
-    const isCorrect = !!submitted && (submitted === expected || expected.includes(submitted) || submitted.includes(expected));
-
-    let provisional;
-    if (isCorrect) {
-      // Correct answer wins unless the goalie buzzed first.
-      provisional = r3.interceptAt && r3.interceptAt < answerAt ? 'saved' : 'goal';
-    } else {
-      provisional = r3.interceptAt ? 'saved' : 'missed';
+    const options = r3.currentQuestion?.options || [];
+    if (typeof option !== 'string' || !options.includes(option)) {
+      socket.emit('error_message', '🚫 اختر أحد الخيارات المعروضة في سؤال الركلة.');
+      return;
     }
 
-    const bothClicked = !!r3.interceptAt;
-    const nearlySimultaneous = bothClicked && Math.abs(answerAt - r3.interceptAt) <= R3_TIE_WINDOW_MS;
+    const answerAt = Date.now();
+    const kickerCompensation = getPlayerCompensation(socket.id);
+    const goalieCompensation = r3.goalieCompensation ?? getPlayerCompensation(r3.currentGoalieId);
+
+    const norm = (value) => String(value || '').trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, ' ');
+    const submitted = norm(option);
+    const expected = norm(r3.currentQuestion.answer);
+    const isCorrect = !!submitted && !!expected && submitted === expected;
+
+    const {
+      provisional,
+      nearlySimultaneous,
+      answerCompensatedAt,
+      interceptCompensatedAt
+    } = resolveShootoutTimings({
+      answerAt,
+      interceptAt: r3.interceptAt,
+      kickerCompensation,
+      goalieCompensation,
+      isCorrect,
+      tieWindowMs: R3_TIE_WINDOW_MS
+    });
+
+    const answerMs = answerAt - r3.shotStartedAt;
+    const interceptMs = r3.interceptAt ? r3.interceptAt - r3.shotStartedAt : null;
 
     if (nearlySimultaneous) {
       r3.tieBreakActive = true;
@@ -1327,13 +2005,17 @@ io.on('connection', (socket) => {
         provisionalResult: provisional,
         answerMs,
         interceptMs,
+        answerCompensatedAt,
+        interceptCompensatedAt,
+        kickerCompensation,
+        goalieCompensation,
         isCorrect,
         kickerId: r3.currentKickerId,
         goalieId: r3.currentGoalieId
       };
       io.to(roomCode).emit('notification', {
         title: '⏱️ تعادل لحظي في أجزاء الثانية!',
-        message: 'الضغطتان متزامنتان. الحكم المحايد سيفصل النتيجة نهائياً من جهازه.'
+        message: 'الضغطتان متزامنتان بعد تعويض سرعة الاتصال. الحكم المحايد سيفصل النتيجة نهائياً من جهازه.'
       });
       emitRoomState(room);
       return;
@@ -1350,9 +2032,11 @@ io.on('connection', (socket) => {
 
   // Neutral referee final confirmation / tie-break only.
   socket.on('r3_resolve_tiebreak', ({ roomCode, result }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
 
+    if (!requireRoundStatus(room, 'round3', socket, 'فض تعادل الركلة')) return;
     if (!requireReferee(room, 'round3', socket, 'فض تعادل الركلة')) return;
 
     const r3 = room.round3;
@@ -1374,9 +2058,11 @@ io.on('connection', (socket) => {
   // Legacy manual record endpoint: only the neutral referee can use it,
   // and only while a genuine tie-break is waiting for a decision.
   socket.on('r3_record_shot', ({ roomCode, result }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
 
+    if (!requireRoundStatus(room, 'round3', socket, 'اعتماد نتيجة الركلة')) return;
     if (!requireReferee(room, 'round3', socket, 'اعتماد نتيجة الركلة')) return;
     if (!room.round3.tieBreakActive) {
       socket.emit('error_message', '🚫 النتيجة تُحسب تلقائياً بتوقيت السيرفر. يدوي فقط عند التعادل اللحظي.');
@@ -1387,16 +2073,36 @@ io.on('connection', (socket) => {
   });
 
   // =================== ROUND 4 ACTIONS (Blind Auction) ===================
-  socket.on('r4_bid', ({ roomCode, increment }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('r4_bid', ({ roomCode, increment, expectedBid, topicId }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room, player } = context;
+
+    if (!requireRoundStatus(room, 'round4', socket, 'المزايدة')) return;
 
     const r4 = room.round4;
-    const player = room.players.find(p => p.id === socket.id);
-    if (!player) return;
-
+    if (!r4.currentTopic || !r4.topicId) {
+      socket.emit('error_message', '🚫 لا يوجد موضوع مزاد نشط الآن.');
+      return;
+    }
+    if (r4.phase !== 'bidding') {
+      socket.emit('error_message', '🚫 انتهت مرحلة المزايدة على هذا الموضوع.');
+      return;
+    }
+    if (typeof topicId !== 'string' || topicId !== r4.topicId) {
+      socket.emit('error_message', '🚫 انتهت صلاحية موضوع المزاد. انتظر الموضوع الجديد.');
+      return;
+    }
     if (![1, 2, 5].includes(increment)) {
       socket.emit('error_message', '🚫 قيمة المزايدة غير صحيحة.');
+      return;
+    }
+    if (!Number.isInteger(expectedBid) || expectedBid !== r4.highestBid) {
+      socket.emit('error_message', '🚫 تغيّرت أعلى مزايدة. راجع الرقم الحالي قبل المزايدة.');
+      return;
+    }
+    if (r4.highestBidderTeam === player.team) {
+      socket.emit('error_message', '🚫 فريقك صاحب أعلى مزايدة بالفعل.');
       return;
     }
 
@@ -1417,24 +2123,46 @@ io.on('connection', (socket) => {
   });
 
   // R4 Lifelines: 'call_friend' | 'rival_hint'
-  socket.on('r4_use_lifeline', ({ roomCode, team, lifelineType }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('r4_use_lifeline', ({ roomCode, team, lifelineType, topicId }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room, player: caller } = context;
 
-    const caller = room.players.find(p => p.id === socket.id);
-    if (!caller) return;
+    if (!requireRoundStatus(room, 'round4', socket, 'وسيلة المساعدة')) return;
+
+    const r4 = room.round4;
+    if (!r4.currentTopic || !r4.topicId) {
+      socket.emit('error_message', '🚫 لا يوجد موضوع مزاد نشط الآن.');
+      return;
+    }
+    if (r4.phase !== 'bidding' && r4.phase !== 'execution') {
+      socket.emit('error_message', '🚫 انتهت مرحلة استخدام وسائل المساعدة لهذا الموضوع.');
+      return;
+    }
+    if (typeof topicId !== 'string' || topicId !== r4.topicId) {
+      socket.emit('error_message', '🚫 انتهت صلاحية موضوع المزاد. انتظر الموضوع الجديد.');
+      return;
+    }
+    if (!['call_friend', 'rival_hint'].includes(lifelineType)) {
+      socket.emit('error_message', '🚫 وسيلة مساعدة غير معروفة.');
+      return;
+    }
     if (team && team !== caller.team) {
       socket.emit('error_message', '🚫 لا يمكنك استخدام وسائل مساعدة لفريق الخصم.');
       return;
     }
     team = caller.team;
 
-    const r4 = room.round4;
     if (!r4.usedLifelines) r4.usedLifelines = { team_a: [], team_b: [] };
     if (!r4.usedLifelines[team]) r4.usedLifelines[team] = [];
 
     if (r4.usedLifelines[team].includes(lifelineType)) {
       socket.emit('error_message', 'هذه الوسيلة تم استخدامها من قبل لفريقك!');
+      return;
+    }
+
+    if (lifelineType === 'rival_hint' && !(r4.currentTopic.validItems || []).length) {
+      socket.emit('error_message', '🚫 لا توجد إجابات معتمدة متاحة لهذا التلميح.');
       return;
     }
 
@@ -1463,15 +2191,25 @@ io.on('connection', (socket) => {
 
   // Toggle item named in auction checklist. Only the designated opposing
   // referee may tick items; the answering team can never self-verify.
-  socket.on('r4_toggle_item', ({ roomCode, item }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('r4_toggle_item', ({ roomCode, item, topicId }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
 
+    if (!requireRoundStatus(room, 'round4', socket, 'تدقيق إجابات المزاد')) return;
     if (!requireReferee(room, 'round4', socket, 'تدقيق إجابات المزاد')) return;
 
     const r4 = room.round4;
-    const validItems = r4.currentTopic?.validItems || [];
-    if (!validItems.includes(item)) {
+    if (!r4.currentTopic || !r4.topicId || topicId !== r4.topicId) {
+      socket.emit('error_message', '🚫 انتهت صلاحية موضوع المزاد. انتظر الموضوع الجديد.');
+      return;
+    }
+    if (r4.phase === 'resolved') {
+      socket.emit('error_message', '🚫 تم اعتماد نتيجة هذا المزاد بالفعل.');
+      return;
+    }
+    const validItems = r4.currentTopic.validItems || [];
+    if (typeof item !== 'string' || !validItems.includes(item)) {
       socket.emit('error_message', '🚫 هذا العنصر ليس ضمن قائمة الإجابات المعتمدة.');
       return;
     }
@@ -1487,15 +2225,29 @@ io.on('connection', (socket) => {
     emitRoomState(room);
   });
 
-  socket.on('r4_resolve_bid', ({ roomCode, success }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+  socket.on('r4_resolve_bid', ({ roomCode, success, topicId }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
 
+    if (!requireRoundStatus(room, 'round4', socket, 'اعتماد نتيجة المزاد')) return;
     if (!requireReferee(room, 'round4', socket, 'اعتماد نقاط المزاد')) return;
 
     const r4 = room.round4;
-    const winningTeam = r4.highestBidderTeam;
+    if (!r4.currentTopic || !r4.topicId || topicId !== r4.topicId) {
+      socket.emit('error_message', '🚫 انتهت صلاحية موضوع المزاد. انتظر الموضوع الجديد.');
+      return;
+    }
+    if (r4.phase === 'resolved') {
+      socket.emit('error_message', '🚫 تم اعتماد نتيجة هذا المزاد بالفعل.');
+      return;
+    }
+    if (typeof success !== 'boolean') {
+      socket.emit('error_message', '🚫 نتيجة المزاد غير صحيحة.');
+      return;
+    }
 
+    const winningTeam = r4.highestBidderTeam;
     if (!winningTeam) {
       socket.emit('error_message', '🚫 لا يوجد صاحب مزاد معتمد بعد.');
       return;
@@ -1505,6 +2257,8 @@ io.on('connection', (socket) => {
       socket.emit('error_message', `🚫 لم يصل الفريق للرقم المطلوب (${r4.itemsNamed?.length || 0}/${r4.highestBid}). لا يمكن اعتماد النقاط.`);
       return;
     }
+
+    r4.phase = 'resolved';
 
     if (success) {
       const reward = r4.highestBid * 400;
@@ -1516,20 +2270,18 @@ io.on('connection', (socket) => {
         message: `${room.teams[winningTeam].name} حقق الرقم المطلوب وكسب ${reward} نقطة!`
       });
     } else {
-      // Penalty for failing bid
-      const penalty = r4.highestBid * 250;
-      room.teams[winningTeam].score = Math.max(0, room.teams[winningTeam].score - penalty);
       io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
       io.to(roomCode).emit('notification', {
-        title: 'وقعت في الفخ! ❌',
-        message: `${room.teams[winningTeam].name} مقدرش يوفي بالمزاد وخسر ${penalty} نقطة!`
+        title: 'المزاد لم يكتمل',
+        message: `${room.teams[winningTeam].name} لم يوفِ بالمزاد. لا توجد نقاط مخصومة.`
       });
     }
 
     r4.currentTopicIndex = (r4.currentTopicIndex || 0) + 1;
-    r4.phase = 'resolved';
 
     if (r4.currentTopicIndex >= 4) {
+      r4.currentTopic = null;
+      r4.topicId = null;
       io.to(roomCode).emit('sound_trigger', { sound: 'fanfare' });
       io.to(roomCode).emit('confetti_trigger');
       io.to(roomCode).emit('notification', {
@@ -1537,9 +2289,8 @@ io.on('connection', (socket) => {
         message: 'تم إنجاز كافة جولات ساحة الكويز! حان وقت تتويج بطل الساحة 👑'
       });
     } else {
-      const nextTopic = AUCTION_TOPICS[r4.currentTopicIndex % AUCTION_TOPICS.length];
-      r4.currentTopic = nextTopic;
-      r4.highestBid = nextTopic.minBid;
+      dispatchR4Topic(room);
+      r4.highestBid = r4.currentTopic?.minBid || 3;
       r4.timer = 60;
       r4.itemsNamed = [];
       r4.phase = 'bidding';
@@ -1554,28 +2305,42 @@ io.on('connection', (socket) => {
 
   // Chat message & Taunts
   socket.on('send_chat', ({ roomCode, text, isTaunt }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room, player } = context;
 
-    const player = room.players.find(p => p.id === socket.id);
+    if (typeof text !== 'string') return;
+    const cleanText = text
+      .replace(/[\u0000-\u001F\u007F]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, MAX_CHAT_LENGTH);
+    if (!cleanText) return;
+
+    const now = Date.now();
+    if (now - (LAST_CHAT_AT.get(socket.id) || 0) < CHAT_RATE_LIMIT_MS) return;
+    LAST_CHAT_AT.set(socket.id, now);
+
     const msg = {
-      id: Date.now() + Math.random().toString(),
-      senderName: player?.name || 'مجهول',
-      characterAvatar: player?.character?.avatar || '⚡',
-      team: player?.team || 'team_a',
-      text,
-      isTaunt: !!isTaunt,
+      id: crypto.randomUUID(),
+      senderName: player.name,
+      characterAvatar: player.character?.avatar || '⚡',
+      team: player.team,
+      text: cleanText,
+      isTaunt: isTaunt === true,
       time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
     };
 
     room.messages.push(msg);
     if (room.messages.length > 50) room.messages.shift();
 
-    io.to(roomCode).emit('chat_received', msg);
+    io.to(room.code).emit('chat_received', msg);
   });
 
   socket.on('disconnect', () => {
     console.log(`[Socket] Disconnected: ${socket.id}`);
+    JOIN_ATTEMPTS.delete(socket.id);
+    LAST_CHAT_AT.delete(socket.id);
 
     for (const [code, room] of rooms.entries()) {
       const playerIndex = room.players.findIndex(p => p.id === socket.id);
@@ -1584,40 +2349,74 @@ io.on('connection', (socket) => {
       const removedPlayer = room.players[playerIndex];
       console.log(`[Player Disconnected] ${removedPlayer.name} disconnected from room ${code}`);
 
-      if (room.status === 'lobby' || room.status === 'waiting') {
-        // If countdown was in progress, cancel it immediately!
-        if (room.countdownInterval) {
-          clearInterval(room.countdownInterval);
-          room.countdownInterval = null;
-          room.countdown = null;
-          io.to(room.code).emit('countdown_cancelled', {
-            reason: `انقطع اتصال ${removedPlayer.name} قبل انطلاق المباراة! تم إلغاء العد التنازلي.`
-          });
-        }
+      // If countdown was in progress, cancel it immediately, even though the
+      // player still gets a reconnection grace period in the lobby.
+      if (LOBBY_STATUSES.includes(room.status)) {
+        stopCountdown(room, `انقطع اتصال ${removedPlayer.name} قبل انطلاق المباراة! تم إلغاء العد التنازلي.`);
+      }
 
-        // Remove disconnected player (resets slot to empty)
-        room.players.splice(playerIndex, 1);
+      if (LOBBY_STATUSES.includes(room.status)) {
+        // Lobby disconnect: keep the seat reserved for a 20-second grace window.
+        removedPlayer.connected = false;
+        removedPlayer.lastSeen = Date.now();
+        removedPlayer.disconnectAt = Date.now();
 
-        // Transfer host authority if host left
-        if (removedPlayer.isHost && room.players.length > 0) {
-          room.players[0].isHost = true;
-          room.hostId = room.players[0].id;
-          io.to(room.code).emit('notification', {
-            title: 'انتقال شارة القيادة 👑',
-            message: `${room.players[0].name} أصبح هو كابتن الغرفة الجديد!`
-          });
-        }
+        const token = removedPlayer.playerToken;
+        if (!room.disconnectTimers) room.disconnectTimers = new Map();
+        const existingTimer = room.disconnectTimers.get(token);
+        if (existingTimer) clearTimeout(existingTimer);
 
-        if (room.players.length === 0 && code !== 'ARENA' && code !== 'QZ-7842') {
-          rooms.delete(code);
-          console.log(`[Room Deleted] Room ${code} was deleted because all players left.`);
-        } else {
-          emitRoomState(room);
-          io.to(room.code).emit('notification', {
-            title: 'تفريغ خانة ⚠️',
-            message: `غادر ${removedPlayer.name} الساحة. تم تفريغ الخانة!`
-          });
-        }
+        const removalTimer = setTimeout(() => {
+          const currentRoom = rooms.get(code);
+          if (!currentRoom) return;
+
+          currentRoom.disconnectTimers?.delete(token);
+
+          const index = currentRoom.players.findIndex(p => p.playerToken === token && !p.isBot);
+          if (index === -1) return;
+
+          const player = currentRoom.players[index];
+          if (player.connected) return;
+
+          currentRoom.players.splice(index, 1);
+
+          // Transfer host authority only after the grace period expires.
+          if (player.isHost && currentRoom.players.length > 0) {
+            const nextHost =
+              currentRoom.players.find(p => !p.isBot && p.connected !== false) ||
+              currentRoom.players.find(p => !p.isBot) ||
+              currentRoom.players[0];
+
+            currentRoom.players.forEach(p => { p.isHost = false; });
+            nextHost.isHost = true;
+            currentRoom.hostId = nextHost.id;
+
+            io.to(currentRoom.code).emit('notification', {
+              title: 'انتقال شارة القيادة 👑',
+              message: `${nextHost.name} أصبح هو كابتن الغرفة الجديد!`
+            });
+          }
+
+          if (currentRoom.players.length === 0) {
+            rooms.delete(code);
+            console.log(`[Room Deleted] Room ${code} was deleted because all players left.`);
+          } else {
+            emitRoomState(currentRoom);
+            io.to(currentRoom.code).emit('notification', {
+              title: 'تفريغ خانة ⚠️',
+              message: `غادر ${player.name} الساحة بعد ${Math.round(DISCONNECT_GRACE_MS / 1000)} ثانية من غير رجوع. تم تفريغ الخانة!`
+            });
+          }
+        }, DISCONNECT_GRACE_MS);
+
+        removalTimer.unref?.();
+        room.disconnectTimers.set(token, removalTimer);
+
+        emitRoomState(room);
+        io.to(room.code).emit('notification', {
+          title: 'انقطاع اتصال مؤقت ⚠️',
+          message: `فقدنا اتصال ${removedPlayer.name}. عنده ${Math.round(DISCONNECT_GRACE_MS / 1000)} ثانية يرجع قبل ما الخانة تتفضى.`
+        });
         continue;
       }
 
@@ -1706,7 +2505,12 @@ const refereeWatchdog = setInterval(() => {
 refereeWatchdog.unref?.();
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', server: 'Quiz Arena Backend', activeRooms: rooms.size });
+  res.json({
+    status: 'ok',
+    server: 'Quiz Arena Backend',
+    activeRooms: rooms.size,
+    uptimeSeconds: Math.floor(process.uptime())
+  });
 });
 
 // Dynamic In-Game Engine API Endpoints ("القلاية")
@@ -1722,24 +2526,11 @@ app.get('/api/trivia/stats', (req, res) => {
   });
 });
 
-app.get('/api/trivia/next', (req, res) => {
-  const { roomId = 'test_room', characterId = 'fares_elfouly', mode = 'one_two_bank', category } = req.query;
-  const q = triviaEngine.getQuestionForPlayer({
-    roomId,
-    characterId,
-    mode,
-    preferredCategory: category
+const isMainModule = process.argv[1]
+  && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isMainModule) {
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`🎮 Quiz Arena Real-Time Game Server running on 0.0.0.0:${PORT}`);
   });
-  res.json({ question: q });
-});
-
-app.post('/api/trivia/replenish', async (req, res) => {
-  const { category = 'general_knowledge', mode = 'one_two_bank', count = 50 } = req.body || {};
-  const batch = await triviaEngine.generateBatch(category, mode, count);
-  const inserted = triviaEngine.upsertQuestions(batch);
-  res.json({ success: true, count: inserted, total: triviaEngine.inMemoryBank.length });
-});
-
-httpServer.listen(PORT, () => {
-  console.log(`🎮 Quiz Arena Real-Time Game Server running on port ${PORT}`);
-});
+}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { GameProvider, useGame } from './context/GameContext';
 import Header from './components/Header';
+import Landing from './components/Landing';
 import Lobby from './components/Lobby';
 import Round1Bank from './components/Round1Bank';
 import Round2Password from './components/Round2Password';
@@ -10,12 +11,14 @@ import GameOver from './components/GameOver';
 import MobileController from './components/MobileController';
 import TauntChat from './components/TauntChat';
 import ErrorBoundary from './components/ErrorBoundary';
-import { Layers, PlayCircle, Lock, Shield, Gavel, Trophy, Sparkles } from 'lucide-react';
+import { PlayCircle, Lock, Shield, Gavel, Trophy, Sparkles } from 'lucide-react';
 
 function GameScreen() {
-  const { roomState, changeRound, activeTabMode, toast } = useGame();
+  const { roomState, changeRound, activeTabMode, toast, roomCode, isHost } = useGame();
 
   const currentStatus = roomState?.status || 'lobby';
+  const isMatchInProgress = ['round1', 'round2', 'round3', 'round4', 'game_over'].includes(currentStatus);
+  const showLanding = !roomCode && !isMatchInProgress;
 
   return (
     <div className="min-h-screen bg-arena-darker arcade-grid-bg text-white flex flex-col font-arabic">
@@ -36,7 +39,9 @@ function GameScreen() {
       {/* Main Content Area */}
       <main className="flex-1 pb-20">
         <ErrorBoundary>
-          {activeTabMode === 'mobile_controller' ? (
+          {showLanding ? (
+            <Landing />
+          ) : activeTabMode === 'mobile_controller' ? (
             <MobileController />
           ) : (
             <>
@@ -51,76 +56,78 @@ function GameScreen() {
         </ErrorBoundary>
       </main>
 
-      {/* Host Quick Round Navigation Bar at Bottom */}
-      <footer className="fixed bottom-0 left-0 right-0 z-30 bg-arena-card/95 backdrop-blur-md border-t border-white/10 px-3 py-2">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 overflow-x-auto">
-          <div className="text-[11px] font-bold text-gray-400 whitespace-nowrap hidden md:block">
-            تحكم سريع بالحكم:
+      {/* Host Quick Round Navigation Bar at Bottom (host only) */}
+      {isHost && roomCode && (
+        <footer className="fixed bottom-0 left-0 right-0 z-30 bg-arena-card/95 backdrop-blur-md border-t border-white/10 px-3 py-2">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 overflow-x-auto">
+            <div className="text-[11px] font-bold text-gray-400 whitespace-nowrap hidden md:block">
+              تحكم سريع بالحكم:
+            </div>
+
+            <div className="flex items-center gap-1.5 mx-auto">
+              <button
+                onClick={() => changeRound('lobby')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                  (currentStatus === 'lobby' || currentStatus === 'waiting') ? 'bg-arena-cyan text-arena-darker font-black' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>التشكيلة</span>
+              </button>
+
+              <button
+                onClick={() => changeRound('round1')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                  currentStatus === 'round1' ? 'bg-arena-yellow text-arena-darker font-black' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <PlayCircle className="w-3.5 h-3.5" />
+                <span>جولة 1: 1 تو</span>
+              </button>
+
+              <button
+                onClick={() => changeRound('round2')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                  currentStatus === 'round2' ? 'bg-arena-cyan text-arena-darker font-black' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>جولة 2: في سري</span>
+              </button>
+
+              <button
+                onClick={() => changeRound('round3')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                  currentStatus === 'round3' ? 'bg-arena-red text-white font-black' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span>جولة 3: ركلات جزاء</span>
+              </button>
+
+              <button
+                onClick={() => changeRound('round4')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                  currentStatus === 'round4' ? 'bg-arena-purple text-white font-black' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Gavel className="w-3.5 h-3.5" />
+                <span>المزاد الفاصل</span>
+              </button>
+
+              <button
+                onClick={() => changeRound('game_over')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                  currentStatus === 'game_over' ? 'bg-arena-green text-arena-darker font-black' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Trophy className="w-3.5 h-3.5" />
+                <span>التتويج</span>
+              </button>
+            </div>
           </div>
-
-          <div className="flex items-center gap-1.5 mx-auto">
-            <button
-              onClick={() => changeRound('lobby')}
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
-                (currentStatus === 'lobby' || currentStatus === 'waiting') ? 'bg-arena-cyan text-arena-darker font-black' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>التشكيلة</span>
-            </button>
-
-            <button
-              onClick={() => changeRound('round1')}
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
-                currentStatus === 'round1' ? 'bg-arena-yellow text-arena-darker font-black' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <PlayCircle className="w-3.5 h-3.5" />
-              <span>جولة 1: 1 تو</span>
-            </button>
-
-            <button
-              onClick={() => changeRound('round2')}
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
-                currentStatus === 'round2' ? 'bg-arena-cyan text-arena-darker font-black' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span>جولة 2: في سري</span>
-            </button>
-
-            <button
-              onClick={() => changeRound('round3')}
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
-                currentStatus === 'round3' ? 'bg-arena-red text-white font-black' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <Shield className="w-3.5 h-3.5" />
-              <span>جولة 3: ركلات جزاء</span>
-            </button>
-
-            <button
-              onClick={() => changeRound('round4')}
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
-                currentStatus === 'round4' ? 'bg-arena-purple text-white font-black' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <Gavel className="w-3.5 h-3.5" />
-              <span>المزاد الفاصل</span>
-            </button>
-
-            <button
-              onClick={() => changeRound('game_over')}
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
-                currentStatus === 'game_over' ? 'bg-arena-green text-arena-darker font-black' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <Trophy className="w-3.5 h-3.5" />
-              <span>التتويج</span>
-            </button>
-          </div>
-        </div>
-      </footer>
+        </footer>
+      )}
 
       {/* Floating Street Taunt Drawer */}
       <TauntChat />

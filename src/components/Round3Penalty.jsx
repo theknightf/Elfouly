@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
-import { PENALTY_QUESTIONS } from '../data/questions';
-import { sounds } from '../utils/soundEffects';
 import { Shield, Flame, Trophy, ArrowRight, Eye, EyeOff, Radio, CheckCircle, XCircle } from 'lucide-react';
 
 export default function Round3Penalty() {
   const {
     roomState,
+    currentPlayer,
     r3InterceptBuzz,
     r3RecordShot,
+    r3SubmitAnswer,
     r3SelectDuelists,
     r3StartShootout,
     changeRound,
@@ -22,11 +22,11 @@ export default function Round3Penalty() {
   const currentCategory = r3.currentCategory || { name: 'برشلونة وأوروبا (بعد 2010)', icon: '⚽', hint: 'تخصص كروي' };
   const isDuelistSelection = r3.phase === 'duelist_selection';
 
-  const currentQ = r3.currentQuestion || PENALTY_QUESTIONS[0] || {
-    question: 'ما هو اسم الملعب الأسطوري لنادي برشلونة؟',
-    answer: 'كامب نو',
-    options: ['كامب نو', 'سانتياغو برنابيو', 'المستايا', 'أنفيلد'],
-    kickerHint: 'برشلونة وأوروبا'
+  const currentQ = r3.currentQuestion || {
+    question: 'جاري تجهيز سؤال الركلة بعد تأكيد المبارزين...',
+    answer: '',
+    options: [],
+    kickerHint: 'في انتظار السؤال'
   };
   const kickingTeamKey = r3.kickerTeam || 'team_a';
   const defendingTeamKey = kickingTeamKey === 'team_a' ? 'team_b' : 'team_a';
@@ -52,7 +52,14 @@ export default function Round3Penalty() {
   const isIntercepted = !!r3.interceptBuzzedBy;
 
   const [selectedOption, setSelectedOption] = useState(null);
-  const [feedback, setFeedback] = useState(null); // { option, isCorrect }
+  const isKicker = currentPlayer?.id === r3.currentKickerId;
+  const isGoalie = currentPlayer?.id === r3.currentGoalieId;
+  const isReferee = currentPlayer?.id === r3.refereePlayerId;
+
+  useEffect(() => {
+    setSelectedOption(null);
+    setShowAnswer(false);
+  }, [r3.turnIndex, r3.phase]);
 
   const handleInterceptClick = () => {
     r3InterceptBuzz();
@@ -61,35 +68,17 @@ export default function Round3Penalty() {
   const handleRecord = (result) => {
     setShowAnswer(false);
     setSelectedOption(null);
-    setFeedback(null);
     r3RecordShot(result);
   };
 
   const handleOptionSelect = (opt) => {
-    if (selectedOption) return; // prevent duplicate clicks while resolving
+    if (selectedOption || !r3.currentQuestion) return;
+    if (!isKicker || r3.tieBreakActive) {
+      showToast('🚫 دور المسدد', 'المسدد الحالي فقط هو من يختار الإجابة من جهازه.');
+      return;
+    }
     setSelectedOption(opt);
-
-    const normOpt = String(opt || '').trim().toLowerCase();
-    const normAns = String(currentQ?.answer || '').trim().toLowerCase();
-    const isCorrect = normOpt === normAns || (normAns && normOpt && (normAns.includes(normOpt) || normOpt.includes(normAns)));
-
-    setFeedback({ option: opt, isCorrect });
-
-    setTimeout(() => {
-      if (isIntercepted) {
-        sounds.playSave();
-        showToast('🧤 تصدي حارس المرمى!', `${currentGoalie?.name || 'حارس المرمى'} تصدى للتسديدة وخطف النقطة! (+800ن)`);
-        handleRecord('saved');
-      } else if (isCorrect) {
-        sounds.playGoalRoar();
-        showToast('⚽ هدف في المقص!', `${currentKicker?.name || 'المسدد'} أحرز هدفاً رائعاً في الشباك! (+1000ن)`);
-        handleRecord('goal');
-      } else {
-        sounds.playBuzzer();
-        showToast('❌ ضاعت الركلة!', `${currentKicker?.name || 'المسدد'} أضاع التسديدة في العارضة!`);
-        handleRecord('missed');
-      }
-    }, 600);
+    r3SubmitAnswer(opt);
   };
 
   return (
@@ -345,7 +334,7 @@ export default function Round3Penalty() {
           <div className="lg:col-span-8 bg-arena-card rounded-3xl p-6 md:p-8 border-2 border-arena-cyan/40 shadow-2xl space-y-5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/20">
-                تخصص التسديد: {currentCategory?.name || currentQ.kickerHint}
+                تخصص التسديد: {currentCategory?.name || currentQ?.kickerHint}
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -366,7 +355,7 @@ export default function Round3Penalty() {
                 سؤال التسديدة لـ <span className="text-arena-cyan font-bold">{currentKicker?.name}</span>:
               </div>
               <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed">
-                {currentQ.question}
+                {currentQ?.question}
               </h3>
             </div>
 
@@ -382,26 +371,23 @@ export default function Round3Penalty() {
             )}
 
             {/* Multiple options for fast play - Interactive Clickable Buttons */}
-            {currentQ.options && (
+            {currentQ?.options?.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                 {currentQ.options.map((opt, idx) => {
                   const isSelected = selectedOption === opt;
-                  const isCorrect = feedback && feedback.option === opt && feedback.isCorrect;
-                  const isWrong = feedback && feedback.option === opt && !feedback.isCorrect;
+                  const canAnswer = isKicker && !r3.tieBreakActive;
 
                   return (
                     <button
                       key={idx}
                       onClick={() => handleOptionSelect(opt)}
-                      disabled={!!selectedOption}
-                      className={`p-4 rounded-2xl border-2 text-right transition-all flex items-center justify-between cursor-pointer shadow-md ${
-                        isCorrect
-                          ? 'bg-emerald-950/90 border-arena-green text-arena-green scale-[1.02] shadow-[0_0_15px_#00E676]'
-                          : isWrong
-                          ? 'bg-rose-950/90 border-arena-red text-arena-red scale-[0.98]'
-                          : isSelected
+                      disabled={!!selectedOption || !canAnswer}
+                      className={`p-4 rounded-2xl border-2 text-right transition-all flex items-center justify-between shadow-md ${
+                        isSelected
                           ? 'bg-arena-cyan/20 border-arena-cyan text-white'
-                          : 'bg-arena-darker/90 hover:bg-arena-card border-white/10 hover:border-arena-cyan text-gray-200'
+                          : canAnswer
+                          ? 'bg-arena-darker/90 hover:bg-arena-card border-white/10 hover:border-arena-cyan text-gray-200 cursor-pointer'
+                          : 'bg-arena-darker/50 border-white/5 text-gray-500 cursor-not-allowed'
                       }`}
                     >
                       <span className="text-xs md:text-sm font-bold">{opt}</span>
@@ -414,21 +400,23 @@ export default function Round3Penalty() {
               </div>
             )}
 
-            {/* Answer section */}
-            <div className="pt-4 border-t border-white/10 flex items-center justify-between">
-              <button
-                onClick={() => setShowAnswer(!showAnswer)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-arena-darker border border-white/10 hover:border-arena-cyan text-xs font-bold text-gray-300 transition-all"
-              >
-                {showAnswer ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5 text-arena-yellow" />}
-                <span>{showAnswer ? 'إخفاء الإجابة' : 'كشف إجابة السؤال للحكم'}</span>
-              </button>
-              {showAnswer && (
-                <span className="text-sm font-black text-arena-green bg-emerald-950 px-3 py-1 rounded-lg border border-arena-green/50">
-                  الإجابة الصحيحة: {currentQ.answer}
-                </span>
-              )}
-            </div>
+            {/* Answer section - referee device only */}
+            {isReferee && (
+              <div className="pt-4 border-t border-white/10 flex items-center justify-between">
+                <button
+                  onClick={() => setShowAnswer(!showAnswer)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-arena-darker border border-white/10 hover:border-arena-cyan text-xs font-bold text-gray-300 transition-all"
+                >
+                  {showAnswer ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5 text-arena-yellow" />}
+                  <span>{showAnswer ? 'إخفاء الإجابة' : 'كشف إجابة السؤال للحكم'}</span>
+                </button>
+                {showAnswer && (
+                  <span className="text-sm font-black text-arena-green bg-emerald-950 px-3 py-1 rounded-lg border border-arena-green/50">
+                    الإجابة الصحيحة: {currentQ?.answer}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Goalie Intercept Buzzer & Referee Judgment (4 cols) */}
@@ -447,11 +435,13 @@ export default function Round3Penalty() {
 
               <button
                 onClick={handleInterceptClick}
-                disabled={isIntercepted}
-                className={`w-full py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                disabled={isIntercepted || !isGoalie}
+                className={`w-full py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2 transition-all ${
                   isIntercepted
                     ? 'bg-arena-red/40 text-gray-400 border border-gray-600'
-                    : 'btn-arcade-red animate-buzzer'
+                    : isGoalie
+                    ? 'btn-arcade-red animate-buzzer cursor-pointer'
+                    : 'bg-arena-card text-gray-500 cursor-not-allowed'
                 }`}
               >
                 <Shield className="w-6 h-6 fill-current" />
@@ -459,10 +449,11 @@ export default function Round3Penalty() {
               </button>
             </div>
 
-            {/* Referee Shot Result Validation */}
+            {/* Referee tie-break validation only */}
+            {isReferee && r3.tieBreakActive && (
             <div className="bg-arena-card/90 rounded-2xl p-4 border border-white/20 shadow-xl space-y-3">
               <div className="text-xs font-black text-white text-right">
-                حكم الضربة (اعتماد النتيجة):
+                حكم الضربة (فض التعادل اللحظي):
               </div>
 
               <div className="grid grid-cols-3 gap-2">
@@ -497,6 +488,7 @@ export default function Round3Penalty() {
                 </button>
               </div>
             </div>
+            )}
 
           </div>
 

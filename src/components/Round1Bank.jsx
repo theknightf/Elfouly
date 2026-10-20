@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useGame } from '../context/GameContext';
-import { Vault, Flame, CheckCircle, XCircle, ArrowRight, ShieldCheck, Zap, HelpCircle, Eye, EyeOff, RotateCcw } from 'lucide-react';
+import { Vault, Flame, CheckCircle, XCircle, ArrowRight, ShieldCheck, Eye, EyeOff, RotateCcw } from 'lucide-react';
 
 export default function Round1Bank() {
   const {
@@ -38,10 +38,7 @@ export default function Round1Bank() {
 
   // Next potential points if answered correctly
   const nextStreak = Math.min(currentStreak + 1, 10);
-  let nextValue = streakLadder[nextStreak];
-  if (answeringPlayer?.character?.id === 'fares_elfouly') {
-    nextValue = Math.round(nextValue * 1.2);
-  }
+  const nextValue = streakLadder[nextStreak];
 
   const handleScoreClick = () => {
     setShowAnswer(false);
@@ -84,11 +81,6 @@ export default function Round1Bank() {
                 {answeringPlayer?.name || 'لاعب الإجابة'} ({activeTeam.name.split('(')[0]})
               </div>
             </div>
-            {answeringPlayer?.character?.id === 'fares_elfouly' && (
-              <span className="text-[10px] bg-arena-cyan/20 text-arena-cyan px-1.5 py-0.5 rounded font-bold" title="بونص الفولي +20%">
-                +20% ⚡
-              </span>
-            )}
             {answeringPlayer?.character?.id === 'abdelrahman_eltouny' && (
               <span className="text-[10px] bg-arena-yellow/20 text-arena-yellow px-1.5 py-0.5 rounded font-bold" title="درع بيلافيتا">
                 درع 🛡️
