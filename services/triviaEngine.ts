@@ -337,13 +337,14 @@ export class TriviaEngine {
       const qText = `سؤال إضافي متقدم في ${category} (${Date.now() + i})`;
       const hash = crypto.createHash('md5').update(`${mode}_${category}_${qText}`).digest('hex');
 
+      const answer = `إجابة صحيحة نموذجية #${i + 1}`;
       results.push({
         id: crypto.randomUUID(),
         mode: mode as any,
         category,
         question_text: qText,
-        correct_answer: `إجابة صحيحة نموذجية #${i + 1}`,
-        options: mode === 'hat_fi_qoraybi' ? ['إجابة صحيحة نموذجية #1', 'خيار 2', 'خيار 3', 'خيار 4'] : null,
+        correct_answer: answer,
+        options: mode === 'hat_fi_qoraybi' ? this.shuffle([answer, 'خيار 2', 'خيار 3', 'خيار 4']) : null,
         forbidden_words: mode === 'edini_fi_seri' ? ['ممنوع 1', 'ممنوع 2', 'ممنوع 3', 'ممنوع 4'] : null,
         acceptable_answers: mode === 'meen_yezawwed' ? ['عنصر 1', 'عنصر 2', 'عنصر 3', 'عنصر 4', 'عنصر 5'] : null,
         content_hash: hash,

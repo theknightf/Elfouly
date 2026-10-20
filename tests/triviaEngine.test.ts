@@ -246,6 +246,54 @@ async function main() {
     console.log(`     ↳ Verified dispatch and attribute matching for all 7 characters.`);
   });
 
+  // Test 8: Penalty Shots Category and Question Strict Synchronization
+  await runTest('Penalty Shots (hat_fi_qoraybi) Question & Category Strict Synchronization', () => {
+    const roomId = 'penalty_sync_audit_room';
+    triviaEngine.resetRoomSession(roomId);
+
+    const penaltyCategories = [
+      'football_post_2010',
+      'capitals_and_flags',
+      'general_knowledge',
+      'popular_foreign_series',
+      'series_breaking_bad',
+      'pc_hardware_gaming',
+      'gaming_tech',
+      'console_pc_gaming',
+      'reflex_trivia',
+      'cars_mechanics',
+      'dentistry',
+      'fitness_gym',
+      'veterinary_biology',
+      'gelato_sweets',
+      'islamic_studies'
+    ];
+
+    for (const catId of penaltyCategories) {
+      const q = triviaEngine.getQuestionForPlayer({
+        roomId,
+        characterId: 'fares_elfouly',
+        mode: 'hat_fi_qoraybi',
+        preferredCategory: catId
+      });
+
+      assert(q !== null, `Must return a question for penalty category ${catId}`);
+      assert(
+        triviaEngine.matchesCategory(q!, catId),
+        `Penalty question category "${q!.category}" MUST match the requested category "${catId}"`
+      );
+      assert(
+        Array.isArray(q!.options) && q!.options.length >= 4,
+        `Penalty question for "${catId}" must have at least 4 options`
+      );
+      assert(
+        q!.options!.includes(q!.correct_answer!),
+        `Options must contain correct_answer "${q!.correct_answer}"`
+      );
+    }
+    console.log(`     ↳ Successfully verified 100% synchronization across all ${penaltyCategories.length} penalty categories.`);
+  });
+
   // Print Summary
   console.log('\n============================================================');
   console.log('📊 TEST SUMMARY REPORT');

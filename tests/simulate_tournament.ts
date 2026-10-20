@@ -259,14 +259,31 @@ async function simulateTournament() {
     const kickingTeam = isTeamDKicking ? teams.team_d : teams.team_b;
     const defendingTeam = isTeamDKicking ? teams.team_b : teams.team_d;
 
+    const penaltyCategoryPool = [
+      'football_post_2010',
+      'capitals_and_flags',
+      'general_knowledge',
+      'pc_hardware_gaming',
+      'series_breaking_bad',
+      'dentistry',
+      'cars_mechanics',
+      'fitness_gym',
+      'veterinary_biology',
+      'islamic_studies'
+    ];
+    const chosenCategory = penaltyCategoryPool[(shotIdx - 1) % penaltyCategoryPool.length];
+
     const penaltyQ = triviaEngine.getQuestionForPlayer({
       roomId,
       characterId: kickingTeam.captain.id,
-      mode: 'hat_fi_qoraybi'
+      mode: 'hat_fi_qoraybi',
+      preferredCategory: chosenCategory
     });
 
     assert(penaltyQ !== null, `Penalty question ${shotIdx} must be served`);
+    assert(triviaEngine.matchesCategory(penaltyQ!, chosenCategory), `Shot ${shotIdx}: question category (${penaltyQ!.category}) must match chosen category (${chosenCategory})`);
     assert(penaltyQ!.options && penaltyQ!.options.length === 4, 'Must have 4 options');
+    assert(penaltyQ!.options!.includes(penaltyQ!.correct_answer!), 'Options must contain correct_answer');
     penaltyQuestionsServed.add(penaltyQ!.id);
 
     // Verify post-2010 football constraint

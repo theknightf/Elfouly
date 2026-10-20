@@ -369,17 +369,20 @@ io.on('connection', (socket) => {
       const dispatchedPenalty = triviaEngine.getQuestionForPlayer({
         roomId: roomCode,
         characterId: kickerPlayer?.character?.id || 'fares_elfouly',
-        mode: 'hat_fi_qoraybi'
+        mode: 'hat_fi_qoraybi',
+        preferredCategory: randomCategory.id
       });
       if (dispatchedPenalty) {
         room.round3.currentQuestion = {
           question: dispatchedPenalty.question_text,
           answer: dispatchedPenalty.correct_answer,
           options: dispatchedPenalty.options || ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
-          kickerHint: randomCategory?.name || dispatchedPenalty.category
+          category: randomCategory.id,
+          kickerHint: randomCategory.name
         };
       } else {
-        room.round3.currentQuestion = PENALTY_QUESTIONS[0];
+        const backupQ = PENALTY_QUESTIONS.find(q => q.category === randomCategory.id) || PENALTY_QUESTIONS[0];
+        room.round3.currentQuestion = backupQ;
       }
       room.round3.interceptBuzzedBy = null;
 
@@ -788,15 +791,20 @@ io.on('connection', (socket) => {
     const dispatched = triviaEngine.getQuestionForPlayer({
       roomId: roomCode,
       characterId: kickerPlayer?.character?.id || 'fares_elfouly',
-      mode: 'hat_fi_qoraybi'
+      mode: 'hat_fi_qoraybi',
+      preferredCategory: category?.id
     });
     if (dispatched) {
       r3.currentQuestion = {
         question: dispatched.question_text,
         answer: dispatched.correct_answer,
         options: dispatched.options || ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
+        category: category?.id || dispatched.category,
         kickerHint: category?.name || dispatched.category
       };
+    } else {
+      const backupQ = PENALTY_QUESTIONS.find(q => q.category === category?.id) || PENALTY_QUESTIONS[0];
+      r3.currentQuestion = backupQ;
     }
 
     io.to(roomCode).emit('room_state_updated', room);
@@ -893,18 +901,20 @@ io.on('connection', (socket) => {
     const nextPenaltyQ = triviaEngine.getQuestionForPlayer({
       roomId: roomCode,
       characterId: nextKickerPlayer?.character?.id || 'fares_elfouly',
-      mode: 'hat_fi_qoraybi'
+      mode: 'hat_fi_qoraybi',
+      preferredCategory: nextCategory.id
     });
     if (nextPenaltyQ) {
       r3.currentQuestion = {
         question: nextPenaltyQ.question_text,
         answer: nextPenaltyQ.correct_answer,
         options: nextPenaltyQ.options || ['خيار 1', 'خيار 2', 'خيار 3', 'خيار 4'],
-        kickerHint: nextCategory?.name || nextPenaltyQ.category
+        category: nextCategory.id,
+        kickerHint: nextCategory.name
       };
     } else {
-      const nextQIdx = (r3.turnIndex) % PENALTY_QUESTIONS.length;
-      r3.currentQuestion = PENALTY_QUESTIONS[nextQIdx];
+      const backupQ = PENALTY_QUESTIONS.find(q => q.category === nextCategory.id) || PENALTY_QUESTIONS[0];
+      r3.currentQuestion = backupQ;
     }
 
     io.to(roomCode).emit('room_state_updated', room);

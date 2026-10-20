@@ -454,101 +454,158 @@ export const PASSWORD_WORDS = [
 // ROUND 3: "حط في قريبي" (Penalty Shootouts)
 // Random category generated first -> Teams select their duelists -> 1v1 speed shootout
 export const PENALTY_CATEGORIES = [
-  { id: 'computer_science', name: 'علوم الحاسب والبرمجة', icon: '💻', hint: 'تخصص: حفيد الفولي' },
-  { id: 'barcelona_european_football', name: 'برشلونة والكرة الأوروبية (بعد 2010)', icon: '⚽', hint: 'تخصص: الفولي، التوني، إياد' },
+  { id: 'football_post_2010', name: 'كرة قدم حديثة (بعد 2010)', icon: '⚽', hint: 'تخصص: حفيد الفولي، إياد الأسد، التوني، البربخ' },
   { id: 'capitals_and_flags', name: 'عواصم العالم والأعلام', icon: '🌍', hint: 'تخصص: حفيد الفولي' },
-  { id: 'real_madrid_al_ahly', name: 'الأهلي وريال مدريد (بعد 2010)', icon: '🦅', hint: 'تخصص: البربخ، الفندقي، التوني' },
-  { id: 'pc_hardware_assembly', name: 'تجميعات PC وهاردوير', icon: '🖥️', hint: 'تخصص: خالد البربخ' },
-  { id: 'foreign_tv_series', name: 'المسلسلات الأجنبية وBreaking Bad', icon: '🎬', hint: 'تخصص: البربخ، الفندقي' },
-  { id: 'tourism_hospitality', name: 'السياحة وإدارة الفنادق', icon: '🛎️', hint: 'تخصص: زياد الفندقي' },
-  { id: 'cybersecurity', name: 'الأمن السيبراني والشبكات', icon: '🛡️', hint: 'تخصص: إياد الأسد' },
-  { id: 'console_pc_gaming', name: 'جيمنج وكونسول', icon: '🕹️', hint: 'تخصص: مازن الجيمر' },
-  { id: 'cars_and_engine_mechanics', name: 'السيارات ومحركات التوربو', icon: '🏎️', hint: 'تخصص: علي التوربو' },
+  { id: 'general_knowledge', name: 'معلومات عامة وأمثال وفوازير', icon: '💡', hint: 'تخصص: حفيد الفولي، زياد الفندقي، إياد الأسد' },
+  { id: 'popular_foreign_series', name: 'المسلسلات والدراما العالمية', icon: '🎬', hint: 'تخصص: زياد الفندقي، خالد البربخ' },
+  { id: 'series_breaking_bad', name: 'مسلسل Breaking Bad وهايزنبرغ', icon: '🧪', hint: 'تخصص: خالد البربخ' },
+  { id: 'pc_hardware_gaming', name: 'تجميعات PC وهاردوير وجيمنج', icon: '🖥️', hint: 'تخصص: خالد البربخ' },
+  { id: 'gaming_tech', name: 'الأمن السيبراني والشبكات والتقنية', icon: '🛡️', hint: 'تخصص: إياد الأسد' },
+  { id: 'console_pc_gaming', name: 'جيمنج وكونسول وبي سي', icon: '🕹️', hint: 'تخصص: مازن الجيمر' },
+  { id: 'reflex_trivia', name: 'أسئلة سرعة ورد فعل 240Hz', icon: '⚡', hint: 'تخصص: مازن الجيمر' },
+  { id: 'cars_mechanics', name: 'السيارات ومحركات التوربو', icon: '🏎️', hint: 'تخصص: علي التوربو' },
   { id: 'dentistry', name: 'طب وجراحة الأسنان', icon: '🦷', hint: 'تخصص: علي التوربو' },
+  { id: 'fitness_gym', name: 'فيتنس وكمال أجسام', icon: '💪', hint: 'تخصص: علي التوربو' },
   { id: 'veterinary_biology', name: 'الطب البيطري والأحياء', icon: '🐾', hint: 'تخصص: التوني بيلافيتا' },
+  { id: 'gelato_sweets', name: 'الجيلاتي وفنون الحلويات', icon: '🍨', hint: 'تخصص: التوني بيلافيتا' },
   { id: 'islamic_studies', name: 'تاريخ وحضارة إسلامية', icon: '🕌', hint: 'تخصص: التوني، البربخ' }
 ];
 
 export const PENALTY_QUESTIONS = [
   {
-    id: 'pen_1',
-    category: 'barcelona_european_football',
-    kickerHint: 'برشلونة وأوروبا',
-    question: 'ما هو اسم الملعب الأسطوري التاريخي لنادي برشلونة؟',
-    answer: 'كامب نو (Spotify Camp Nou)',
-    options: ['سانتياغو برنابيو', 'كامب نو', 'المستايا', 'واندا ميتروبوليتانو']
+    id: 'pen_fb_1',
+    category: 'football_post_2010',
+    kickerHint: 'كرة قدم بعد 2010',
+    question: 'من فاز بجائزة أفضل لاعب في كأس العالم قطر 2022 وقاد الأرجنتين لحصد اللقب؟',
+    answer: 'ليونيل ميسي',
+    options: ['كيليان مبابي', 'ليونيل ميسي', 'لوكا مودريتش', 'أنطوان غريزمان'],
+    is_post_2010_football: true
   },
   {
-    id: 'pen_2',
+    id: 'pen_cap_1',
     category: 'capitals_and_flags',
     kickerHint: 'عواصم وأعلام',
-    question: 'ما هي عاصمة اليابان؟',
+    question: 'ما هي عاصمة اليابان الحالية؟',
     answer: 'طوكيو',
-    options: ['كيوتو', 'أوساكا', 'طوكيو', 'يوكوهاما']
+    options: ['طوكيو', 'كيوتو', 'أوساكا', 'يوكوهاما'],
+    is_post_2010_football: false
   },
   {
-    id: 'pen_3',
-    category: 'real_madrid_al_ahly',
-    kickerHint: 'أهلي وريال مدريد',
-    question: 'كم مرة توج ريال مدريد بلقب دوري أبطال أوروبا حتى عام 2024؟',
-    answer: '15 لقباً',
-    options: ['13 لقباً', '14 لقباً', '15 لقباً', '16 لقباً']
+    id: 'pen_gk_1',
+    category: 'general_knowledge',
+    kickerHint: 'معلومات عامة',
+    question: 'ما هو الكوكب الأقرب للشمس في نظامنا الشمسي؟',
+    answer: 'عطارد',
+    options: ['الزهرة', 'عطارد', 'المريخ', 'الأرض'],
+    is_post_2010_football: false
   },
   {
-    id: 'pen_4',
-    category: 'pc_hardware_assembly',
+    id: 'pen_series_1',
+    category: 'popular_foreign_series',
+    kickerHint: 'مسلسلات عالمية',
+    question: 'ما اسم العصابة الإنجليزية الشهيرة في برمنغهام بقيادة توماس شيلبي؟',
+    answer: 'Peaky Blinders',
+    options: ['Peaky Blinders', 'Sons of Anarchy', 'The Sopranos', 'Vikings'],
+    is_post_2010_football: false
+  },
+  {
+    id: 'pen_bb_1',
+    category: 'series_breaking_bad',
+    kickerHint: 'Breaking Bad',
+    question: 'ما اسم شريك والتر وايت الشاب في مسلسل Breaking Bad؟',
+    answer: 'جيسي بينكمان',
+    options: ['هانك شريدر', 'جيسي بينكمان', 'تود', 'سكينّي بيت'],
+    is_post_2010_football: false
+  },
+  {
+    id: 'pen_pc_1',
+    category: 'pc_hardware_gaming',
     kickerHint: 'هاردوير وPC',
     question: 'ما هي الشركة المصنعة لمعالجات Ryzen الشهيرة؟',
     answer: 'AMD',
-    options: ['Intel', 'AMD', 'Nvidia', 'Qualcomm']
+    options: ['Intel', 'AMD', 'Nvidia', 'Qualcomm'],
+    is_post_2010_football: false
   },
   {
-    id: 'pen_5',
-    category: 'foreign_tv_series',
-    kickerHint: 'مسلسلات أجنبية',
-    question: 'ما اسم شريك والتر وايت الشاب في مسلسل Breaking Bad؟',
-    answer: 'جيسي بينكمان (Jesse Pinkman)',
-    options: ['هانك شريدر', 'جيسي بينكمان', 'تود', 'سكينّي بيت']
-  },
-  {
-    id: 'pen_6',
-    category: 'cybersecurity',
-    kickerHint: 'أمن سيبراني',
-    question: 'ماذا يسمى البرمجيات الخبيثة التي تشفر ملفات الضحية وتطلب فدية مالية لفكها؟',
+    id: 'pen_tech_1',
+    category: 'gaming_tech',
+    kickerHint: 'أمن سيبراني وتقنية',
+    question: 'ماذا يسمى البرمجيات الخبيثة التي تشفر ملفات الضحية وتطلب فدية لفكها؟',
     answer: 'برامج الفدية (Ransomware)',
-    options: ['Spyware', 'برامج الفدية (Ransomware)', 'Adware', 'Keylogger']
+    options: ['Spyware', 'برامج الفدية (Ransomware)', 'Adware', 'Keylogger'],
+    is_post_2010_football: false
   },
   {
-    id: 'pen_7',
+    id: 'pen_console_1',
     category: 'console_pc_gaming',
     kickerHint: 'جيمنج وكونسول',
-    question: 'ما هو الاسم الرمزي للبطل الرئيسي في سلسلة Halo الأسطورية؟',
-    answer: 'Master Chief (ماستر تشيف)',
-    options: ['Doom Slayer', 'Master Chief', 'Marcus Fenix', 'Kratos']
+    question: 'ما هي لعبة العالم المفتوح الملحمية التي حصدت جائزة لعبة العام (GOTY) 2022؟',
+    answer: 'إلدن رينج (Elden Ring)',
+    options: ['God of War Ragnarok', 'إلدن رينج (Elden Ring)', 'Horizon Forbidden West', 'Cyberpunk 2077'],
+    is_post_2010_football: false
   },
   {
-    id: 'pen_8',
-    category: 'cars_and_engine_mechanics',
+    id: 'pen_reflex_1',
+    category: 'reflex_trivia',
+    kickerHint: 'سرعة 240Hz',
+    question: 'إذا كان لديك 3 تفاحات وأخذت منها تفاحتين، كم تفاحة أصبحت في يدك الآن؟',
+    answer: 'تفاحتان',
+    options: ['تفاحة واحدة', 'تفاحتان', '3 تفاحات', 'صفر'],
+    is_post_2010_football: false
+  },
+  {
+    id: 'pen_cars_1',
+    category: 'cars_mechanics',
     kickerHint: 'سيارات وميكانيكا',
     question: 'ما هي السيارة الإيطالية الخارقة التي تتخذ علامتها التجارية رمز الحصان الواقف؟',
     answer: 'فيراري (Ferrari)',
-    options: ['لامبورغيني', 'فيراري (Ferrari)', 'مازيراتي', 'ألفا روميو']
+    options: ['لامبورغيني', 'فيراري (Ferrari)', 'مازيراتي', 'ألفا روميو'],
+    is_post_2010_football: false
   },
   {
-    id: 'pen_9',
+    id: 'pen_dent_1',
     category: 'dentistry',
     kickerHint: 'طب أسنان',
     question: 'ما هو المعدن الطبيعي الذي يُضاف لمعجون الأسنان ومياه الشرب لمقاومة التسوس؟',
     answer: 'الفلورايد (Fluoride)',
-    options: ['الكالسيوم', 'الفلورايد (Fluoride)', 'المغنيسيوم', 'الزنك']
+    options: ['الكالسيوم', 'الفلورايد (Fluoride)', 'المغنيسيوم', 'الزنك'],
+    is_post_2010_football: false
   },
   {
-    id: 'pen_10',
+    id: 'pen_fit_1',
+    category: 'fitness_gym',
+    kickerHint: 'فيتنس وجيم',
+    question: 'ما هو التمرين الأساسي الأقوى للجزء السفلي والملقب بـ "ملك التمارين" في الجيم؟',
+    answer: 'السكوات (Squat)',
+    options: ['السكوات (Squat)', 'الليج بريس', 'الديدليفت الروماني', 'اللانجز'],
+    is_post_2010_football: false
+  },
+  {
+    id: 'pen_bio_1',
+    category: 'veterinary_biology',
+    kickerHint: 'بيولوجيا وبيطري',
+    question: 'ما هو الحيوان الثديي الوحيد القادر على الطيران الحقيقي بفضل أجنحته؟',
+    answer: 'الخفاش (الوطواط)',
+    options: ['السنجاب الطائر', 'الخفاش (الوطواط)', 'طائر البطريق', 'النعامة'],
+    is_post_2010_football: false
+  },
+  {
+    id: 'pen_gel_1',
+    category: 'gelato_sweets',
+    kickerHint: 'جيلاتي وحلويات',
+    question: 'ما هي النكهة الإيطالية الكلاسيكية للجيلاتي المصنوعة من الكريمة وقطع الشوكولاتة الداكنة؟',
+    answer: 'ستراتشياتيلا (Stracciatella)',
+    options: ['بيستاشيو', 'ستراتشياتيلا (Stracciatella)', 'تيراميسو', 'بافانا'],
+    is_post_2010_football: false
+  },
+  {
+    id: 'pen_isl_1',
     category: 'islamic_studies',
     kickerHint: 'تاريخ إسلامي',
-    question: 'من كان أول مؤذن في الإسلام وصاحب الصوت الندي على الكعبة؟',
+    question: 'من كان أول مؤذن في الإسلام وصاحب الصوت الندي على ظهر الكعبة المشرفة؟',
     answer: 'بلال بن رباح رضي الله عنه',
-    options: ['عبد الله بن أم مكتوم', 'بلال بن رباح رضي الله عنه', 'أبو هريرة', 'عمار بن ياسر']
+    options: ['عبد الله بن أم مكتوم', 'بلال بن رباح رضي الله عنه', 'أبو هريرة', 'عمار بن ياسر'],
+    is_post_2010_football: false
   }
 ];
 

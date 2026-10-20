@@ -396,7 +396,8 @@ export function GameProvider({ children }) {
           const randomCat = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
           next.round3.currentCategory = randomCat;
           next.round3.phase = 'duelist_selection';
-          next.round3.currentQuestion = PENALTY_QUESTIONS[0];
+          const matchingQ = PENALTY_QUESTIONS.find(q => q.category === randomCat.id) || PENALTY_QUESTIONS[0];
+          next.round3.currentQuestion = matchingQ;
           next.round3.interceptBuzzedBy = null;
           next.round3.shotsHistory = [];
         } else if (targetRound === 'round4') {
@@ -686,8 +687,8 @@ export function GameProvider({ children }) {
         r3.currentCategory = nextCat;
         r3.phase = 'duelist_selection';
 
-        const nextQIdx = r3.turnIndex % PENALTY_QUESTIONS.length;
-        r3.currentQuestion = PENALTY_QUESTIONS[nextQIdx];
+        const matchingNextQ = PENALTY_QUESTIONS.find(q => q.category === nextCat.id) || PENALTY_QUESTIONS[0];
+        r3.currentQuestion = matchingNextQ;
 
         if (r3.turnIndex >= 10) {
           sounds.playWhistle();
