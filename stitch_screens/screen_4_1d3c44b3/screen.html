@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+
+<html dir="rtl" lang="ar"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
+<title>Minya Street Racer - قرية الإخصاص</title>
+<!-- Tailwind CSS v3 with forms & container-queries -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Google Fonts: Cairo & Silkscreen / Pixel-friendly fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;800;900&amp;family=Press+Start+2P&amp;family=Changa:wght@700;800&amp;display=swap" rel="stylesheet"/>
+<script data-purpose="tailwind-config">
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            arabic: ['Changa', 'Cairo', 'sans-serif'],
+            pixel: ['"Press Start 2P"', 'monospace'],
+          },
+          colors: {
+            egyptGold: '#D4AF37',
+            nileBlue: '#1a365d',
+            papyrusBg: '#e6c88b',
+          }
+        }
+      }
+    };
+  </script>
+<style data-purpose="pixel-rendering">
+    /* Pixelated image and crisp vector rendering for authentic retro feel */
+    * {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    
+    .pixelated-bg {
+      image-rendering: pixelated;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: crisp-edges;
+    }
+
+    /* Tactile 3D pixel-art beveled button styles matching screenshot */
+    .menu-btn {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      height: 48px;
+      padding: 0 14px;
+      border-radius: 9px;
+      border: 3.5px solid #24140e;
+      box-shadow: 
+        inset 0 3px 0 0 rgba(255, 255, 255, 0.35),
+        inset 0 -3px 0 0 rgba(0, 0, 0, 0.45),
+        0 4px 6px rgba(0, 0, 0, 0.6);
+      transition: all 0.08s ease-in-out;
+      cursor: pointer;
+    }
+
+    .menu-btn:active {
+      transform: translateY(2px) scale(0.98);
+      box-shadow: 
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.2),
+        inset 0 -2px 0 0 rgba(0, 0, 0, 0.5),
+        0 1px 2px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Distinct thematic palettes matching the prompt image */
+    .btn-green {
+      background: linear-gradient(180deg, #3f7b49 0%, #25582f 50%, #173d1f 100%);
+      border-color: #112814;
+    }
+    .btn-blue {
+      background: linear-gradient(180deg, #2a5d8c 0%, #1a4269 50%, #102e4d 100%);
+      border-color: #0b1e33;
+    }
+    .btn-purple {
+      background: linear-gradient(180deg, #5b306b 0%, #442052 50%, #2b1236 100%);
+      border-color: #1f0b26;
+    }
+    .btn-brown {
+      background: linear-gradient(180deg, #996232 0%, #76451e 50%, #542d10 100%);
+      border-color: #381a06;
+    }
+    .btn-crimson {
+      background: linear-gradient(180deg, #872e29 0%, #681d19 50%, #4a110e 100%);
+      border-color: #2b0806;
+    }
+
+    /* Text stroke and golden gradient for arcade text */
+    .btn-label {
+      font-family: 'Changa', 'Cairo', sans-serif;
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #ede2c9;
+      text-shadow: 
+        -1.5px -1.5px 0 #111,
+         1.5px -1.5px 0 #111,
+        -1.5px  1.5px 0 #111,
+         1.5px  1.5px 0 #111,
+         0 2.5px 0 #000;
+      letter-spacing: 0.5px;
+    }
+
+    .icon-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      filter: drop-shadow(0 2px 2px rgba(0,0,0,0.7));
+    }
+
+    /* Interactive hotspot highlight for the center roundabout */
+    .roundabout-plate {
+      transition: transform 0.15s ease, filter 0.15s ease;
+    }
+    .roundabout-plate:active {
+      transform: scale(0.97);
+      filter: brightness(1.1);
+    }
+  </style>
+</head>
+<body class="bg-black text-white flex justify-center items-center min-h-screen overflow-hidden m-0 p-0 font-arabic select-none">
+<!-- BEGIN: MobileContainer -->
+<!-- Constrained strictly to Mobile iOS aspect ratio (9:16 ~ 1536x2752 equivalent) -->
+<main class="relative w-full max-w-[430px] h-[100dvh] max-h-[932px] overflow-hidden shadow-2xl bg-slate-900 flex flex-col justify-between">
+<!-- BEGIN: BackgroundArt -->
+<!-- Authentic 1:1 pixel art recreation asset supplied via data store -->
+<div class="absolute inset-0 w-full h-full z-0 overflow-hidden" data-purpose="game-background">
+<img alt="Minya Lotus University and El Ekhsas Roundabout pixel art scene" class="w-full h-full object-cover object-center pixelated-bg select-none pointer-events-none" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAcaQl_g0dkRzM5iLmCvCWVZwoMUSS--Mogk7_MIAwTSfG329zGrLNqE1icHdfA_wfTm2avdfIXHh9VGGUFVn0XILo-_FtM92pGnBj1csJ3sKjh-_pWYwWv1LhK80cqIQGdP7DKfz7AO6-Q31QwR88SiRD4CkHU89iw_W3Z_CoJejfZ_VRTuvGGb4nmTu2AMUjTw4vCTsyAUOlCLjK0lelBue4iFDnE5INCS5lTfI7fhWKD_LKRJG3uyzM3gjZzMuIufvY"/>
+<!-- Subtle scanline and atmospheric vignette overlay -->
+<div class="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-amber-900/10 pointer-events-none"></div>
+</div>
+<!-- END: BackgroundArt -->
+<!-- BEGIN: TopHeaderBar -->
+<!-- Invisible spacer / top safe area overlay for iOS dynamic island / notch -->
+<header class="relative z-10 w-full pt-4 px-4 flex justify-between items-center pointer-events-none" data-purpose="status-bar">
+<!-- Optional audio / settings quick toggles matching arcade UI -->
+<div class="flex gap-2 pointer-events-auto">
+<button aria-label="تبديل الصوت" class="w-9 h-9 rounded-lg bg-black/60 border-2 border-amber-500/70 text-amber-300 flex items-center justify-center backdrop-blur-sm active:scale-95 shadow-md transition-transform" id="btn-sound-toggle">
+<svg class="w-5 h-5 fill-current" viewbox="0 0 24 24">
+<path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zM16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM3 9v6h4l5 5V4L7 9H3z"></path>
+</svg>
+</button>
+</div>
+<div class="bg-black/60 border-2 border-amber-400/70 px-3 py-1 rounded-full text-xs font-bold text-amber-200 tracking-wider flex items-center gap-1 shadow-lg pointer-events-auto backdrop-blur-sm">
+<span class="inline-block w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
+<span>عروس الصعيد - المنيا</span>
+</div>
+</header>
+<!-- END: TopHeaderBar -->
+<!-- BEGIN: MainMenuInteractiveOverlay -->
+<!-- Aligned exactly over the right-side vertical stone button stack visible in https://lh3.googleusercontent.com/aida-public/AB6AXuAcaQl_g0dkRzM5iLmCvCWVZwoMUSS--Mogk7_MIAwTSfG329zGrLNqE1icHdfA_wfTm2avdfIXHh9VGGUFVn0XILo-_FtM92pGnBj1csJ3sKjh-_pWYwWv1LhK80cqIQGdP7DKfz7AO6-Q31QwR88SiRD4CkHU89iw_W3Z_CoJejfZ_VRTuvGGb4nmTu2AMUjTw4vCTsyAUOlCLjK0lelBue4iFDnE5INCS5lTfI7fhWKD_LKRJG3uyzM3gjZzMuIufvY -->
+<section class="relative z-20 flex-1 flex flex-col justify-end pb-32 px-3 pointer-events-none" data-purpose="interactive-menu-layer">
+<!-- Right-aligned Menu Column Overlay (Precisely positioned over the buttons column) -->
+<div class="self-end w-[44%] max-w-[172px] flex flex-col gap-[7px] pointer-events-auto mr-1" data-purpose="arcade-buttons-stack">
+<!-- Button 1: العب (Play) - Dark Green with Trophy/Lotus -->
+<button aria-label="العب" class="menu-btn btn-green" data-action="play">
+<span class="btn-label">العب</span>
+<div class="icon-badge">
+<svg class="w-6 h-6 text-amber-300 fill-current filter drop-shadow" viewbox="0 0 24 24">
+<!-- Lotus / Golden Chalice Trophy Icon -->
+<path d="M12 2L9 7H4L7 12L3 18H21L17 12L20 7H15L12 2ZM12 5.5L13.8 8.5H10.2L12 5.5ZM7.5 15.5L8.7 13.5H15.3L16.5 15.5H7.5Z"></path>
+</svg>
+</div>
+</button>
+<!-- Button 2: غرفة (Room 1) - Blue with Multiplayer Avatars -->
+<button aria-label="غرفة" class="menu-btn btn-blue" data-action="room-1">
+<span class="btn-label">غرفة</span>
+<div class="icon-badge">
+<svg class="w-6 h-6 text-amber-200 fill-current" viewbox="0 0 24 24">
+<!-- Pixelated 3 Persons Team Icon -->
+<path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"></path>
+</svg>
+</div>
+</button>
+<!-- Button 3: غرفة (Room 2) - Blue with Multiplayer Avatars -->
+<button aria-label="غرفة ثانية" class="menu-btn btn-blue" data-action="room-2">
+<span class="btn-label">غرفة</span>
+<div class="icon-badge">
+<svg class="w-6 h-6 text-amber-200 fill-current" viewbox="0 0 24 24">
+<path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"></path>
+</svg>
+</div>
+</button>
+<!-- Button 4: الترتيب (Leaderboard) - Deep Purple with Gold Trophy Cup -->
+<button aria-label="الترتيب" class="menu-btn btn-purple" data-action="leaderboard">
+<span class="btn-label">الترتيب</span>
+<div class="icon-badge">
+<svg class="w-6 h-6 text-amber-300 fill-current" viewbox="0 0 24 24">
+<!-- Trophy Icon -->
+<path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"></path>
+</svg>
+</div>
+</button>
+<!-- Button 5: الإعدادات (Settings) - Warm Bronze with Gear -->
+<button aria-label="الإعدادات" class="menu-btn btn-brown" data-action="settings">
+<span class="btn-label">الإعدادات</span>
+<div class="icon-badge">
+<svg class="w-6 h-6 text-amber-200 fill-current" viewbox="0 0 24 24">
+<!-- Cog / Gear Icon -->
+<path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"></path>
+</svg>
+</div>
+</button>
+<!-- Button 6: خروج (Exit) - Crimson Red with Door / Exit Arrow -->
+<button aria-label="خروج" class="menu-btn btn-crimson" data-action="exit">
+<span class="btn-label">خروج</span>
+<div class="icon-badge">
+<svg class="w-6 h-6 text-amber-200 fill-current transform scale-x-[-1]" viewbox="0 0 24 24">
+<!-- Exit door icon flipped for RTL orientation -->
+<path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"></path>
+</svg>
+</div>
+</button>
+</div>
+<!-- Interactive Hotspot over 'قرية الإخصاص' Center Landmark -->
+<div class="roundabout-plate pointer-events-auto self-center mt-3 cursor-pointer w-48 h-16 opacity-0 hover:opacity-10 active:opacity-20 bg-amber-400 rounded-2xl border-2 border-white/50" data-purpose="landmark-hotspot" title="قرية الإخصاص - ميدان البداية"></div>
+</section>
+<!-- END: MainMenuInteractiveOverlay -->
+<!-- BEGIN: ModalDialogContainer -->
+<!-- Accessible feedback alert modal for game selection -->
+<div class="hidden absolute inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-6" data-purpose="game-prompt-modal" id="game-modal">
+<div class="w-full max-w-xs bg-amber-950 border-4 border-amber-600 rounded-xl p-5 text-center shadow-2xl relative">
+<div class="w-12 h-12 mx-auto mb-2 text-amber-400">
+<svg class="w-full h-full fill-current" viewbox="0 0 24 24">
+<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"></path>
+</svg>
+</div>
+<h3 class="text-xl font-bold text-amber-200 mb-2 font-arabic" id="modal-title">سباق المنيا</h3>
+<p class="text-sm text-amber-100/90 mb-5 leading-relaxed font-arabic" id="modal-message">جاري تجهيز مضمار كورنيش الإخصاص والمطاردة مع الدايو والنوبيرا...</p>
+<button class="w-full py-2.5 px-4 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold rounded-lg border-2 border-amber-300 shadow-md active:scale-95 transition-transform" id="modal-close">
+          حسناً يا ريس
+        </button>
+</div>
+</div>
+<!-- END: ModalDialogContainer -->
+</main>
+<!-- END: MobileContainer -->
+<!-- BEGIN: InteractiveScripts -->
+<script data-purpose="audio-sfx-synthesizer">
+    // Web Audio API Retro Arcade 8-bit sound generator (Zero external dependencies)
+    class RetroAudio {
+      constructor() {
+        this.ctx = null;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+      }
+      playBlip(freq = 440, type = 'square', duration = 0.08) {
+        try {
+          this.init();
+          if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(freq * 1.5, this.ctx.currentTime + duration);
+          
+          gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+          
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          
+          osc.start();
+          osc.stop(this.ctx.currentTime + duration);
+        } catch(e) {
+          // Silent fallback if autoplay policy restricts audio
+        }
+      }
+    }
+
+    const sfx = new RetroAudio();
+  </script>
+<script data-purpose="menu-events-handler">
+    document.addEventListener('DOMContentLoaded', () => {
+      const modal = document.getElementById('game-modal');
+      const modalTitle = document.getElementById('modal-title');
+      const modalMsg = document.getElementById('modal-message');
+      const modalClose = document.getElementById('modal-close');
+      const soundBtn = document.getElementById('btn-sound-toggle');
+      let soundEnabled = true;
+
+      const actions = {
+        'play': { title: 'بدء السباق', text: 'استعد للإنطلاق من ميدان الإخصاص حتى جامعة اللوتس بالمنيا! 🏁' },
+        'room-1': { title: 'غرفة خاصة', text: 'انضم لسباق الأصدقاء في شوارع عروس الصعيد.' },
+        'room-2': { title: 'تحدي لاعب ضد لاعب', text: 'اختر سيارتك المفضلة: MG5 أو نوبيرا وتحدّى أبطال المنيا.' },
+        'leaderboard': { title: 'قائمة المتصدرين', text: 'أسرع السائقين في طريق مصر أسوان الزراعي والإخصاص.' },
+        'settings': { title: 'الإعدادات', text: 'تعديل الجرافيك، أزرار التحكم وحساسية عجلة القيادة.' },
+        'exit': { title: 'خروج من اللعبة', text: 'هل تود العودة لشاشة البداية الرئيسية؟' }
+      };
+
+      // Menu button interactions
+      document.querySelectorAll('.menu-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          if (soundEnabled) sfx.playBlip(540, 'square', 0.1);
+          const actKey = btn.getAttribute('data-action');
+          const data = actions[actKey] || { title: 'المنيا', text: 'أصل الحكاية وأهلها أهل الجدعنة!' };
+          
+          modalTitle.textContent = data.title;
+          modalMsg.textContent = data.text;
+          modal.classList.remove('hidden');
+        });
+      });
+
+      // Roundabout Landmark interaction
+      const landmark = document.querySelector('[data-purpose="landmark-hotspot"]');
+      if (landmark) {
+        landmark.addEventListener('click', () => {
+          if (soundEnabled) sfx.playBlip(680, 'triangle', 0.15);
+          modalTitle.textContent = 'قرية وميدان الإخصاص';
+          modalMsg.textContent = 'أشهر ميادين حي شمال المنيا ونقطة تجمع عشاق السيارات والسباقات الشعبية!';
+          modal.classList.remove('hidden');
+        });
+      }
+
+      // Close modal
+      modalClose.addEventListener('click', () => {
+        if (soundEnabled) sfx.playBlip(320, 'sine', 0.08);
+        modal.classList.add('hidden');
+      });
+
+      // Sound Toggle
+      soundBtn.addEventListener('click', () => {
+        soundEnabled = !soundEnabled;
+        soundBtn.classList.toggle('opacity-50', !soundEnabled);
+        if (soundEnabled) sfx.playBlip(600, 'square', 0.05);
+      });
+    });
+  </script>
+<!-- END: InteractiveScripts -->
+</body></html>

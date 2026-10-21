@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+
+<html class="dark" dir="rtl" lang="ar"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>اديني في سري - QUIZ ARENA</title>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Fonts: Rubik & Press Start 2P for Pixel Arcade Feel -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Changa:wght@600;700;800;900&amp;family=Rubik:ital,wght@0,400..900;1,400..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "surface-dim": "#151028",
+            "primary-fixed": "#ffdea8",
+            "on-secondary-fixed": "#001f24",
+            "secondary-fixed": "#9cf0ff",
+            "tertiary-fixed-dim": "#ffb3b6",
+            "on-primary-fixed": "#271900",
+            "inverse-surface": "#e7deff",
+            "tertiary-container": "#ffb0b3",
+            "secondary-fixed-dim": "#00daf3",
+            "primary-fixed-dim": "#ffba20",
+            "outline-variant": "#514532",
+            "on-surface-variant": "#d5c4ab",
+            "on-tertiary-fixed": "#40000c",
+            "surface-variant": "#37314b",
+            "surface-container-lowest": "#0f0a22",
+            "on-secondary-fixed-variant": "#004f58",
+            "secondary": "#bdf4ff",
+            "primary": "#ffdca1",
+            "surface-tint": "#ffba20",
+            "primary-container": "#ffb800",
+            "on-primary": "#412d00",
+            "surface-container-high": "#2c2640",
+            "on-tertiary-fixed-variant": "#920028",
+            "on-primary-container": "#6b4c00",
+            "tertiary-fixed": "#ffdada",
+            "inverse-on-surface": "#322d46",
+            "surface-container-low": "#1d1830",
+            "on-tertiary-container": "#a6002e",
+            "on-tertiary": "#68001a",
+            "on-background": "#e7deff",
+            "on-error-container": "#ffdad6",
+            "background": "#151028",
+            "inverse-primary": "#7c5800",
+            "on-surface": "#e7deff",
+            "error-container": "#93000a",
+            "on-secondary": "#00363d",
+            "surface-container-highest": "#37314b",
+            "tertiary": "#ffd7d8",
+            "surface": "#151028",
+            "on-primary-fixed-variant": "#5e4200",
+            "error": "#ffb4ab",
+            "on-error": "#690005",
+            "on-secondary-container": "#00616d",
+            "surface-bright": "#3b3650",
+            "surface-container": "#211c35",
+            "outline": "#9e8f78",
+            "secondary-container": "#00e3fd"
+          },
+          "borderRadius": {
+            "DEFAULT": "1rem",
+            "lg": "2rem",
+            "xl": "3rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "space-md": "1rem",
+            "space-lg": "1.5rem",
+            "margin-mobile": "1rem",
+            "gutter-mobile": "0.75rem",
+            "margin": "1.5rem",
+            "space-xl": "2.25rem",
+            "gutter": "1rem",
+            "space-sm": "0.5rem",
+            "space-xs": "0.25rem"
+          },
+          "fontFamily": {
+            "headline-lg": ["Rubik", "Changa", "sans-serif"],
+            "body-lg": ["Rubik", "sans-serif"],
+            "display-hero-mobile": ["Rubik", "Changa", "sans-serif"],
+            "display-hero": ["Rubik", "Changa", "sans-serif"],
+            "body-md": ["Rubik", "sans-serif"],
+            "label-badge": ["Rubik", "sans-serif"],
+            "headline-sm": ["Rubik", "Changa", "sans-serif"],
+            "label-numeric": ["Rubik", "sans-serif"],
+            "headline-md": ["Rubik", "Changa", "sans-serif"]
+          },
+          "fontSize": {
+            "headline-lg": ["28px", { "lineHeight": "36px", "fontWeight": "800" }],
+            "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "600" }],
+            "display-hero-mobile": ["34px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "900" }],
+            "display-hero": ["44px", { "lineHeight": "52px", "letterSpacing": "-0.02em", "fontWeight": "900" }],
+            "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "500" }],
+            "label-badge": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "800" }],
+            "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "700" }],
+            "label-numeric": ["20px", { "lineHeight": "24px", "fontWeight": "900" }],
+            "headline-md": ["22px", { "lineHeight": "28px", "fontWeight": "800" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* Pixelated retro scanlines & Egyptian arcade bevels */
+    .pixel-art-filter {
+      image-rendering: pixelated;
+    }
+    .arcade-pattern {
+      background-image: radial-gradient(rgba(255, 184, 0, 0.08) 1.5px, transparent 1.5px), radial-gradient(rgba(0, 227, 253, 0.05) 1.5px, transparent 1.5px);
+      background-size: 16px 16px;
+      background-position: 0 0, 8px 8px;
+    }
+    .hieroglyph-border {
+      border-image: repeating-linear-gradient(45deg, #6b4c00, #6b4c00 4px, #ffb800 4px, #ffb800 8px) 4;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md text-body-md antialiased min-h-screen pb-28 pt-16 arcade-pattern select-none overflow-x-hidden">
+<!-- TOP APP BAR (Shared Components Tokenized) -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-space-md py-space-sm bg-surface-container dark:bg-surface-container rounded-b-lg border-b-[3px] border-surface-container-lowest shadow-[0_4px_0_0_#090614]">
+<!-- Leading Avatar: Pharaoh Cartoon Mascot Icon -->
+<div class="flex items-center gap-2">
+<div class="relative w-10 h-10 rounded-lg bg-primary-container border-[2.5px] border-surface-container-lowest shadow-[0_2px_0_0_#090614] flex items-center justify-center overflow-hidden">
+<span class="material-symbols-outlined text-on-primary-container text-2xl font-bold" style="font-variation-settings: 'FILL' 1;">theater_comedy</span>
+<div class="absolute -bottom-1 -right-1 bg-surface-container-lowest text-primary rounded-full px-1 text-[9px] font-label-badge text-label-badge font-bold">LV.9</div>
+</div>
+<div class="flex flex-col">
+<span class="font-label-badge text-label-badge text-primary-fixed tracking-wider">طور التحدي</span>
+<span class="font-headline-sm text-headline-sm text-primary leading-tight">اديني في سري 🤫</span>
+</div>
+</div>
+<!-- Center Brand Anchor -->
+<div class="hidden sm:flex flex-col items-center">
+<span class="font-display-hero-mobile text-display-hero-mobile text-primary tracking-tight drop-shadow-[0_2px_0_#090614]">QUIZ ARENA</span>
+<span class="font-label-badge text-label-badge text-secondary tracking-widest -mt-1">بطولة الفراعنة للأذكياء</span>
+</div>
+<!-- Trailing Action: Settings -->
+<div class="flex items-center gap-2">
+<div class="flex items-center bg-surface-container-lowest px-2 py-1 rounded-full border border-outline-variant shadow-[0_2px_0_0_#090614]">
+<span class="material-symbols-outlined text-primary-container text-sm ml-1" style="font-variation-settings: 'FILL' 1;">toll</span>
+<span class="font-label-numeric text-label-numeric text-primary text-sm font-bold">2,450</span>
+</div>
+<button class="w-9 h-9 rounded-lg bg-surface-container-high border-[2px] border-surface-container-lowest shadow-[0_2px_0_0_#090614] flex items-center justify-center hover:brightness-110 active:translate-y-1 active:shadow-none transition-transform">
+<span class="material-symbols-outlined text-on-surface-variant text-xl">settings</span>
+</button>
+</div>
+</header>
+<!-- MAIN ARENA CANVAS -->
+<main class="max-w-md mx-auto px-space-md mt-4 flex flex-col gap-4">
+<!-- ROUND HUD & 16-BIT TIMER CARD -->
+<div class="bg-surface-container rounded-lg p-3 border-[3px] border-surface-container-lowest shadow-[0_4px_0_0_#090614] flex items-center justify-between relative overflow-hidden">
+<!-- Glow ambient back drop -->
+<div class="absolute -right-8 -top-8 w-24 h-24 bg-primary-container opacity-10 rounded-full blur-xl pointer-events-none"></div>
+<!-- Team A Score Pill -->
+<div class="flex items-center gap-2 bg-surface-container-lowest px-3 py-1.5 rounded-lg border-2 border-surface-container-high">
+<div class="w-3 h-3 rounded-full bg-secondary shadow-[0_0_8px_#00e3fd]"></div>
+<div class="flex flex-col text-right">
+<span class="text-[10px] text-secondary font-label-badge text-label-badge">فريق حورس (أ)</span>
+<span class="font-label-numeric text-label-numeric text-on-surface leading-none" id="score-a">300</span>
+</div>
+</div>
+<!-- Center Arcade Countdown Timer -->
+<div class="flex flex-col items-center">
+<div class="bg-surface-container-lowest px-3 py-1 rounded-full border-2 border-primary-container shadow-[0_0_10px_rgba(255,184,0,0.3)] flex items-center gap-1.5 animate-pulse">
+<span class="material-symbols-outlined text-primary-container text-base" style="font-variation-settings: 'FILL' 1;">hourglass_top</span>
+<span class="font-label-numeric text-label-numeric text-primary tracking-widest text-lg font-black" id="game-timer">00:45</span>
+</div>
+<span class="font-label-badge text-label-badge text-on-surface-variant text-[11px] mt-1 font-bold">الجولة 3 من 5</span>
+</div>
+<!-- Team B Score Pill -->
+<div class="flex items-center gap-2 bg-surface-container-lowest px-3 py-1.5 rounded-lg border-2 border-surface-container-high">
+<div class="flex flex-col text-left">
+<span class="text-[10px] text-tertiary font-label-badge text-label-badge">فريق أنوبيس (ب)</span>
+<span class="font-label-numeric text-label-numeric text-on-surface leading-none" id="score-b">250</span>
+</div>
+<div class="w-3 h-3 rounded-full bg-tertiary-container shadow-[0_0_8px_#ffb0b3]"></div>
+</div>
+</div>
+<!-- SECRET TABOO TABLET (Papyrus & Sandstone Theme) -->
+<div class="relative bg-surface-container-low rounded-lg border-[3.5px] border-surface-container-lowest shadow-[0_6px_0_0_#090614] overflow-hidden">
+<!-- Top Cartouche Header Strip -->
+<div class="bg-surface-container-high px-4 py-2 flex items-center justify-between border-b-[2.5px] border-surface-container-lowest">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary text-base" style="font-variation-settings: 'FILL' 1;">lock</span>
+<span class="font-label-badge text-label-badge text-primary-fixed uppercase tracking-wider">لوحة المتكلم السرية</span>
+</div>
+<span class="bg-error-container text-on-error-container px-2 py-0.5 rounded text-[11px] font-bold border border-error">ممنوع نطق الممنوعات!</span>
+</div>
+<!-- Papyrus Interior Card -->
+<div class="p-4 bg-gradient-to-b from-surface-container to-surface-dim relative">
+<!-- Sandstone hieroglyph decorative corners -->
+<div class="absolute top-2 left-2 text-outline-variant opacity-30 select-none text-xs">𓀀 𓁐 𓃠</div>
+<div class="absolute top-2 right-2 text-outline-variant opacity-30 select-none text-xs">𓂀 𓃭 𓆃</div>
+<!-- TARGET SECRET WORD -->
+<div class="text-center my-2">
+<span class="font-label-badge text-label-badge text-on-surface-variant block mb-1">الكلمة السرية المطلوب شرحها:</span>
+<div class="inline-block bg-surface-container-lowest px-6 py-2.5 rounded-lg border-[3px] border-primary-container shadow-[0_4px_0_0_#6b4c00]">
+<h1 class="font-display-hero-mobile text-display-hero-mobile text-primary tracking-wide drop-shadow-[0_2px_0_#090614] flex items-center justify-center gap-2">
+<span>برج القاهرة</span>
+<span class="text-2xl">🗼</span>
+</h1>
+</div>
+</div>
+<!-- TABOO FORBIDDEN WORDS CONTAINER -->
+<div class="mt-4 pt-3 border-t-2 border-dashed border-outline-variant">
+<div class="flex items-center justify-center gap-1 mb-2.5">
+<span class="material-symbols-outlined text-error text-lg" style="font-variation-settings: 'FILL' 1;">block</span>
+<span class="font-headline-sm text-headline-sm text-error font-extrabold tracking-wide">الكلمات المحظورة (Taboo)</span>
+</div>
+<!-- Forbidden Chips Grid (Pop 3D Arcade Buttons) -->
+<div class="grid grid-cols-2 gap-2.5">
+<!-- Taboo 1 -->
+<div class="flex items-center justify-between bg-error-container/40 text-on-surface border-[2.5px] border-surface-container-lowest px-3 py-2 rounded-lg shadow-[0_3px_0_0_#090614]">
+<span class="font-headline-sm text-headline-sm text-error">طويل</span>
+<span class="text-base">🚫</span>
+</div>
+<!-- Taboo 2 -->
+<div class="flex items-center justify-between bg-error-container/40 text-on-surface border-[2.5px] border-surface-container-lowest px-3 py-2 rounded-lg shadow-[0_3px_0_0_#090614]">
+<span class="font-headline-sm text-headline-sm text-error">سياحة</span>
+<span class="text-base">🚫</span>
+</div>
+<!-- Taboo 3 -->
+<div class="flex items-center justify-between bg-error-container/40 text-on-surface border-[2.5px] border-surface-container-lowest px-3 py-2 rounded-lg shadow-[0_3px_0_0_#090614]">
+<span class="font-headline-sm text-headline-sm text-error">جزيرة</span>
+<span class="text-base">🚫</span>
+</div>
+<!-- Taboo 4 -->
+<div class="flex items-center justify-between bg-error-container/40 text-on-surface border-[2.5px] border-surface-container-lowest px-3 py-2 rounded-lg shadow-[0_3px_0_0_#090614]">
+<span class="font-headline-sm text-headline-sm text-error">تلفزيون</span>
+<span class="text-base">🚫</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- CENTER COMIC RETRO FACE-OFF (Matching Pixel Egyptian Aesthetic) -->
+<div class="bg-surface-container rounded-lg border-[3px] border-surface-container-lowest shadow-[0_4px_0_0_#090614] p-3 relative overflow-hidden">
+<!-- Comic burst banner -->
+<div class="flex items-center justify-between mb-2">
+<span class="font-label-badge text-label-badge text-secondary font-black bg-secondary-container/20 text-secondary-fixed border border-secondary px-2 py-0.5 rounded-full">
+          مواجهة الشارع المصري 🎮
+        </span>
+<span class="text-xs text-on-surface-variant font-bold">بث مباشر للفريق</span>
+</div>
+<div class="flex items-center justify-around gap-2 my-1">
+<!-- Explaining Player (Left / Team A) -->
+<div class="flex flex-col items-center text-center relative">
+<!-- Animated Speech Bubble -->
+<div class="relative -mb-1 z-10 bg-primary-container text-on-primary-container font-headline-sm text-headline-sm px-3 py-1.5 rounded-lg border-[2px] border-surface-container-lowest shadow-[0_3px_0_0_#090614] animate-bounce">
+            انطق يا لوح! 📢
+            <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-primary-container"></div>
+</div>
+<!-- Pixel Avatar 1 (Speaker) -->
+<div class="w-16 h-16 rounded-xl bg-surface-container-high border-[3px] border-surface-container-lowest shadow-[0_3px_0_0_#090614] flex items-center justify-center overflow-hidden p-1 relative group">
+<span class="material-symbols-outlined text-4xl text-primary" style="font-variation-settings: 'FILL' 1;">face_6</span>
+<div class="absolute inset-0 bg-primary/10 rounded-lg"></div>
+</div>
+<span class="font-headline-sm text-headline-sm text-primary mt-1">كابتن هيما</span>
+<span class="text-[11px] text-on-surface-variant">الشراح (بيحاول)</span>
+</div>
+<!-- Center Comic VS Burst Motif -->
+<div class="flex flex-col items-center justify-center">
+<div class="w-10 h-10 rounded-full bg-surface-container-lowest border-2 border-primary-container flex items-center justify-center shadow-[0_0_12px_rgba(255,184,0,0.4)]">
+<span class="font-headline-lg text-headline-lg text-primary-container font-black">ضد</span>
+</div>
+<span class="text-[10px] text-outline mt-1 font-bold">تخمين</span>
+</div>
+<!-- Confused Guesser (Right / Team A) -->
+<div class="flex flex-col items-center text-center relative">
+<!-- Thought Bubble -->
+<div class="relative -mb-1 z-10 bg-surface-container-highest text-on-surface font-body-md text-body-md px-2.5 py-1 rounded-lg border-[2px] border-surface-container-lowest shadow-[0_2px_0_0_#090614]">
+            المسلة يعني؟! 🧐
+            <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-surface-container-highest"></div>
+</div>
+<!-- Pixel Avatar 2 (Confused Guesser) -->
+<div class="w-16 h-16 rounded-xl bg-surface-container-high border-[3px] border-surface-container-lowest shadow-[0_3px_0_0_#090614] flex items-center justify-center overflow-hidden p-1 relative">
+<span class="material-symbols-outlined text-4xl text-secondary-fixed" style="font-variation-settings: 'FILL' 1;">sentiment_very_dissatisfied</span>
+<div class="absolute inset-0 bg-secondary/10 rounded-lg"></div>
+</div>
+<span class="font-headline-sm text-headline-sm text-secondary mt-1">عصام شو</span>
+<span class="text-[11px] text-on-surface-variant">البيخمن (مش فاهم)</span>
+</div>
+</div>
+<!-- Egyptian Mini Inscription Footer inside the Face-off card -->
+<div class="mt-2 text-center border-t border-surface-container-highest pt-2">
+<p class="text-xs text-primary-fixed-dim font-bold">
+          « المنيا.. أصل الحكاية وأهلها أهل الجدعنة » 🇪🇬
+        </p>
+</div>
+</div>
+<!-- REFEREE / HOST ARCADIAN CONTROL CONSOLE -->
+<div class="bg-surface-container-low rounded-lg p-3 border-[3px] border-surface-container-lowest shadow-[0_5px_0_0_#090614]">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-primary text-base">sports</span>
+<span class="font-label-badge text-label-badge text-primary-fixed">لوحة تحكيم الحكم / المراقب</span>
+</div>
+<span class="text-[11px] text-on-surface-variant">اضغط لاحتساب النتيجة</span>
+</div>
+<!-- Action Buttons Cluster (3D Chunky Bevels) -->
+<div class="grid grid-cols-3 gap-2">
+<!-- Green: Team A Point (+100) -->
+<button class="group relative flex flex-col items-center justify-center p-2 rounded-lg bg-gradient-to-b from-[#22c55e] to-[#15803d] border-[2.5px] border-surface-container-lowest shadow-[0_5px_0_0_#0e5328] active:translate-y-1 active:shadow-[0_1px_0_0_#0e5328] transition-all duration-75" onclick="addPoint('a')">
+<span class="material-symbols-outlined text-surface-container-lowest text-2xl font-bold" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-headline-sm text-headline-sm text-white font-black mt-0.5 text-center leading-tight">فريق أ</span>
+<span class="bg-black/30 text-white rounded-full px-1.5 py-0.2 text-[10px] font-bold mt-1">+100</span>
+</button>
+<!-- Red: Taboo Foul / Penalty (-50) -->
+<button class="group relative flex flex-col items-center justify-center p-2 rounded-lg bg-gradient-to-b from-[#ef4444] to-[#b91c1c] border-[2.5px] border-surface-container-lowest shadow-[0_5px_0_0_#7f1d1d] active:translate-y-1 active:shadow-[0_1px_0_0_#7f1d1d] transition-all duration-75" onclick="penalize()">
+<span class="material-symbols-outlined text-surface-container-lowest text-2xl font-bold" style="font-variation-settings: 'FILL' 1;">warning</span>
+<span class="font-headline-sm text-headline-sm text-white font-black mt-0.5 text-center leading-tight">مخالفة</span>
+<span class="bg-black/30 text-white rounded-full px-1.5 py-0.2 text-[10px] font-bold mt-1">-50</span>
+</button>
+<!-- Blue: Team B Point (+100) -->
+<button class="group relative flex flex-col items-center justify-center p-2 rounded-lg bg-gradient-to-b from-[#0ea5e9] to-[#0369a1] border-[2.5px] border-surface-container-lowest shadow-[0_5px_0_0_#075985] active:translate-y-1 active:shadow-[0_1px_0_0_#075985] transition-all duration-75" onclick="addPoint('b')">
+<span class="material-symbols-outlined text-surface-container-lowest text-2xl font-bold" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-headline-sm text-headline-sm text-white font-black mt-0.5 text-center leading-tight">فريق ب</span>
+<span class="bg-black/30 text-white rounded-full px-1.5 py-0.2 text-[10px] font-bold mt-1">+100</span>
+</button>
+</div>
+<!-- Skip / Next Turn Aux Button -->
+<button class="w-full mt-2 py-2 px-3 rounded-lg bg-surface-container-high border-[2px] border-surface-container-lowest shadow-[0_3px_0_0_#090614] flex items-center justify-center gap-2 hover:brightness-110 active:translate-y-0.5 active:shadow-none text-on-surface font-bold text-sm" onclick="nextCard()">
+<span class="material-symbols-outlined text-base">skip_next</span>
+<span>تخطي الكلمة (كرت تالي)</span>
+</button>
+</div>
+</main>
+<!-- BOTTOM NAVIGATION BAR (Shared Components Preserved & Active Matched) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-space-md py-space-xs bg-surface-container-low dark:bg-surface-container-low rounded-t-lg border-t-[3px] border-surface-container-lowest shadow-[0_-4px_0_0_#090614]">
+<!-- Item 1: Battle (Active state matched for current active match) -->
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-lg px-space-md py-space-xs border-[2.5px] border-surface-container-lowest shadow-[0_3px_0_0_#6b4c00] active:translate-y-0.5 active:shadow-none" href="#battle">
+<span class="material-symbols-outlined text-xl" style="font-variation-settings: 'FILL' 1;">sports_esports</span>
+<span class="font-label-badge text-label-badge mt-0.5">Battle</span>
+</a>
+<!-- Item 2: Arena -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary dark:hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none" href="#arena">
+<span class="material-symbols-outlined text-xl">swords</span>
+<span class="font-label-badge text-label-badge mt-0.5">Arena</span>
+</a>
+<!-- Item 3: Rankings -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary dark:hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none" href="#rankings">
+<span class="material-symbols-outlined text-xl">leaderboard</span>
+<span class="font-label-badge text-label-badge mt-0.5">Rankings</span>
+</a>
+<!-- Item 4: Shop -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary dark:hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none" href="#shop">
+<span class="material-symbols-outlined text-xl">storefront</span>
+<span class="font-label-badge text-label-badge mt-0.5">Shop</span>
+</a>
+</nav>
+<!-- Lightweight Arcade Sound/Score Micro-Interactions Script -->
+<script>
+    let scoreA = 300;
+    let scoreB = 250;
+    let timeLeft = 45;
+
+    function addPoint(team) {
+      if (team === 'a') {
+        scoreA += 100;
+        document.getElementById('score-a').textContent = scoreA;
+      } else {
+        scoreB += 100;
+        document.getElementById('score-b').textContent = scoreB;
+      }
+    }
+
+    function penalize() {
+      scoreA = Math.max(0, scoreA - 50);
+      document.getElementById('score-a').textContent = scoreA;
+      // Visual wobble shake on penalty
+      const main = document.querySelector('main');
+      main.classList.add('translate-x-1');
+      setTimeout(() => main.classList.remove('translate-x-1'), 100);
+    }
+
+    function nextCard() {
+      // Small feedback click
+      const timer = document.getElementById('game-timer');
+      timer.classList.add('scale-110');
+      setTimeout(() => timer.classList.remove('scale-110'), 150);
+    }
+
+    // Countdown Timer Loop
+    setInterval(() => {
+      if (timeLeft > 0) {
+        timeLeft--;
+        const formatted = '00:' + (timeLeft < 10 ? '0' + timeLeft : timeLeft);
+        document.getElementById('game-timer').textContent = formatted;
+      }
+    }, 1000);
+  </script>
+</body></html>

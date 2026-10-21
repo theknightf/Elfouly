@@ -360,6 +360,16 @@ export default function Landing() {
               <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">أبطال الصعيد</span>
               <span className="text-xl">🛡️</span>
             </button>
+
+            {/* Button 5: Standalone Penalty Shootout */}
+            <a
+              href="#penalty"
+              aria-label="ضربات الجزاء"
+              className="menu-btn btn-crimson cursor-pointer active:scale-95 transition-transform"
+            >
+              <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">ضربات الجزاء</span>
+              <span className="text-xl">⚽</span>
+            </a>
           </div>
 
         </div>

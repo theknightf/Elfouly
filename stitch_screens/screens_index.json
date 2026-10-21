@@ -1,0 +1,72 @@
+[
+  {
+    "screenNumber": 1,
+    "screenId": "a8a8f3d473b340819d5c79f77446993e",
+    "titleArabic": "اديني في سري - بكسل آرت مصري",
+    "titleEnglish": "Edini Fe Sery - Password Challenge",
+    "resolution": "780x2272",
+    "deviceType": "MOBILE",
+    "htmlFile": "screen.html",
+    "screenshotFile": "screenshot.png",
+    "htmlSizeBytes": 25078,
+    "pngSizeBytes": 74895,
+    "originalHtmlName": "2_اديني_في_سري_-_بكسل_آرت_مصري.html",
+    "originalPngName": "2_اديني_في_سري_-_بكسل_آرت_مصري.png"
+  },
+  {
+    "screenNumber": 2,
+    "screenId": "8a4d62d4a3dc4f40b97da6dfba2cd874",
+    "titleArabic": "مين يزوّد؟ - بكسل آرت مصري",
+    "titleEnglish": "Meen Yzawwed - Blind Auction",
+    "resolution": "780x2528",
+    "deviceType": "MOBILE",
+    "htmlFile": "screen.html",
+    "screenshotFile": "screenshot.png",
+    "htmlSizeBytes": 24453,
+    "pngSizeBytes": 74134,
+    "originalHtmlName": "1_مين_يزوّد؟_-_بكسل_آرت_مصري.html",
+    "originalPngName": "1_مين_يزوّد؟_-_بكسل_آرت_مصري.png"
+  },
+  {
+    "screenNumber": 3,
+    "screenId": "cfb59948354740e59ea2ff1f6dc3e9ed",
+    "titleArabic": "في المقص - بكسل آرت مصري",
+    "titleEnglish": "Fel Ma'as - Penalty Shootouts",
+    "resolution": "780x2254",
+    "deviceType": "MOBILE",
+    "htmlFile": "screen.html",
+    "screenshotFile": "screenshot.png",
+    "htmlSizeBytes": 27287,
+    "pngSizeBytes": 78010,
+    "originalHtmlName": "3_في_المقص_-_بكسل_آرت_مصري.html",
+    "originalPngName": "3_في_المقص_-_بكسل_آرت_مصري.png"
+  },
+  {
+    "screenNumber": 4,
+    "screenId": "1d3c44b3875441c787d7957d2372a8e1",
+    "titleArabic": "قائمة اللعبة الرئيسية - منيا عروس الصعيد (تطابق بكسل أصلي)",
+    "titleEnglish": "Main Game Menu - Minya Arouset El Sa'eed",
+    "resolution": "780x1768",
+    "deviceType": "MOBILE",
+    "htmlFile": "screen.html",
+    "screenshotFile": "screenshot.png",
+    "htmlSizeBytes": 17860,
+    "pngSizeBytes": 222343,
+    "originalHtmlName": "4_قائمة_اللعبة_الرئيسية_-_منيا_عروس_الصعيد_(تطابق_بكسل_أصلي).html",
+    "originalPngName": "4_قائمة_اللعبة_الرئيسية_-_منيا_عروس_الصعيد_(تطابق_بكسل_أصلي).png"
+  },
+  {
+    "screenNumber": 5,
+    "screenId": "27b72f05347643079232393258718f62",
+    "titleArabic": "1 تو (One-Two) - بكسل آرت مصري",
+    "titleEnglish": "One-Two (1 تو) - Double or Bank",
+    "resolution": "780x2414",
+    "deviceType": "MOBILE",
+    "htmlFile": "screen.html",
+    "screenshotFile": "screenshot.png",
+    "htmlSizeBytes": 25042,
+    "pngSizeBytes": 69592,
+    "originalHtmlName": "5_1_تو_(One-Two)_-_بكسل_آرت_مصري.html",
+    "originalPngName": "5_1_تو_(One-Two)_-_بكسل_آرت_مصري.png"
+  }
+]

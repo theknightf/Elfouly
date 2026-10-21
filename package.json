@@ -21,6 +21,7 @@
     "test:integrity": "tsx tests/roundIntegrity.test.ts",
     "test:tournament": "tsx tests/simulate_tournament.ts",
     "test:engine": "tsx tests/triviaEngine.test.ts",
+    "test:penalty": "tsx tests/penaltyEngine.test.ts",
     "test:ui": "tsx tests/ui_layout_audit.ts"
   },
   "dependencies": {
