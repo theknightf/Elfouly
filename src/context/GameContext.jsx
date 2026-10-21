@@ -14,6 +14,8 @@ import {
 import { sounds } from '../utils/soundEffects';
 import { getServerUrl } from '../utils/serverUrl';
 import { createSupabaseSocket } from '../services/supabaseMultiplayerService';
+import { CHARACTERS } from '../data/characters';
+import { calculateBonus, isGeneralCategory } from '../utils/penaltyRules';
 
 export const CONNECTION_STATUS_MESSAGES = {
   connecting: 'بنتصل بالسيرفر…',
@@ -265,6 +267,8 @@ export function GameProvider({ children }) {
       interceptBuzzedBy: null,
       tieBreakActive: false,
       tieBreakData: null,
+      isSuddenDeath: false,
+      suddenDeathRound: 0,
       isComplete: false,
       shotsHistory: []
     },
@@ -996,24 +1000,55 @@ export function GameProvider({ children }) {
       }
 
       setRoomState(prev => {
-        if (prev.round3.isComplete || prev.round3.turnIndex >= 10 || prev.round3.phase !== 'shootout') return prev;
+        if (prev.round3.isComplete || prev.round3.phase !== 'shootout') return prev;
         const r3 = { ...prev.round3 };
         const teams = { ...prev.teams };
         const kickingTeam = r3.kickerTeam;
         const defendingTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
 
+        const kicker = prev.players.find(p => p.id === r3.currentKickerId);
+        const goalie = prev.players.find(p => p.id === r3.currentGoalieId);
+        const categoryId = r3.currentCategory?.id || r3.currentQuestion?.category;
+
+        let bonusAwarded = false;
+        let bonusPoints = 0;
+
         if (result === 'goal') {
           teams[kickingTeam].score += 1000;
           teams[kickingTeam].penaltyScore = (teams[kickingTeam].penaltyScore || 0) + 1;
+          const kickerAttrs = kicker?.attributes || kicker?.character?.attributes;
+          const b = calculateBonus(kickerAttrs, categoryId, true);
+          if (b.bonusAwarded) {
+            bonusAwarded = true;
+            bonusPoints = b.bonusPoints;
+            teams[kickingTeam].score += b.bonusPoints * 500;
+            teams[kickingTeam].bonusPoints = (teams[kickingTeam].bonusPoints || 0) + b.bonusPoints;
+            showToast('🎯 بونص خارج التخصص!', `المسدد ${kicker?.name || ''} حقق نقطة بونص إضافية!`);
+          }
         } else if (result === 'saved') {
           teams[defendingTeam].score += 800;
+          teams[defendingTeam].penaltyScore = (teams[defendingTeam].penaltyScore || 0) + 1;
+          const goalieAttrs = goalie?.attributes || goalie?.character?.attributes;
+          const b = calculateBonus(goalieAttrs, categoryId, true);
+          if (b.bonusAwarded) {
+            bonusAwarded = true;
+            bonusPoints = b.bonusPoints;
+            teams[defendingTeam].score += b.bonusPoints * 500;
+            teams[defendingTeam].bonusPoints = (teams[defendingTeam].bonusPoints || 0) + b.bonusPoints;
+            showToast('🧤 بونص خارج التخصص!', `الحارس ${goalie?.name || ''} حقق نقطة بونص إضافية للتصدي!`);
+          }
         }
 
         r3.shotsHistory.push({
           shotIndex: r3.turnIndex,
+          round: Math.floor(r3.turnIndex / 2) + 1,
           team: kickingTeam,
           result: result,
-          intercepted: !!r3.interceptBuzzedBy
+          intercepted: !!r3.interceptBuzzedBy,
+          bonusAwarded,
+          bonusPoints,
+          isSuddenDeath: !!r3.isSuddenDeath,
+          suddenDeathRound: r3.suddenDeathRound || 0
         });
 
         r3.turnIndex += 1;
@@ -1024,25 +1059,69 @@ export function GameProvider({ children }) {
         const teamBPlayers = prev.players.filter(p => p.team === 'team_b');
 
         if (r3.kickerTeam === 'team_a') {
-          r3.currentKickerId = teamAPlayers[r3.turnIndex % teamAPlayers.length]?.id;
-          r3.currentGoalieId = teamBPlayers[r3.turnIndex % teamBPlayers.length]?.id;
+          r3.currentKickerId = teamAPlayers[r3.turnIndex % Math.max(1, teamAPlayers.length)]?.id;
+          r3.currentGoalieId = teamBPlayers[r3.turnIndex % Math.max(1, teamBPlayers.length)]?.id;
         } else {
-          r3.currentKickerId = teamBPlayers[r3.turnIndex % teamBPlayers.length]?.id;
-          r3.currentGoalieId = teamAPlayers[r3.turnIndex % teamAPlayers.length]?.id;
+          r3.currentKickerId = teamBPlayers[r3.turnIndex % Math.max(1, teamBPlayers.length)]?.id;
+          r3.currentGoalieId = teamAPlayers[r3.turnIndex % Math.max(1, teamAPlayers.length)]?.id;
         }
 
+        // Regulation end (10 kicks) or Sudden Death round evaluation:
         if (r3.turnIndex >= 10) {
-          r3.phase = 'complete';
-          r3.isComplete = true;
-          r3.currentQuestion = null;
-          r3.currentKickerId = null;
-          r3.currentGoalieId = null;
-          sounds.playWhistle();
-          showToast('🏁 انتهت ركلات الجزاء (10 ركلات)!', 'جاهزون لجولة المزاد مين يزوّد!');
-          return { ...prev, teams, round3: r3 };
+          const scoreA = teams.team_a.penaltyScore || 0;
+          const scoreB = teams.team_b.penaltyScore || 0;
+
+          if (!r3.isSuddenDeath) {
+            if (scoreA === scoreB) {
+              r3.isSuddenDeath = true;
+              r3.suddenDeathRound = 1;
+              sounds.playWhistle();
+              showToast('⚡ شوط الموت المفاجئ (Sudden Death)!', 'تعادل في الركلات الترجيحية! ركلة بركلة حتى الحسم!');
+            } else {
+              r3.phase = 'complete';
+              r3.isComplete = true;
+              r3.currentQuestion = null;
+              r3.currentKickerId = null;
+              r3.currentGoalieId = null;
+              sounds.playWhistle();
+              showToast('🏁 انتهت ركلات الجزاء (10 ركلات)!', 'جاهزون لجولة المزاد مين يزوّد!');
+              return { ...prev, teams, round3: r3 };
+            }
+          } else {
+            // Already in sudden death: evaluated after complete 2-kick rounds (Team A + Team B)
+            if (r3.turnIndex % 2 === 0) {
+              const lastTwo = r3.shotsHistory.slice(-2);
+              const shotA = lastTwo.find(s => s.team === 'team_a');
+              const shotB = lastTwo.find(s => s.team === 'team_b');
+              const roundPtsA = (shotA?.result === 'goal' ? 1 : 0) + (shotB?.result === 'saved' ? 1 : 0);
+              const roundPtsB = (shotB?.result === 'goal' ? 1 : 0) + (shotA?.result === 'saved' ? 1 : 0);
+
+              if (roundPtsA !== roundPtsB) {
+                r3.phase = 'complete';
+                r3.isComplete = true;
+                r3.currentQuestion = null;
+                r3.currentKickerId = null;
+                r3.currentGoalieId = null;
+                sounds.playWhistle();
+                const winner = roundPtsA > roundPtsB ? 'فريق الحيتان' : 'فريق الوحوش';
+                showToast('🏆 حُسمت في الموت المفاجئ!', `فاز ${winner} بعد شوط الموت المفاجئ!`);
+                return { ...prev, teams, round3: r3 };
+              } else {
+                r3.suddenDeathRound += 1;
+                showToast('⚡ استمرار الموت المفاجئ!', `تعادل في شوط الموت المفاجئ ${r3.suddenDeathRound - 1}! جولة جديدة.`);
+              }
+            }
+          }
         }
 
-        const nextCat = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
+        // Draw next question ensuring >= 50% General rule
+        const isGeneralTurn = r3.turnIndex % 2 === 0;
+        const generalCategories = PENALTY_CATEGORIES.filter(c => isGeneralCategory(c.id));
+        const specialtyCategories = PENALTY_CATEGORIES.filter(c => !isGeneralCategory(c.id));
+        const nextCat = isGeneralTurn
+          ? (generalCategories[Math.floor(Math.random() * generalCategories.length)] || PENALTY_CATEGORIES[0])
+          : (specialtyCategories[Math.floor(Math.random() * specialtyCategories.length)] || PENALTY_CATEGORIES[0]);
+
         const nextPenaltyQuestion = drawLocalCategoryQuestion('hat_fi_qoraybi', nextCat.id, LOCAL_ROOM_ID);
         r3.currentCategory = nextCat;
         r3.phase = 'duelist_selection';

@@ -9,6 +9,7 @@ import { CHARACTERS } from '../src/data/characters.js';
 import { PASSWORD_WORDS, AUCTION_TOPICS, PENALTY_CATEGORIES } from '../src/data/questions.js';
 import { TOURNAMENT_STRUCTURE } from '../src/data/tournamentStructure.js';
 import { triviaEngine, buildRound1TurnPlan } from '../services/triviaEngine.js';
+import { calculateBonus, isGeneralCategory } from '../src/utils/penaltyRules.js';
 
 // Resolve CORS allowed origins
 const rawAllowedOrigins = process.env.ALLOWED_ORIGINS;
@@ -1870,18 +1871,42 @@ io.on('connection', (socket) => {
 
   function settlePenaltyShot(room, roomCode, result, meta = {}) {
     const r3 = room.round3;
-    if (r3.isComplete || r3.turnIndex >= 10 || r3.phase !== 'shootout') return false;
+    if (r3.isComplete || r3.phase !== 'shootout') return false;
 
     const kickingTeam = r3.kickerTeam;
     const defendingTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
 
+    const kicker = room.players.find(p => p.id === r3.currentKickerId);
+    const goalie = room.players.find(p => p.id === r3.currentGoalieId);
+    const categoryId = r3.currentCategory?.id || r3.currentQuestion?.category;
+
+    let bonusAwarded = false;
+    let bonusPoints = 0;
+
     if (result === 'goal') {
       room.teams[kickingTeam].score += 1000;
       room.teams[kickingTeam].penaltyScore = (room.teams[kickingTeam].penaltyScore || 0) + 1;
+      const kickerAttrs = kicker?.attributes || kicker?.character?.attributes;
+      const b = calculateBonus(kickerAttrs, categoryId, true);
+      if (b.bonusAwarded) {
+        bonusAwarded = true;
+        bonusPoints = b.bonusPoints;
+        room.teams[kickingTeam].score += b.bonusPoints * 500;
+        room.teams[kickingTeam].bonusPoints = (room.teams[kickingTeam].bonusPoints || 0) + b.bonusPoints;
+      }
       io.to(roomCode).emit('sound_trigger', { sound: 'goal_roar' });
       io.to(roomCode).emit('confetti_trigger');
     } else if (result === 'saved') {
       room.teams[defendingTeam].score += 800;
+      room.teams[defendingTeam].penaltyScore = (room.teams[defendingTeam].penaltyScore || 0) + 1;
+      const goalieAttrs = goalie?.attributes || goalie?.character?.attributes;
+      const b = calculateBonus(goalieAttrs, categoryId, true);
+      if (b.bonusAwarded) {
+        bonusAwarded = true;
+        bonusPoints = b.bonusPoints;
+        room.teams[defendingTeam].score += b.bonusPoints * 500;
+        room.teams[defendingTeam].bonusPoints = (room.teams[defendingTeam].bonusPoints || 0) + b.bonusPoints;
+      }
       io.to(roomCode).emit('sound_trigger', { sound: 'save' });
     } else {
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
@@ -1889,12 +1914,17 @@ io.on('connection', (socket) => {
 
     r3.shotsHistory.push({
       shotIndex: r3.turnIndex,
+      round: Math.floor(r3.turnIndex / 2) + 1,
       team: kickingTeam,
       result,
       intercepted: !!r3.interceptBuzzedBy,
       tieBreak: !!meta.tieBreak,
       answerMs: meta.answerMs ?? null,
-      interceptMs: meta.interceptMs ?? null
+      interceptMs: meta.interceptMs ?? null,
+      bonusAwarded,
+      bonusPoints,
+      isSuddenDeath: !!r3.isSuddenDeath,
+      suddenDeathRound: r3.suddenDeathRound || 0
     });
 
     // Advance turn and reset the shooting clock / buzzer for the next kick.
@@ -1908,22 +1938,74 @@ io.on('connection', (socket) => {
     r3.tieBreakActive = false;
     r3.tieBreakData = null;
 
-    r3.isComplete = r3.turnIndex >= 10;
-    if (r3.isComplete) {
-      r3.phase = 'complete';
-      r3.currentQuestion = null;
-      r3.currentKickerId = null;
-      r3.currentGoalieId = null;
-      io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
-      io.to(roomCode).emit('notification', {
-        title: '🏁 انتهت ركلات الجزاء الترجيحية (10 ركلات)!',
-        message: 'تم تسديد 10 ركلات بالتساوي (5 لكل فريق)! الانتقال لجولة المزاد مين يزوّد.'
-      });
-      emitRoomState(room);
-      return true;
+    // Regulation (10 kicks) or Sudden Death round evaluation:
+    if (r3.turnIndex >= 10) {
+      const scoreA = room.teams.team_a.penaltyScore || 0;
+      const scoreB = room.teams.team_b.penaltyScore || 0;
+
+      if (!r3.isSuddenDeath) {
+        if (scoreA === scoreB) {
+          r3.isSuddenDeath = true;
+          r3.suddenDeathRound = 1;
+          r3.isComplete = false;
+          io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
+          io.to(roomCode).emit('notification', {
+            title: '⚡ شوط الموت المفاجئ (Sudden Death)!',
+            message: 'تعادل في الركلات الترجيحية (5-5)! ركلة بركلة حتى الحسم.'
+          });
+        } else {
+          r3.isComplete = true;
+        }
+      } else {
+        // Evaluated at the end of complete 2-kick sudden death rounds (A then B)
+        if (r3.turnIndex % 2 === 0) {
+          const lastTwo = r3.shotsHistory.slice(-2);
+          const shotA = lastTwo.find(s => s.team === 'team_a');
+          const shotB = lastTwo.find(s => s.team === 'team_b');
+          const roundPtsA = (shotA?.result === 'goal' ? 1 : 0) + (shotB?.result === 'saved' ? 1 : 0);
+          const roundPtsB = (shotB?.result === 'goal' ? 1 : 0) + (shotA?.result === 'saved' ? 1 : 0);
+
+          if (roundPtsA !== roundPtsB) {
+            r3.isComplete = true;
+            const winner = roundPtsA > roundPtsB ? 'فريق الحيتان' : 'فريق الوحوش';
+            io.to(roomCode).emit('notification', {
+              title: '🏆 حُسمت في الموت المفاجئ!',
+              message: `فاز ${winner} بركلات الترجيح!`
+            });
+          } else {
+            r3.suddenDeathRound = (r3.suddenDeathRound || 1) + 1;
+            r3.isComplete = false;
+            io.to(roomCode).emit('notification', {
+              title: '⚡ استمرار الموت المفاجئ!',
+              message: `تعادل في شوط الموت المفاجئ ${r3.suddenDeathRound - 1}! جولة جديدة.`
+            });
+          }
+        }
+      }
+
+      if (r3.isComplete) {
+        r3.phase = 'complete';
+        r3.currentQuestion = null;
+        r3.currentKickerId = null;
+        r3.currentGoalieId = null;
+        io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
+        io.to(roomCode).emit('notification', {
+          title: '🏁 انتهت ركلات الجزاء الترجيحية!',
+          message: 'تم حسم ركلات الجزاء! الانتقال لجولة المزاد مين يزوّد.'
+        });
+        emitRoomState(room);
+        return true;
+      }
     }
 
-    const nextCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
+    // Guarantee >= 50% General questions
+    const isGeneralTurn = r3.turnIndex % 2 === 0;
+    const generalCategories = PENALTY_CATEGORIES.filter(c => isGeneralCategory(c.id));
+    const specialtyCategories = PENALTY_CATEGORIES.filter(c => !isGeneralCategory(c.id));
+    const nextCategory = isGeneralTurn
+      ? (generalCategories[Math.floor(Math.random() * generalCategories.length)] || PENALTY_CATEGORIES[0])
+      : (specialtyCategories[Math.floor(Math.random() * specialtyCategories.length)] || PENALTY_CATEGORIES[0]);
+
     r3.currentCategory = nextCategory;
     r3.phase = 'duelist_selection';
 

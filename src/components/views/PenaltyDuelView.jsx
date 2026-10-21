@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import { useTriviaRoom } from '../../hooks/useTriviaRoom';
 import { sounds } from '../../utils/soundEffects';
-import { Shield, Radio, CheckCircle, XCircle, Eye, EyeOff, Zap, Trophy } from 'lucide-react';
+import { Shield, Radio, CheckCircle, XCircle, Eye, EyeOff, Zap, Trophy, Flame } from 'lucide-react';
+import { calculateBonus, isGeneralCategory } from '../../utils/penaltyRules';
 
 /**
  * PenaltyDuelView
@@ -14,6 +15,10 @@ import { Shield, Radio, CheckCircle, XCircle, Eye, EyeOff, Zap, Trophy } from 'l
  * - Referees/Spectators (The other 2 players):
  *   - Question Text + Correct Answer Key.
  *   - Adjudication Buttons: [هدف] / [اتصدت / ضاعت].
+ * - Penalty Rules:
+ *   - 5 Regulation Rounds (10 kicks total) + Sudden Death if tied.
+ *   - Specialty Attributes & Bonus Points (+1 for out-of-specialty, 0 for general).
+ *   - At least 50% General questions.
  */
 export default function PenaltyDuelView({ isMobile = false }) {
   const {
@@ -47,6 +52,13 @@ export default function PenaltyDuelView({ isMobile = false }) {
   const currentGoalie = roomState?.players?.find(p => p.id === r3.currentGoalieId) || { name: 'الحارس' };
 
   const isIntercepted = !!r3.interceptBuzzedBy;
+
+  const categoryId = activeQuestion?.categoryName || activeQuestion?.category;
+  const isGeneral = isGeneralCategory(categoryId);
+  const kickerAttrs = currentKicker?.attributes || currentKicker?.character?.attributes;
+  const kickerBonusApplies = !isGeneral && calculateBonus(kickerAttrs, categoryId, true).bonusAwarded;
+  const goalieAttrs = currentGoalie?.attributes || currentGoalie?.character?.attributes;
+  const goalieBonusApplies = !isGeneral && calculateBonus(goalieAttrs, categoryId, true).bonusAwarded;
 
   const handleKickerOptionClick = (option) => {
     if (isIntercepted) {
@@ -82,9 +94,16 @@ export default function PenaltyDuelView({ isMobile = false }) {
             ⚽
           </div>
           <div>
-            <div className="font-pixel text-[9px] text-arena-cyan tracking-wider">المنيا لايف — ضربات الجزاء</div>
-            <h2 className="font-headline-sm text-sm md:text-base text-arena-yellow font-black leading-tight">
-              في المقص (Penalty Duel)
+            <div className="font-pixel text-[9px] text-arena-cyan tracking-wider">
+              {r3.isSuddenDeath ? '⚡ المنيا لايف — شوط الموت المفاجئ' : 'المنيا لايف — ضربات الجزاء'}
+            </div>
+            <h2 className="font-headline-sm text-sm md:text-base text-arena-yellow font-black leading-tight flex items-center gap-2">
+              <span>في المقص (Penalty Duel)</span>
+              {r3.isSuddenDeath && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500 text-white animate-pulse">
+                  الموت المفاجئ (Sudden Death)
+                </span>
+              )}
             </h2>
           </div>
         </div>
@@ -104,12 +123,26 @@ export default function PenaltyDuelView({ isMobile = false }) {
 
       {/* Main Question Card (Visible to all) */}
       <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] relative overflow-hidden">
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/30">
-            {activeQuestion.categoryName || 'كرة قدم بعد 2010'}
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/30">
+              {activeQuestion.categoryName || activeQuestion.category || 'كرة قدم بعد 2010'}
+            </span>
+            {isGeneral ? (
+              <span className="text-[10px] font-bold text-sky-300 bg-sky-500/20 px-2.5 py-0.5 rounded-full border border-sky-400/40">
+                🌐 سؤال عام
+              </span>
+            ) : kickerBonusApplies ? (
+              <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-400/40 animate-pulse">
+                🎯 فرصة بونص للمسدد (+1 نقطة خارج التخصص)
+              </span>
+            ) : null}
+          </div>
+
           <span className="font-pixel text-[10px] text-arena-yellow">
-            ركلة {((r3.turnIndex || 0) + 1)}/10 (+1000 نقطة)
+            {r3.isSuddenDeath
+              ? `ركلة ${((r3.turnIndex || 0) + 1)} (الموت المفاجئ)`
+              : `ركلة ${((r3.turnIndex || 0) + 1)}/10 (+1000 نقطة)`}
           </span>
         </div>
 
@@ -215,14 +248,14 @@ export default function PenaltyDuelView({ isMobile = false }) {
                 className="btn-arcade-green py-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer shadow hover:scale-[1.02]"
               >
                 <CheckCircle className="w-5 h-5" />
-                <span>[هدف] Goal! ⚽</span>
+                <span>[هدف] Goal! ⚽ {kickerBonusApplies ? '(+1 بونص 🎯)' : ''}</span>
               </button>
               <button
                 onClick={() => handleRefereeRecord('saved')}
                 className="btn-arcade-red py-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer shadow hover:scale-[1.02]"
               >
                 <XCircle className="w-5 h-5" />
-                <span>[اتصدت / ضاعت] Saved! 🧤</span>
+                <span>[اتصدت / ضاعت] Saved! 🧤 {goalieBonusApplies ? '(+1 بونص 🎯)' : ''}</span>
               </button>
             </div>
           </div>
