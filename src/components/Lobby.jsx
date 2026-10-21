@@ -99,8 +99,8 @@ export default function Lobby() {
     const url = `${window.location.origin}/?room=${encodeURIComponent(currentCode)}`;
     if (navigator.share) {
       navigator.share({
-        title: 'ساحة الكويز (Quiz Arena)',
-        text: `انضم إلى سهرة ساحة الكويز بكود: ${currentCode}`,
+        title: 'كنز الفولي (Kenz Elfoly)',
+        text: `انضم إلى سهرة كنز الفولي بكود: ${currentCode}`,
         url
       }).catch(() => {});
     } else {
@@ -176,7 +176,7 @@ export default function Lobby() {
             </div>
 
             <h1 className="text-2xl md:text-4xl font-black text-white">
-              ساحة الكويز <span className="text-arena-cyan">روش ومصري</span> 🎮
+              كنز الفولي <span className="text-arena-cyan">(Kenz Elfoly)</span> 🎮
             </h1>
 
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2">

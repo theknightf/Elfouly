@@ -186,8 +186,8 @@ export default function Landing() {
               {soundEnabled ? <Volume2 className="w-5 h-5 text-amber-300" /> : <VolumeX className="w-5 h-5 text-gray-400" />}
             </button>
             <div className="hidden sm:flex flex-col text-right">
-              <span className="font-pixel text-[9px] text-arena-cyan">QUIZ ARENA</span>
-              <span className="text-[11px] font-bold text-amber-200">سهرة الكويز المصرية</span>
+              <span className="font-pixel text-[9px] text-arena-cyan">KENZ ELFOLY</span>
+              <span className="text-[11px] font-bold text-amber-200">كنز الفولي - سهرة الصعيد</span>
             </div>
           </div>
 
@@ -205,11 +205,11 @@ export default function Landing() {
           </div>
 
           <h1 className="text-4xl sm:text-6xl font-black tracking-tight text-white drop-shadow-[0_4px_0_#090614] font-rubik">
-            ساحة <span className="text-arena-cyan">الكويز</span>
+            كنز <span className="text-arena-cyan">الفولي</span>
           </h1>
 
           <p className="text-xs sm:text-sm text-amber-100/90 font-bold max-w-lg mx-auto drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]">
-            حلبة المنيا للأذكياء والصيع: 4 جولات ملحمية بين فريقين (2 ضد 2).
+            Kenz Elfoly — حلبة المنيا للأذكياء والصيع: 4 جولات ملحمية بين فريقين (2 ضد 2).
           </p>
 
           {/* Connection Status Ribbon */}
@@ -372,7 +372,7 @@ export default function Landing() {
 
             <div className="text-center space-y-1">
               <span className="text-3xl">👑</span>
-              <h2 className="font-rubik font-black text-lg text-arena-yellow">إنشاء ساحة كويز جديدة (هوست)</h2>
+              <h2 className="font-rubik font-black text-lg text-arena-yellow">إنشاء غرفة في كنز الفولي (هوست)</h2>
               <p className="text-xs text-gray-300">أدخل اسمك وابدأ الغرفة وشارك الكود مع أصحابك</p>
             </div>
 
@@ -540,7 +540,7 @@ export default function Landing() {
 
             <div className="text-center space-y-1">
               <span className="text-2xl">📜</span>
-              <h2 className="font-rubik font-black text-lg text-arena-yellow">قواعد ساحة الكويز</h2>
+              <h2 className="font-rubik font-black text-lg text-arena-yellow">قواعد كنز الفولي (Kenz Elfoly)</h2>
               <p className="text-xs text-gray-300">ماتش 2 ضد 2.. 4 جولات ملحمية لا مجال فيها للتعادل</p>
             </div>
 

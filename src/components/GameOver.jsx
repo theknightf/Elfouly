@@ -51,7 +51,7 @@ export default function GameOver() {
         </h1>
 
         <p className="text-base text-gray-300 max-w-lg mx-auto">
-          أداء روش ومصري أصيل، اكتسحتوا ساحة الكويز بالمعلومات والتأمين في الخزنة وركلات الجزاء!
+          أداء روش ومصري أصيل، اكتسحتوا كنز الفولي (Kenz Elfoly) بالمعلومات والتأمين في الخزنة وركلات الجزاء!
         </p>
       </div>
 
@@ -146,7 +146,7 @@ export default function GameOver() {
         <button
           onClick={() => {
             if (navigator.clipboard) {
-              navigator.clipboard.writeText(`خلصنا ماتش ساحة الكويز وفاز ${winner.name} بنتيجة ${winner.score} نقطة! 🏆`);
+              navigator.clipboard.writeText(`خلصنا ماتش كنز الفولي (Kenz Elfoly) وفاز ${winner.name} بنتيجة ${winner.score} نقطة! 🏆`);
               showToast('تم نسخ النتيجة!', 'شاركها مع أصحابك على جروب الواتساب!');
             }
           }}

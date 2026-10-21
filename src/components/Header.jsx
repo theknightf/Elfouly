@@ -53,9 +53,9 @@ export default function Header() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-black text-lg md:text-xl tracking-tight text-white flex items-center gap-1.5">
-                  <span className="text-arena-cyan">QUIZ</span>
-                  <span className="text-arena-yellow">ARENA</span>
-                  <span className="text-xs bg-arena-red/90 text-white px-2 py-0.5 rounded-full font-bold">روش ومصري</span>
+                  <span className="text-arena-cyan">KENZ</span>
+                  <span className="text-arena-yellow">ELFOLY</span>
+                  <span className="text-xs bg-arena-red/90 text-white px-2 py-0.5 rounded-full font-bold">كنز الفولي</span>
                 </h1>
               </div>
               <div className="text-xs text-gray-300 font-semibold flex items-center gap-1">
