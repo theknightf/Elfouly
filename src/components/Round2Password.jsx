@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import { sounds } from '../utils/soundEffects';
 import { Lock, Eye, EyeOff, AlertTriangle, Timer, Award, ArrowRight, Snowflake, ShieldAlert } from 'lucide-react';
+export { default as PasswordDualView } from './views/PasswordDualView';
 
 export default function Round2Password() {
   const {

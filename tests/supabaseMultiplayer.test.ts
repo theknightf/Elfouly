@@ -39,6 +39,24 @@ function waitForEvent<T = any>(socket: any, event: string, timeoutMs = 15000): P
   });
 }
 
+function waitForState(socket: any, predicate: (payload: any) => boolean, timeoutMs = 20000): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off('room_state_updated', handler);
+      reject(new Error('Timed out waiting for state'));
+    }, timeoutMs);
+
+    const handler = (payload: any) => {
+      if (!predicate(payload)) return;
+      clearTimeout(timer);
+      socket.off('room_state_updated', handler);
+      resolve(payload);
+    };
+
+    socket.on('room_state_updated', handler);
+  });
+}
+
 async function runSupabaseTests() {
   console.log('\n================================================================================');
   console.log('⚡ QUIZ ARENA - SUPABASE REALTIME MULTIPLAYER INTEGRATION TEST');
@@ -119,6 +137,7 @@ async function runSupabaseTests() {
     const bot2Promise = waitForEvent(hostSocket, 'room_state_updated');
     hostSocket.emit('add_demo_player', { roomCode: testRoomCode });
     await bot2Promise;
+    await delay(600);
 
     const { data: fullRow } = await supabase
       .from('rooms')
@@ -130,19 +149,24 @@ async function runSupabaseTests() {
 
     // 5. Host launches match countdown & transitions to Round 1
     console.log('\n🔹 Test 5: Host triggers match countdown & Round 1 start...');
-    const stateUpdatedPromise = waitForEvent(clientB, 'room_state_updated', 15000);
+    const stateUpdatedPromise = waitForState(clientB, (state: any) => state.status === 'round1', 20000);
     hostSocket.emit('start_match_countdown', { roomCode: testRoomCode });
 
     const round1State = await stateUpdatedPromise;
     assert(round1State.status === 'round1', `Expected status round1, got: ${round1State.status}`);
     assert(round1State.round1?.currentQuestion, 'Round 1 must have active question dispatched');
-    assert(round1State.round1?.currentQuestion?.question_text, 'Question text must be populated');
-    console.log(`   ✅ Round 1 live: "${round1State.round1.currentQuestion.question_text.slice(0, 40)}..."`);
+    const qText = round1State.round1?.currentQuestion?.question_text || round1State.round1?.currentQuestion?.question;
+    assert(qText, 'Question text must be populated');
+    console.log(`   ✅ Round 1 live: "${qText.slice(0, 40)}..."`);
 
     // 6. Scoring & Banking in Round 1
     console.log('\n🔹 Test 6: Verify scoring action & streak ladder progression...');
-    const scoredPromise = waitForEvent(hostSocket, 'room_state_updated');
-    hostSocket.emit('r1_action_score', { roomCode: testRoomCode });
+    // Only the assigned referee may grade, and the action must carry the
+    // current action token (replay protection) — see the Node server rules.
+    const actionToken = round1State.round1?.actionToken;
+    assert(actionToken, 'The current action token must be exposed in the room state');
+    const scoredPromise = waitForState(hostSocket, (state: any) => state.round1?.streak === 1, 20000);
+    clientB.emit('r1_action_score', { roomCode: testRoomCode, actionToken });
     await scoredPromise;
 
     const { data: scoredRow } = await supabase
@@ -157,7 +181,7 @@ async function runSupabaseTests() {
     console.log('   ✅ Scoring verified: Streak = 1, Pending Vault = 100 pts');
 
     // Bank points
-    const bankedPromise = waitForEvent(hostSocket, 'room_state_updated');
+    const bankedPromise = waitForState(hostSocket, (state: any) => state.teams?.team_a?.score === 100, 20000);
     hostSocket.emit('r1_action_bank', { roomCode: testRoomCode });
     await bankedPromise;
 
@@ -212,7 +236,11 @@ async function runSupabaseTests() {
   }
 }
 
-runSupabaseTests().catch(err => {
-  console.error('\n❌ SUPABASE TEST FAILED:', err);
-  process.exit(1);
-});
+runSupabaseTests()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch(err => {
+    console.error('\n❌ SUPABASE TEST FAILED:', err);
+    process.exit(1);
+  });

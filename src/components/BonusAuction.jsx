@@ -3,6 +3,7 @@ import { useGame } from '../context/GameContext';
 import { AUCTION_TOPICS } from '../data/questions';
 import { sounds } from '../utils/soundEffects';
 import { Gavel, Timer, PhoneCall, HelpCircle, UserPlus, Check, X, Trophy, Flame, ArrowRight } from 'lucide-react';
+export { default as AuctionBiddingView } from './views/AuctionBiddingView';
 
 export default function BonusAuction() {
   const {

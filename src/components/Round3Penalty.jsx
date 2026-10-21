@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import { Shield, Flame, ArrowRight, Eye, EyeOff, Radio, CheckCircle, XCircle } from 'lucide-react';
+export { default as PenaltyDuelView } from './views/PenaltyDuelView';
 
 export default function Round3Penalty() {
   const {

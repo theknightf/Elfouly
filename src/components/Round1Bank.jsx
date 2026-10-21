@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { Vault, Flame, CheckCircle, XCircle, ArrowRight, ShieldCheck, Eye, EyeOff, RotateCcw } from 'lucide-react';
+export { default as BankTurnView } from './views/BankTurnView';
 
 export default function Round1Bank() {
   const {

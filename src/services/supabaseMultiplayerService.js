@@ -1,14 +1,41 @@
 /**
  * src/services/supabaseMultiplayerService.js
  *
- * Supabase Realtime & Database Multiplayer Provider for Quiz Arena.
- * Emulates the Socket.io interface (.on, .off, .emit) using:
- * - Supabase Realtime Channels (Broadcast + Presence)
- * - PostgreSQL 'public.rooms' for persistent, authoritative game state
- * - Local question engine with Post-2010 football constraints & deduplication
+ * Supabase Realtime & PostgreSQL Multiplayer Provider for Quiz Arena.
+ *
+ * WHY THIS FILE EXISTS
+ * --------------------
+ * The project can run without a long-lived Node backend by using Supabase
+ * Realtime (Broadcast + Presence) for the live channel and the PostgreSQL
+ * `public.rooms` table as the shared room state.
+ *
+ * SECURITY MODEL (READ BEFORE CHANGING)
+ * ------------------------------------
+ * This provider is CLIENT-AUTHORITATIVE: every participant runs this same
+ * file and the acting client persists the resulting state. That is the price
+ * of a serverless deployment with no backend process. To keep the game as
+ * fair as possible the provider mirrors the rules of the dedicated
+ * Node/Socket.IO server (server/server.js):
+ *
+ *   - only the assigned referee may grade (R1), award/skip/foul (R2),
+ *     verify items and resolve the auction (R4);
+ *   - only the answering team may bank its own points (R1);
+ *   - only the host may switch rounds;
+ *   - only the current kicker may answer, and only the goalie may intercept;
+ *   - every scored mutation must present the current action token, so a
+ *     captured action cannot be replayed;
+ *   - secret payloads (R1/R3 answers, the R2 password card, the R4 auction
+ *     checklist) are NEVER broadcast and NEVER persisted in clear text.
+ *     They are kept in the acting client's memory and delivered to the single
+ *     authorised player over a dedicated judge channel.
+ *
+ * A determined player can still patch their own browser build, so for
+ * competitive play prefer the dedicated server:
+ *   VITE_MULTIPLAYER_PROVIDER=socketio
+ * See README.md for the full comparison and for the RLS hardening notes.
  */
 
-import { supabase as defaultSupabase, createSupabaseClient } from './supabaseClient';
+import { createSupabaseClient } from './supabaseClient';
 import { CHARACTERS } from '../data/characters';
 import { TOURNAMENT_STRUCTURE } from '../data/tournamentStructure';
 import { PENALTY_CATEGORIES, AUCTION_TOPICS, PASSWORD_WORDS } from '../data/questions';
@@ -22,6 +49,19 @@ import {
 const ROOM_CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 const MAX_PLAYERS = 4;
 const TEAM_PLAYERS = 2;
+const MAX_CHAT_LENGTH = 240;
+const R1_TOTAL_QUESTIONS = 48;
+const R1_SUB_BATCH_SIZE = 6;
+const R1_SEGMENT_SIZE = 12;
+const R1_STREAK_LADDER = [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000];
+const R2_TOTAL_CARDS = 5;
+const R2_TIME_FREEZE_SECONDS = 10;
+const R3_TOTAL_SHOTS = 10;
+const R4_TOTAL_TOPICS = 4;
+const R4_BID_INCREMENTS = [1, 2, 5];
+const R4_LIFELINES = ['call_friend', 'rival_hint', 'opponent_help'];
+const R4_CALL_FRIEND_SECONDS = 20;
+const CHAT_RATE_LIMIT_MS = 400;
 
 function generateRoomCode() {
   let body = '';
@@ -50,6 +90,251 @@ function sanitizeName(name) {
     .slice(0, 20);
 }
 
+// Chat text is sanitised without a control-character regex (the ESLint
+// no-control-regex rule rejects it), and it is length limited.
+function sanitizeChatText(text) {
+  if (typeof text !== 'string') return '';
+  let out = '';
+  for (const char of text) {
+    const code = char.codePointAt(0);
+    out += (code < 32 || code === 127) ? ' ' : char;
+  }
+  return out.replace(/\s+/g, ' ').trim().slice(0, MAX_CHAT_LENGTH);
+}
+
+function deepClone(value) {
+  if (value === undefined || value === null) return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+// Session tokens are never persisted in clear text: the database only keeps
+// a 64-bit hash, so a leaked database row cannot be used to impersonate a
+// player (the raw token lives in the browser session storage only).
+function hashToken(token) {
+  let h1 = 0x811c9dc5 >>> 0;
+  let h2 = 0x01000193 >>> 0;
+  const str = String(token || '');
+  for (let i = 0; i < str.length; i += 1) {
+    const code = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ code, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ (code + i), 0x85ebca6b) >>> 0;
+  }
+  return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+}
+
+function createToken() {
+  return `tok_${Math.random().toString(36).substring(2, 12)}${Date.now().toString(36)}`;
+}
+
+// ------------------------------------------------------------------
+// Question shape normalisation
+//
+// The bank stores raw questions (question_text / correct_answer /
+// forbidden_words / acceptable_answers) while the UI expects the
+// normalised contract used by the Node server
+// (question / answer / target / forbidden / options / validItems).
+// ------------------------------------------------------------------
+function normalizeR1Question(raw, slotType = 'random') {
+  if (!raw) return null;
+  const question = raw.question_text || raw.question || '';
+  if (!question) return null;
+  return {
+    question,
+    answer: raw.correct_answer || raw.answer || '',
+    categoryName: raw.category || '',
+    slotType,
+    funFact: slotType === 'specialty'
+      ? 'سؤال من تخصص شخصيتك — ركّز في المعلومة المهمة.'
+      : 'سؤال عام من البنك — كل إجابة صحيحة ترفع سُلّم الستريك.'
+  };
+}
+
+function normalizeR2Word(raw, index = 0) {
+  if (raw) {
+    const forbidden = Array.isArray(raw.forbidden)
+      ? raw.forbidden
+      : Array.isArray(raw.forbidden_words) ? raw.forbidden_words : [];
+    const target = raw.target || raw.word || raw.question_text || raw.correct_answer || '';
+    if (target) {
+      return {
+        target,
+        forbidden: forbidden.filter(word => typeof word === 'string' && word.trim()),
+        category: raw.category || 'عام',
+        clueIdea: 'من غير الكلمة السرية ولا أي كلمة ممنوعة… كلمة واحدة بس كتلميح.'
+      };
+    }
+  }
+  const fallback = PASSWORD_WORDS[index % PASSWORD_WORDS.length];
+  if (!fallback) return null;
+  return {
+    target: fallback.target || fallback.word || '',
+    forbidden: fallback.forbidden || [],
+    category: fallback.category || 'عام',
+    clueIdea: 'من غير الكلمة السرية ولا أي كلمة ممنوعة… كلمة واحدة بس كتلميح.'
+  };
+}
+
+function normalizeR3Question(raw, category) {
+  if (!raw) return null;
+  const options = Array.isArray(raw.options)
+    ? raw.options.filter(option => typeof option === 'string' && option.trim())
+    : [];
+  const answer = raw.correct_answer || raw.answer || '';
+  if (!answer || options.length < 2 || !options.includes(answer)) return null;
+  return {
+    question: raw.question_text || raw.question || '',
+    answer,
+    options,
+    category: raw.category || '',
+    kickerHint: category?.name || ''
+  };
+}
+
+function normalizeR4Topic(raw, index = 0) {
+  if (raw) {
+    const validItems = Array.isArray(raw.acceptable_answers)
+      ? raw.acceptable_answers.filter(item => typeof item === 'string' && item.trim())
+      : [];
+    if (validItems.length) {
+      return {
+        topic: raw.question_text || raw.question || '',
+        validItems,
+        category: raw.category || 'عام',
+        minBid: 3,
+        hint: 'اذكر عناصر صحيحة من القائمة المعتمدة — الحكم الخصم هو اللي يتحقق منها.'
+      };
+    }
+  }
+  const fallback = AUCTION_TOPICS[index % AUCTION_TOPICS.length];
+  return fallback ? { ...fallback } : null;
+}
+
+// ------------------------------------------------------------------
+// Referee model (mirrors server/server.js)
+// ------------------------------------------------------------------
+function getRoundRefereeId(room, roundKey) {
+  const state = room?.[roundKey] || {};
+  if (roundKey === 'round1') return state.refereePlayerId || state.readerPlayerId || null;
+  if (roundKey === 'round2') {
+    const active = state.activeTurnTeam === 'team_b' ? 'team_b' : 'team_a';
+    return active === 'team_a' ? (state.activeClueGiverB || null) : (state.activeClueGiverA || null);
+  }
+  return state.refereePlayerId || null;
+}
+
+function assignReferee(room, roundKey, { rotate = false } = {}) {
+  const state = room?.[roundKey];
+  if (!state) return null;
+  const players = room.players || [];
+  // Demo bots can never hold the judge seat: nobody would be able to act.
+  const humans = players.filter(player => !player.isBot);
+  let pool = [];
+  if (roundKey === 'round1') {
+    pool = humans.filter(player => player.team !== state.activeTeam);
+  } else if (roundKey === 'round3') {
+    pool = humans.filter(player => ![state.currentKickerId, state.currentGoalieId].includes(player.id));
+  } else if (roundKey === 'round4') {
+    pool = state.highestBidderTeam
+      ? humans.filter(player => player.team !== state.highestBidderTeam)
+      : humans.slice();
+  } else {
+    pool = humans.slice();
+  }
+  if (!pool.length) {
+    // Fallback: the host (or the first human) keeps the arena moving.
+    const host = humans.find(player => player.id === room.hostId) || humans[0];
+    if (!host) return null;
+    state.refereePlayerId = host.id;
+    if (roundKey === 'round1') state.readerPlayerId = host.id;
+    return host.id;
+  }
+  let chosen = pool[0];
+  if (rotate && state.refereePlayerId) {
+    const index = pool.findIndex(player => player.id === state.refereePlayerId);
+    if (index !== -1) chosen = pool[(index + 1) % pool.length];
+  }
+  state.refereePlayerId = chosen.id;
+  if (roundKey === 'round1') state.readerPlayerId = chosen.id;
+  return chosen.id;
+}
+
+function isRound2ClueGiver(room, playerId) {
+  if (!playerId) return false;
+  const r2 = room?.round2 || {};
+  return playerId === r2.activeClueGiverA || playerId === r2.activeClueGiverB;
+}
+
+function isAuthorizedForRound(room, roundKey, playerId) {
+  if (!playerId) return false;
+  if (roundKey === 'round2') return isRound2ClueGiver(room, playerId);
+  return playerId === getRoundRefereeId(room, roundKey);
+}
+
+function secretTargets(room, roundKey) {
+  if (roundKey === 'round2') {
+    const r2 = room?.round2 || {};
+    return [r2.activeClueGiverA, r2.activeClueGiverB].filter(Boolean);
+  }
+  const id = getRoundRefereeId(room, roundKey);
+  return id ? [id] : [];
+}
+
+// ------------------------------------------------------------------
+// Secret handling
+//
+// A "secret" is the answer of the current R1/R3 question, the R2 password
+// card or the R4 verification checklist. It is stored in clear text only in
+// the memory of the client that produced it, delivered to the authorised
+// player over a judge channel, and stripped from every broadcast/persisted
+// payload.
+// ------------------------------------------------------------------
+function stripRoundSecrets(room) {
+  const clone = deepClone(room);
+  if (!clone) return clone;
+  if (clone.round1?.currentQuestion) clone.round1.currentQuestion.answer = null;
+  if (clone.round2?.currentWord) {
+    clone.round2.currentWord.target = '🔒 [كلمة سرية]';
+    clone.round2.currentWord.forbidden = ['🔒 ممنوع', '🔒 ممنوع', '🔒 ممنوع', '🔒 ممنوع'];
+    clone.round2.currentWord.redacted = true;
+  }
+  if (clone.round3?.currentQuestion) clone.round3.currentQuestion.answer = null;
+  if (clone.round4?.currentTopic) clone.round4.currentTopic.validItems = [];
+  return clone;
+}
+
+function collectRoundSecrets(room) {
+  const secrets = {};
+  const r1 = room?.round1;
+  if (r1?.currentQuestion?.answer) {
+    secrets.round1 = { answer: r1.currentQuestion.answer, questionId: `r1-${r1.currentQuestionIndex}` };
+  }
+  const r2 = room?.round2;
+  if (r2?.currentWord?.target && !r2.currentWord.redacted) {
+    secrets.round2 = {
+      target: r2.currentWord.target,
+      forbidden: r2.currentWord.forbidden || [],
+      questionId: `r2-${r2.currentWordIndex}`
+    };
+  }
+  const r3 = room?.round3;
+  if (r3?.currentQuestion?.answer) {
+    secrets.round3 = { answer: r3.currentQuestion.answer, questionId: `r3-${r3.turnIndex}` };
+  }
+  const r4 = room?.round4;
+  if (r4?.currentTopic?.validItems?.length) {
+    secrets.round4 = { validItems: r4.currentTopic.validItems, questionId: `r4-${r4.topicId}` };
+  }
+  return secrets;
+}
+
+function currentSecretId(room, roundKey) {
+  if (roundKey === 'round1') return `r1-${room?.round1?.currentQuestionIndex}`;
+  if (roundKey === 'round2') return `r2-${room?.round2?.currentWordIndex}`;
+  if (roundKey === 'round3') return `r3-${room?.round3?.turnIndex}`;
+  if (roundKey === 'round4') return `r4-${room?.round4?.topicId}`;
+  return null;
+}
+
 function createInitialState(roomCode, hostId) {
   return {
     code: roomCode,
@@ -66,16 +351,17 @@ function createInitialState(roomCode, hostId) {
       activeTeam: 'team_a',
       answeringPlayerId: null,
       readerPlayerId: null,
+      refereePlayerId: null,
       segmentIndex: 0,
       subBatchIndex: 0,
       subBatchQuestionsAnswered: 0,
       segmentQuestionsAnswered: 0,
       totalQuestionsAnswered: 0,
-      totalQuestions: 48,
+      totalQuestions: R1_TOTAL_QUESTIONS,
       currentQuestionIndex: 0,
       streak: 0,
       pendingPoints: 0,
-      streakLadder: [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000],
+      streakLadder: R1_STREAK_LADDER,
       currentQuestion: null,
       actionToken: null,
       timer: 30,
@@ -84,7 +370,7 @@ function createInitialState(roomCode, hostId) {
     },
     round2: {
       currentWordIndex: 0,
-      totalQuestions: 5,
+      totalQuestions: R2_TOTAL_CARDS,
       currentWord: null,
       activeTurnTeam: 'team_a',
       activeClueGiverA: null,
@@ -99,13 +385,14 @@ function createInitialState(roomCode, hostId) {
     },
     round3: {
       turnIndex: 0,
-      totalShots: 10,
+      totalShots: R3_TOTAL_SHOTS,
       currentKickerId: null,
       currentGoalieId: null,
       kickerTeam: 'team_a',
       currentCategory: PENALTY_CATEGORIES[0],
       phase: 'duelist_selection',
       currentQuestion: null,
+      refereePlayerId: null,
       timer: 20,
       isTimerRunning: false,
       interceptBuzzedBy: null,
@@ -118,11 +405,12 @@ function createInitialState(roomCode, hostId) {
     },
     round4: {
       currentTopicIndex: 0,
-      currentTopic: AUCTION_TOPICS[0],
-      topicId: 'topic-0',
+      currentTopic: null,
+      topicId: null,
       highestBid: 3,
       highestBidderTeam: null,
       highestBidderPlayerId: null,
+      refereePlayerId: null,
       timer: 60,
       isTimerRunning: false,
       phase: 'bidding',
@@ -137,9 +425,13 @@ export function createSupabaseSocket(customClient = null) {
   const supabase = customClient || createSupabaseClient();
   const listeners = new Map();
   let channel = null;
+  let judgeChannel = null;
   let currentRoomCode = null;
   let localPlayer = null;
   let cachedRoomState = null;
+  const localSecrets = {};
+  const pendingSecretRequests = {};
+  let lastChatAt = 0;
   const socketId = 'sb_' + Math.random().toString(36).substring(2, 11);
 
   const socket = {
@@ -173,6 +465,10 @@ export function createSupabaseSocket(customClient = null) {
         supabase.removeChannel(channel);
         channel = null;
       }
+      if (judgeChannel) {
+        supabase.removeChannel(judgeChannel);
+        judgeChannel = null;
+      }
       socket.connected = false;
       trigger('disconnect', 'client_closed');
     }
@@ -181,9 +477,9 @@ export function createSupabaseSocket(customClient = null) {
   function trigger(event, data) {
     const handlers = listeners.get(event);
     if (handlers) {
-      for (const h of handlers) {
+      for (const handler of handlers) {
         try {
-          h(data);
+          handler(data);
         } catch (err) {
           console.error(`[SupabaseSocket] Error in handler for "${event}":`, err);
         }
@@ -191,23 +487,81 @@ export function createSupabaseSocket(customClient = null) {
     }
   }
 
+  function emitError(message, action) {
+    trigger('action_error', { message, field: 'general', action });
+    trigger('error_message', message);
+  }
+
+  function emitLocalState() {
+    if (cachedRoomState) {
+      trigger('room_state_updated', sanitizeForViewer(cachedRoomState, socketId));
+      requestMissingSecrets();
+    }
+  }
+
+  // If this client is the authorised viewer for a round but it does not hold
+  // the secret yet (fresh referee, reconnect, missed broadcast) it asks the
+  // room for it. The request is throttled per question so it cannot spam.
+  function requestMissingSecrets() {
+    const room = cachedRoomState;
+    if (!room || !channel) return;
+    for (const roundKey of ['round1', 'round2', 'round3', 'round4']) {
+      if (!isAuthorizedForRound(room, roundKey, socketId)) continue;
+      const secretId = currentSecretId(room, roundKey);
+      if (!secretId) continue;
+      const local = localSecrets[roundKey];
+      if (local && local.questionId === secretId) continue;
+      if (pendingSecretRequests[roundKey] === secretId) continue;
+      pendingSecretRequests[roundKey] = secretId;
+      channel.send({
+        type: 'broadcast',
+        event: 'judge_secret_request',
+        payload: { roundKey, questionId: secretId, requesterId: socketId }
+      });
+    }
+  }
+
   function sanitizeForViewer(room, viewerId) {
     if (!room) return null;
-    const clone = JSON.parse(JSON.stringify(room));
+    const clone = stripRoundSecrets(room);
     clone.viewerId = viewerId;
+    clone.players = (clone.players || []).map(player => {
+      const copy = { ...player };
+      delete copy.playerToken;
+      delete copy.playerTokenHash;
+      return copy;
+    });
+    clone.refereeIds = {
+      round1: getRoundRefereeId(room, 'round1'),
+      round2: getRoundRefereeId(room, 'round2'),
+      round3: getRoundRefereeId(room, 'round3'),
+      round4: getRoundRefereeId(room, 'round4')
+    };
 
-    // Redact secret words in Round 2 for non-clue-givers
-    if (clone.status === 'round2' && clone.round2?.currentWord) {
-      const r2 = clone.round2;
-      const isClueGiver = viewerId === r2.activeClueGiverA || viewerId === r2.activeClueGiverB;
-      if (!isClueGiver) {
-        clone.round2.currentWord = {
-          target: '🔒 [كلمة سرية]',
-          forbidden: ['🔒 ممنوع', '🔒 ممنوع', '🔒 ممنوع', '🔒 ممنوع'],
-          category: r2.currentWord.category || 'عام',
-          redacted: true
-        };
+    // Restore only the secrets this viewer is actually allowed to see, and
+    // only when they belong to the question that is currently live.
+    const secretMatches = (roundKey) => {
+      const secret = localSecrets[roundKey];
+      if (!secret) return false;
+      const currentId = currentSecretId(room, roundKey);
+      return !secret.questionId || !currentId || secret.questionId === currentId;
+    };
+
+    if (isAuthorizedForRound(room, 'round1', viewerId) && secretMatches('round1')) {
+      if (clone.round1?.currentQuestion) clone.round1.currentQuestion.answer = localSecrets.round1.answer;
+    }
+    if (isAuthorizedForRound(room, 'round2', viewerId) && secretMatches('round2')) {
+      if (clone.round2?.currentWord) {
+        clone.round2.currentWord.target = localSecrets.round2.target;
+        clone.round2.currentWord.forbidden = localSecrets.round2.forbidden || [];
+        clone.round2.currentWord.redacted = false;
       }
+    }
+    if (isAuthorizedForRound(room, 'round3', viewerId) && secretMatches('round3')) {
+      if (clone.round3?.currentQuestion) clone.round3.currentQuestion.answer = localSecrets.round3.answer;
+    }
+    if (isAuthorizedForRound(room, 'round4', viewerId) && secretMatches('round4')) {
+      if (clone.round4?.currentTopic) clone.round4.currentTopic.validItems = localSecrets.round4.validItems;
     }
     return clone;
   }
@@ -223,22 +577,34 @@ export function createSupabaseSocket(customClient = null) {
     trigger(event, payload);
   }
 
+  function publicState(room) {
+    const clone = stripRoundSecrets(room);
+    clone.players = (clone.players || []).map(player => {
+      const copy = { ...player };
+      delete copy.playerToken;
+      return copy;
+    });
+    return clone;
+  }
+
   async function persistAndBroadcast(newRoomState) {
     cachedRoomState = newRoomState;
+    const publicRoom = publicState(newRoomState);
+
     try {
       await supabase
         .from('rooms')
         .update({
           status: newRoomState.status,
-          players: newRoomState.players,
-          teams: newRoomState.teams,
+          players: publicRoom.players,
+          teams: publicRoom.teams,
           state: {
-            round1: newRoomState.round1,
-            round2: newRoomState.round2,
-            round3: newRoomState.round3,
-            round4: newRoomState.round4,
-            countdown: newRoomState.countdown,
-            messages: newRoomState.messages
+            round1: publicRoom.round1,
+            round2: publicRoom.round2,
+            round3: publicRoom.round3,
+            round4: publicRoom.round4,
+            countdown: publicRoom.countdown,
+            messages: publicRoom.messages
           },
           updated_at: new Date().toISOString()
         })
@@ -251,10 +617,57 @@ export function createSupabaseSocket(customClient = null) {
       channel.send({
         type: 'broadcast',
         event: 'room_state_updated',
-        payload: newRoomState
+        payload: publicRoom
       });
     }
     trigger('room_state_updated', sanitizeForViewer(newRoomState, socketId));
+  }
+
+  // ------------------------------------------------------------------
+  // Judge channel: the only channel allowed to carry secret payloads.
+  // ------------------------------------------------------------------
+  function setupJudgeChannel(roomCode) {
+    if (judgeChannel) {
+      supabase.removeChannel(judgeChannel);
+      judgeChannel = null;
+    }
+    judgeChannel = supabase.channel(`room:${roomCode}:judge:${socketId}`);
+    judgeChannel
+      .on('broadcast', { event: 'judge_secret' }, ({ payload }) => {
+        if (!payload || !payload.roundKey || !payload.secret) return;
+        localSecrets[payload.roundKey] = payload.secret;
+        emitLocalState();
+      })
+      .subscribe();
+  }
+
+  function sendJudgeSecret(room, roundKey, secret) {
+    if (!room || !secret) return;
+    const targets = secretTargets(room, roundKey);
+    for (const targetId of targets) {
+      if (targetId === socketId) {
+        localSecrets[roundKey] = secret;
+        continue;
+      }
+      const targetChannel = supabase.channel(`room:${room.code}:judge:${targetId}`);
+      targetChannel.send({
+        type: 'broadcast',
+        event: 'judge_secret',
+        payload: { roundKey, secret }
+      });
+      supabase.removeChannel(targetChannel);
+    }
+  }
+
+  function publishSecrets(room) {
+    const secrets = collectRoundSecrets(room);
+    for (const [roundKey, secret] of Object.entries(secrets)) {
+      // The client that produced the question keeps the secret locally: it is
+      // the one that has to validate the answers (Round 3) or rotate the
+      // referee with it (Round 1).
+      localSecrets[roundKey] = secret;
+      sendJudgeSecret(room, roundKey, secret);
+    }
   }
 
   function setupChannel(roomCode, playerInfo) {
@@ -270,10 +683,31 @@ export function createSupabaseSocket(customClient = null) {
     });
 
     channel
-      .on('broadcast', { event: '*' }, ({ event, payload }) => {
+      .on('broadcast', { event: '*' }, async ({ event, payload }) => {
         if (event === 'room_state_updated') {
           cachedRoomState = payload;
-          trigger('room_state_updated', sanitizeForViewer(payload, socketId));
+          emitLocalState();
+        } else if (event === 'r3_answer_submitted') {
+          // The kicker submitted an answer; the client that dispatched the
+          // question (and therefore holds the answer) settles the shot.
+          const room = cachedRoomState;
+          if (!room || !payload) return;
+          const r3 = room.round3;
+          if (r3.phase !== 'shootout' || payload.turnIndex !== r3.turnIndex) return;
+          const heldSecret = localSecrets.round3;
+          if (!heldSecret || heldSecret.questionId !== `r3-${r3.turnIndex}`) return;
+          await resolveR3Submission(room, payload.option, payload.answerAt || Date.now());
+        } else if (event === 'judge_secret_request') {
+          // Another client is the authorised viewer and needs the secret.
+          const room = cachedRoomState || {};
+          const roundKey = payload?.roundKey;
+          const local = localSecrets[roundKey];
+          const secret = (local && local.questionId === payload.questionId)
+            ? local
+            : collectRoundSecrets(room)[roundKey];
+          if (secret && payload.questionId === currentSecretId(room, roundKey)) {
+            sendJudgeSecret(room, roundKey, secret);
+          }
         } else {
           trigger(event, payload);
         }
@@ -283,27 +717,25 @@ export function createSupabaseSocket(customClient = null) {
         const activeIds = Object.keys(state);
         if (cachedRoomState && Array.isArray(cachedRoomState.players)) {
           let changed = false;
-          cachedRoomState.players.forEach(p => {
-            const isOnline = activeIds.includes(p.id) || p.isBot;
-            if (p.connected !== isOnline) {
-              p.connected = isOnline;
+          cachedRoomState.players.forEach(player => {
+            const isOnline = activeIds.includes(player.id) || player.isBot;
+            if (player.connected !== isOnline) {
+              player.connected = isOnline;
               changed = true;
             }
           });
-          if (changed) {
-            trigger('room_state_updated', sanitizeForViewer(cachedRoomState, socketId));
-          }
+          if (changed) emitLocalState();
         }
       })
       .on('presence', { event: 'leave' }, ({ leftPresences }) => {
         if (cachedRoomState && Array.isArray(cachedRoomState.players)) {
-          const leftIds = leftPresences.map(p => p.playerId || p.key);
-          cachedRoomState.players.forEach(p => {
-            if (leftIds.includes(p.id) && !p.isBot) {
-              p.connected = false;
+          const leftIds = leftPresences.map(presence => presence.playerId || presence.key);
+          cachedRoomState.players.forEach(player => {
+            if (leftIds.includes(player.id) && !player.isBot) {
+              player.connected = false;
             }
           });
-          trigger('room_state_updated', sanitizeForViewer(cachedRoomState, socketId));
+          emitLocalState();
         }
       })
       .subscribe((status) => {
@@ -316,17 +748,316 @@ export function createSupabaseSocket(customClient = null) {
           });
         }
       });
+
+    setupJudgeChannel(roomCode);
   }
 
+  async function loadRoomFromDb(roomCode) {
+    const { data: row, error } = await supabase
+      .from('rooms')
+      .select('*')
+      .eq('room_id', roomCode)
+      .maybeSingle();
+    if (error || !row) return null;
+
+    const base = createInitialState(roomCode, row.host_id);
+    return {
+      ...base,
+      status: row.status || 'lobby',
+      players: row.players || [],
+      teams: row.teams || base.teams,
+      countdown: row.state?.countdown ?? null,
+      messages: row.state?.messages || [],
+      round1: { ...base.round1, ...(row.state?.round1 || {}) },
+      round2: { ...base.round2, ...(row.state?.round2 || {}) },
+      round3: { ...base.round3, ...(row.state?.round3 || {}) },
+      round4: { ...base.round4, ...(row.state?.round4 || {}) }
+    };
+  }
+
+  function isHost(room) {
+    return !!localPlayer?.isHost || room?.hostId === socketId;
+  }
+
+  function findPlayer(room, playerId = socketId) {
+    return (room?.players || []).find(player => player.id === playerId) || null;
+  }
+
+  // Room scoped actions must not be applied to another room.
+  function isCurrentRoom(roomCode) {
+    if (!roomCode) return true;
+    return normalizeRoomCode(roomCode) === currentRoomCode;
+  }
+
+  // Read-modify-write: every mutation is applied to the freshest state that
+  // PostgreSQL holds, so a client with a stale snapshot cannot roll the room
+  // back (for example writing an old room status over a newer one).
+  async function currentRoom() {
+    if (currentRoomCode) {
+      const fresh = await loadRoomFromDb(currentRoomCode);
+      if (fresh) return fresh;
+    }
+    return cachedRoomState;
+  }
+
+  // ------------------------------------------------------------------
+  // Round helpers
+  // ------------------------------------------------------------------
+  function setR2CardRoles(room, { toggleTurn = false } = {}) {
+    const r2 = room.round2;
+    const teamA = room.players.filter(player => player.team === 'team_a');
+    const teamB = room.players.filter(player => player.team === 'team_b');
+    const cardIndex = Math.max(0, r2.currentWordIndex || 0);
+
+    if (toggleTurn) {
+      r2.activeTurnTeam = r2.activeTurnTeam === 'team_a' ? 'team_b' : 'team_a';
+    }
+    r2.activeClueGiverA = teamA.length ? teamA[cardIndex % teamA.length].id : null;
+    r2.activeClueGiverB = teamB.length ? teamB[cardIndex % teamB.length].id : null;
+    r2.refereePlayerId = getRoundRefereeId(room, 'round2');
+  }
+
+  function dispatchR2Card(room) {
+    const r2 = room.round2;
+    const raw = drawLocalQuestion({
+      roomId: room.code,
+      mode: 'edini_fi_seri',
+      slotType: 'random'
+    });
+    const word = normalizeR2Word(raw, r2.currentWordIndex || 0);
+    r2.currentWord = word;
+    r2.actionToken = word ? `act_${Math.random().toString(36).substring(2, 12)}` : null;
+    r2.timeFreezeUsed = false;
+    r2.isTimerRunning = true;
+    return !!word;
+  }
+
+  function dispatchR3Question(room) {
+    const category = room.round3.currentCategory;
+    if (!category?.id) return false;
+    const raw = drawLocalCategoryQuestion('hat_fi_qoraybi', category.id, room.code);
+    const question = normalizeR3Question(raw, category);
+    room.round3.currentQuestion = question;
+    return !!question;
+  }
+
+  function dispatchR4Topic(room) {
+    const index = room.round4.currentTopicIndex || 0;
+    const raw = drawLocalQuestion({ roomId: room.code, mode: 'meen_yezawwed', slotType: 'random' });
+    const topic = normalizeR4Topic(raw, index);
+    room.round4.currentTopic = topic;
+    room.round4.topicId = topic ? `topic-${index}-${Math.random().toString(36).substring(2, 8)}` : null;
+    return !!topic;
+  }
+
+  function buildR1Plan(room) {
+    const answering = findPlayer(room, room.round1.answeringPlayerId);
+    const plan = buildLocalR1TurnPlan(answering?.character?.id);
+    room.round1.turnPlan = plan;
+    room.round1.turnPlanIndex = 0;
+    return plan;
+  }
+
+  function dispatchR1Question(room) {
+    const r1 = room.round1;
+    if (r1.totalQuestionsAnswered >= R1_TOTAL_QUESTIONS) {
+      r1.currentQuestion = null;
+      r1.actionToken = null;
+      r1.isTimerRunning = false;
+      return false;
+    }
+    if (!Array.isArray(r1.turnPlan) || !r1.turnPlan.length || r1.turnPlanIndex >= r1.turnPlan.length) {
+      buildR1Plan(room);
+    }
+    const slot = r1.turnPlan[r1.turnPlanIndex] || { slotType: 'random' };
+    const raw = drawLocalR1Question({
+      roomId: room.code,
+      mode: 'one_two_bank',
+      slotType: slot.slotType,
+      characterId: findPlayer(room, r1.answeringPlayerId)?.character?.id
+    });
+    const question = normalizeR1Question(raw, slot.slotType);
+    if (!question) {
+      r1.currentQuestion = null;
+      r1.actionToken = null;
+      return false;
+    }
+    r1.turnPlanIndex += 1;
+    r1.currentQuestionIndex += 1;
+    r1.currentQuestion = question;
+    r1.actionToken = `act_${Math.random().toString(36).substring(2, 12)}`;
+    r1.isTimerRunning = true;
+    return true;
+  }
+
+  function advanceR1Quota(room) {
+    const r1 = room.round1;
+    r1.subBatchQuestionsAnswered += 1;
+    r1.segmentQuestionsAnswered += 1;
+    r1.totalQuestionsAnswered += 1;
+
+    if (r1.totalQuestionsAnswered >= R1_TOTAL_QUESTIONS) {
+      r1.currentQuestion = null;
+      r1.actionToken = null;
+      r1.isTimerRunning = false;
+      return;
+    }
+
+    if (r1.subBatchQuestionsAnswered >= R1_SUB_BATCH_SIZE) {
+      if (r1.segmentQuestionsAnswered < R1_SEGMENT_SIZE) {
+        // Next sub batch inside the same segment: rotate the answering player.
+        r1.subBatchIndex = 1;
+        r1.subBatchQuestionsAnswered = 0;
+        const activePlayers = room.players.filter(player => player.team === r1.activeTeam);
+        if (activePlayers.length > 1) {
+          const index = activePlayers.findIndex(player => player.id === r1.answeringPlayerId);
+          r1.answeringPlayerId = activePlayers[(index + 1) % activePlayers.length].id;
+        }
+        assignReferee(room, 'round1', { rotate: true });
+      } else {
+        // Segment complete: the other team answers the next segment.
+        r1.segmentIndex += 1;
+        r1.segmentQuestionsAnswered = 0;
+        r1.subBatchIndex = 0;
+        r1.subBatchQuestionsAnswered = 0;
+        r1.pendingPoints = 0;
+        r1.streak = 0;
+        r1.activeTeam = r1.activeTeam === 'team_a' ? 'team_b' : 'team_a';
+        const activePlayers = room.players.filter(player => player.team === r1.activeTeam);
+        if (activePlayers.length) {
+          r1.answeringPlayerId = activePlayers[r1.segmentIndex % activePlayers.length].id;
+        }
+        assignReferee(room, 'round1');
+      }
+    }
+  }
+
+  // The answer of the current penalty question is only known to the client
+  // that dispatched it. The kicker therefore just submits the chosen option
+  // and the client holding the answer performs the validation and settles
+  // the shot (exactly like the server does, but distributed over the clients).
+  async function resolveR3Submission(room, option, answerAt, tieBreak = false) {
+    const r3 = room.round3;
+    const secret = localSecrets.round3;
+    const expected = r3.currentQuestion?.answer || secret?.answer;
+    if (!expected) {
+      emitError('مفيش إجابة معتمدة للسؤال ده.', 'r3_submit_answer');
+      return;
+    }
+    const isCorrect = option === expected;
+    const answerMs = answerAt - (r3.shotStartedAt || answerAt);
+    const interceptMs = r3.interceptAt ? r3.interceptAt - (r3.shotStartedAt || r3.interceptAt) : null;
+    const goalieWon = !!r3.interceptAt && r3.interceptAt <= answerAt;
+
+    let result = 'goal';
+    if (goalieWon) result = 'saved';
+    else if (!isCorrect) result = 'missed';
+
+    if (!tieBreak && goalieWon && isCorrect && Math.abs(answerMs - (interceptMs ?? 0)) < 300) {
+      r3.tieBreakActive = true;
+      r3.tieBreakData = {
+        provisionalResult: 'goal',
+        answerMs,
+        interceptMs,
+        isCorrect,
+        kickerId: r3.currentKickerId,
+        goalieId: r3.currentGoalieId
+      };
+      broadcastToRoom('notification', {
+        title: '🤞 تعادل لحظي!',
+        message: 'الحكم المحايد هو اللي هيحسم الركلة.'
+      });
+      await persistAndBroadcast(room);
+      return;
+    }
+
+    const labels = { goal: '⚽ هدف!', saved: '🧤 اتصدت!', missed: '❌ ضاعت!' };
+    broadcastToRoom('notification', {
+      title: `نتيجة الركلة: ${labels[result]}`,
+      message: 'حكم الساحة هو اللي بيحسم النتيجة.'
+    });
+    settleR3Shot(room, result, { answerMs, interceptMs });
+    await persistAndBroadcast(room);
+  }
+
+  function settleR3Shot(room, result, meta = {}) {
+    const r3 = room.round3;
+    if (r3.isComplete || r3.turnIndex >= R3_TOTAL_SHOTS || r3.phase !== 'shootout') return false;
+
+    const kickingTeam = r3.kickerTeam;
+    const defendingTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
+
+    if (result === 'goal') {
+      room.teams[kickingTeam].score += 1000;
+      room.teams[kickingTeam].penaltyScore = (room.teams[kickingTeam].penaltyScore || 0) + 1;
+      broadcastToRoom('sound_trigger', { sound: 'goal_roar' });
+      broadcastToRoom('confetti_trigger', {});
+    } else if (result === 'saved') {
+      room.teams[defendingTeam].score += 800;
+      broadcastToRoom('sound_trigger', { sound: 'save' });
+    } else {
+      broadcastToRoom('sound_trigger', { sound: 'whistle' });
+    }
+
+    r3.shotsHistory.push({
+      shotIndex: r3.turnIndex,
+      team: kickingTeam,
+      result,
+      intercepted: !!r3.interceptBuzzedBy,
+      tieBreak: !!meta.tieBreak,
+      answerMs: meta.answerMs ?? null,
+      interceptMs: meta.interceptMs ?? null
+    });
+
+    r3.turnIndex += 1;
+    r3.kickerTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
+    r3.interceptBuzzedBy = null;
+    r3.interceptAt = null;
+    r3.shotStartedAt = null;
+    r3.tieBreakActive = false;
+    r3.tieBreakData = null;
+    r3.currentQuestion = null;
+
+    r3.isComplete = r3.turnIndex >= R3_TOTAL_SHOTS;
+    if (r3.isComplete) {
+      r3.phase = 'complete';
+      r3.currentKickerId = null;
+      r3.currentGoalieId = null;
+      broadcastToRoom('sound_trigger', { sound: 'whistle' });
+      broadcastToRoom('notification', {
+        title: '🏁 خلصت ركلات الجزاء!',
+        message: 'اتنفذت 10 ركلات (5 لكل فريق) عشان تفصل المواجهة.'
+      });
+      return true;
+    }
+
+    r3.currentCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
+    r3.phase = 'duelist_selection';
+
+    const teamA = room.players.filter(player => player.team === 'team_a');
+    const teamB = room.players.filter(player => player.team === 'team_b');
+    if (r3.kickerTeam === 'team_a') {
+      r3.currentKickerId = teamA[r3.turnIndex % Math.max(1, teamA.length)]?.id;
+      r3.currentGoalieId = teamB[r3.turnIndex % Math.max(1, teamB.length)]?.id;
+    } else {
+      r3.currentKickerId = teamB[r3.turnIndex % Math.max(1, teamB.length)]?.id;
+      r3.currentGoalieId = teamA[r3.turnIndex % Math.max(1, teamA.length)]?.id;
+    }
+    assignReferee(room, 'round3', { rotate: true });
+    return true;
+  }
+
+  // ------------------------------------------------------------------
   // Client actions
+  // ------------------------------------------------------------------
   async function handleClientAction(event, payload) {
     switch (event) {
       case 'create_room': {
         const { playerName, characterId } = payload;
         const cleanName = sanitizeName(playerName) || 'كابتن الساحة';
-        const character = CHARACTERS.find(c => c.id === characterId) || CHARACTERS[0];
+        const character = CHARACTERS.find(char => char.id === characterId) || CHARACTERS[0];
         const roomCode = generateRoomCode();
-        const playerToken = 'tok_' + Math.random().toString(36).substring(2, 15);
+        const playerToken = createToken();
 
         const player = {
           id: socketId,
@@ -338,7 +1069,8 @@ export function createSupabaseSocket(customClient = null) {
           connected: true,
           lastSeen: Date.now(),
           scoreContribution: 0,
-          playerToken
+          playerToken,
+          playerTokenHash: hashToken(playerToken)
         };
 
         const initial = createInitialState(roomCode, socketId);
@@ -353,7 +1085,7 @@ export function createSupabaseSocket(customClient = null) {
             room_id: roomCode,
             host_id: socketId,
             status: 'lobby',
-            players: initial.players,
+            players: publicState(initial).players,
             teams: initial.teams,
             state: {
               round1: initial.round1,
@@ -372,7 +1104,7 @@ export function createSupabaseSocket(customClient = null) {
         trigger('room_created', {
           roomCode,
           playerToken,
-          player,
+          player: publicState(initial).players[0],
           room: sanitizeForViewer(initial, socketId)
         });
         break;
@@ -383,13 +1115,8 @@ export function createSupabaseSocket(customClient = null) {
         const cleanCode = normalizeRoomCode(roomCode);
         const cleanName = sanitizeName(playerName) || 'لاعب';
 
-        const { data: row, error } = await supabase
-          .from('rooms')
-          .select('*')
-          .eq('room_id', cleanCode)
-          .maybeSingle();
-
-        if (error || !row) {
+        const room = await loadRoomFromDb(cleanCode);
+        if (!room) {
           trigger('action_error', {
             message: 'كود الغرفة غير موجود يا بطل! اتأكد من الكود — Room not found.',
             field: 'roomCode',
@@ -397,14 +1124,6 @@ export function createSupabaseSocket(customClient = null) {
           });
           return;
         }
-
-        const room = {
-          ...createInitialState(cleanCode, row.host_id),
-          status: row.status,
-          players: row.players || [],
-          teams: row.teams || createInitialState(cleanCode, row.host_id).teams,
-          ...(row.state || {})
-        };
 
         if (room.status !== 'lobby' && room.status !== 'waiting') {
           trigger('action_error', {
@@ -424,19 +1143,25 @@ export function createSupabaseSocket(customClient = null) {
           return;
         }
 
-        // Validate character duplication
-        const takenChar = room.players.some(p => p.character?.id === characterId);
-        const availableChar = CHARACTERS.find(c => !room.players.some(p => p.character?.id === c.id)) || CHARACTERS[0];
-        const character = takenChar ? availableChar : (CHARACTERS.find(c => c.id === characterId) || availableChar);
+        const takenCharacters = room.players.map(player => player.character?.id);
+        const available = CHARACTERS.find(char => !takenCharacters.includes(char.id)) || CHARACTERS[0];
+        const character = takenCharacters.includes(characterId) ? available : (CHARACTERS.find(char => char.id === characterId) || available);
 
-        // Assign team (2v2 split)
-        const teamACount = room.players.filter(p => p.team === 'team_a').length;
-        const teamBCount = room.players.filter(p => p.team === 'team_b').length;
+        const teamACount = room.players.filter(player => player.team === 'team_a').length;
+        const teamBCount = room.players.filter(player => player.team === 'team_b').length;
         let assignedTeam = teamPreference === 'team_b' ? 'team_b' : 'team_a';
         if (assignedTeam === 'team_a' && teamACount >= TEAM_PLAYERS) assignedTeam = 'team_b';
         else if (assignedTeam === 'team_b' && teamBCount >= TEAM_PLAYERS) assignedTeam = 'team_a';
+        if (assignedTeam === 'team_a' && teamACount >= TEAM_PLAYERS) {
+          emitError('الفريق ده كامل (2/2)!', 'join_room');
+          return;
+        }
+        if (assignedTeam === 'team_b' && teamBCount >= TEAM_PLAYERS) {
+          emitError('الفريق ده كامل (2/2)!', 'join_room');
+          return;
+        }
 
-        const playerToken = 'tok_' + Math.random().toString(36).substring(2, 15);
+        const playerToken = createToken();
         const player = {
           id: socketId,
           name: cleanName,
@@ -447,7 +1172,8 @@ export function createSupabaseSocket(customClient = null) {
           connected: true,
           lastSeen: Date.now(),
           scoreContribution: 0,
-          playerToken
+          playerToken,
+          playerTokenHash: hashToken(playerToken)
         };
 
         room.players.push(player);
@@ -470,27 +1196,15 @@ export function createSupabaseSocket(customClient = null) {
         const { roomCode, playerToken } = payload;
         const cleanCode = normalizeRoomCode(roomCode);
 
-        const { data: row, error } = await supabase
-          .from('rooms')
-          .select('*')
-          .eq('room_id', cleanCode)
-          .maybeSingle();
-
-        if (error || !row) {
+        const room = await loadRoomFromDb(cleanCode);
+        if (!room) {
           trigger('rejoin_failed', { message: 'الغرفة دي خلصت، اعمل غرفة جديدة' });
           trigger('error_message', 'الغرفة دي خلصت، اعمل غرفة جديدة');
           return;
         }
 
-        const room = {
-          ...createInitialState(cleanCode, row.host_id),
-          status: row.status,
-          players: row.players || [],
-          teams: row.teams || createInitialState(cleanCode, row.host_id).teams,
-          ...(row.state || {})
-        };
-
-        const player = room.players.find(p => p.playerToken === playerToken);
+        const tokenHash = hashToken(playerToken);
+        const player = room.players.find(candidate => candidate.playerTokenHash === tokenHash);
         if (!player) {
           trigger('rejoin_failed', { message: 'جلسة الاستعادة مش صالحة! ادخل بكود الغرفة من جديد.' });
           trigger('error_message', 'جلسة الاستعادة مش صالحة! ادخل بكود الغرفة من جديد.');
@@ -500,6 +1214,7 @@ export function createSupabaseSocket(customClient = null) {
         player.id = socketId;
         player.connected = true;
         player.lastSeen = Date.now();
+        player.playerToken = playerToken;
         localPlayer = player;
         cachedRoomState = room;
 
@@ -516,41 +1231,42 @@ export function createSupabaseSocket(customClient = null) {
       }
 
       case 'update_player_profile': {
-        const { roomCode, characterId, team, playerName } = payload;
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
-        const p = room.players.find(player => player.id === socketId);
-        if (p) {
-          if (characterId) {
-            const char = CHARACTERS.find(c => c.id === characterId);
-            if (char) p.character = char;
-          }
-          if (team) p.team = team;
-          if (playerName) p.name = sanitizeName(playerName);
-          localPlayer = p;
-          await persistAndBroadcast(room);
-          trigger('profile_updated', { player: p });
+        const { characterId, team, playerName } = payload;
+        const room = await currentRoom();
+        if (!room) return;
+        const player = findPlayer(room);
+        if (!player) return;
+
+        if (characterId) {
+          const character = CHARACTERS.find(char => char.id === characterId);
+          const taken = room.players.some(other => other.id !== player.id && other.character?.id === characterId);
+          if (character && !taken) player.character = character;
         }
+        if (team && team !== player.team) {
+          const count = room.players.filter(other => other.team === team).length;
+          if (count >= TEAM_PLAYERS) {
+            emitError('الفريق ده كامل (2/2)!', 'update_player_profile');
+            return;
+          }
+          player.team = team;
+        }
+        if (playerName) player.name = sanitizeName(playerName);
+        localPlayer = player;
+        await persistAndBroadcast(room);
+        trigger('profile_updated', { player: { ...player, playerToken: undefined, playerTokenHash: undefined } });
         break;
       }
 
       case 'add_demo_player': {
         const cleanCode = normalizeRoomCode(payload.roomCode || currentRoomCode);
-        const { data: row } = await supabase.from('rooms').select('*').eq('room_id', cleanCode).maybeSingle();
-        if (!row) return;
-        const room = {
-          ...createInitialState(cleanCode, row.host_id),
-          status: row.status,
-          players: row.players || [],
-          teams: row.teams || createInitialState(cleanCode, row.host_id).teams,
-          ...(row.state || {})
-        };
+        const room = await loadRoomFromDb(cleanCode);
+        if (!room) return;
         if (room.players.length >= MAX_PLAYERS) return;
 
-        const availableChars = CHARACTERS.filter(c => !room.players.some(p => p.character?.id === c.id));
-        const nextChar = availableChars[0] || CHARACTERS[room.players.length % CHARACTERS.length];
-        const teamACount = room.players.filter(p => p.team === 'team_a').length;
-        const teamBCount = room.players.filter(p => p.team === 'team_b').length;
+        const taken = room.players.map(player => player.character?.id);
+        const nextChar = CHARACTERS.find(char => !taken.includes(char.id)) || CHARACTERS[0];
+        const teamACount = room.players.filter(player => player.team === 'team_a').length;
+        const teamBCount = room.players.filter(player => player.team === 'team_b').length;
         const assignedTeam = teamACount <= teamBCount ? 'team_a' : 'team_b';
 
         const botPlayer = {
@@ -577,17 +1293,13 @@ export function createSupabaseSocket(customClient = null) {
 
       case 'start_match_countdown': {
         const cleanCode = normalizeRoomCode(payload.roomCode || currentRoomCode);
-        const { data: row } = await supabase.from('rooms').select('*').eq('room_id', cleanCode).maybeSingle();
-        if (!row) return;
-        const room = {
-          ...createInitialState(cleanCode, row.host_id),
-          status: row.status,
-          players: row.players || [],
-          teams: row.teams || createInitialState(cleanCode, row.host_id).teams,
-          ...(row.state || {})
-        };
+        const room = await loadRoomFromDb(cleanCode);
+        if (!room) return;
+        if (!isHost(room)) {
+          emitError('Starting the match is reserved for the room host.', 'start_match_countdown');
+          return;
+        }
         cachedRoomState = room;
-        if (room.hostId !== socketId && !localPlayer?.isHost) return;
 
         broadcastToRoom('countdown_tick', { count: 3 });
         broadcastToRoom('sound_trigger', { sound: 'whistle' });
@@ -607,286 +1319,704 @@ export function createSupabaseSocket(customClient = null) {
           room.countdown = 0;
           room.status = 'round1';
 
-          // Initialize Round 1 questions
-          const teamAPlayers = room.players.filter(p => p.team === 'team_a');
-          const teamBPlayers = room.players.filter(p => p.team === 'team_b');
-          const answeringPlayer = teamAPlayers[0] || room.players[0];
-          const readerPlayer = teamBPlayers[0] || room.players[1] || room.players[0];
-
-          room.round1.answeringPlayerId = answeringPlayer.id;
-          room.round1.readerPlayerId = readerPlayer.id;
+          const teamA = room.players.filter(player => player.team === 'team_a');
           room.round1.activeTeam = 'team_a';
-          room.round1.turnPlan = buildLocalR1TurnPlan(answeringPlayer.character?.id);
-          room.round1.currentQuestion = drawLocalR1Question({
-            roomId: room.code,
-            mode: 'one_two_bank',
-            slotType: 'specialty',
-            characterId: answeringPlayer.character?.id
-          });
-          room.round1.actionToken = 'act_' + Math.random().toString(36).substring(2, 9);
-          room.round1.isTimerRunning = true;
+          room.round1.answeringPlayerId = teamA[0]?.id || room.players[0]?.id;
+          assignReferee(room, 'round1');
+          dispatchR1Question(room);
+          publishSecrets(room);
 
           await persistAndBroadcast(room);
+          broadcastToRoom('match_started', { roomCode: room.code });
         }, 3000);
         break;
       }
 
       case 'change_round': {
         const { targetRound } = payload;
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        if (!isHost(room)) {
+          emitError('Round changes are reserved for the room host.', 'change_round');
+          return;
+        }
+
         room.status = targetRound;
 
-        if (targetRound === 'round2') {
+        if (targetRound === 'round1') {
+          room.round1.activeTeam = 'team_a';
+          room.round1.answeringPlayerId = room.players.find(player => player.team === 'team_a')?.id || null;
+          room.round1.segmentIndex = 0;
+          room.round1.subBatchIndex = 0;
+          room.round1.subBatchQuestionsAnswered = 0;
+          room.round1.segmentQuestionsAnswered = 0;
+          room.round1.totalQuestionsAnswered = 0;
+          room.round1.streak = 0;
+          room.round1.pendingPoints = 0;
+          room.round1.turnPlan = null;
+          room.round1.turnPlanIndex = 0;
+          assignReferee(room, 'round1');
+          dispatchR1Question(room);
+        } else if (targetRound === 'round2') {
           room.round2.currentWordIndex = 0;
           room.round2.activeTurnTeam = 'team_a';
-          const teamA = room.players.filter(p => p.team === 'team_a');
-          const teamB = room.players.filter(p => p.team === 'team_b');
-          room.round2.activeClueGiverA = teamA[0]?.id;
-          room.round2.activeClueGiverB = teamB[0]?.id;
-          room.round2.refereePlayerId = teamB[0]?.id;
-          room.round2.currentWord = drawLocalQuestion({
-            roomId: room.code,
-            mode: 'edini_fi_seri',
-            slotType: 'random'
-          }) || {
-            target: PASSWORD_WORDS[0].word,
-            forbidden: PASSWORD_WORDS[0].forbidden,
-            category: 'سينما ومسلسلات'
-          };
-          room.round2.actionToken = 'act_' + Math.random().toString(36).substring(2, 9);
+          room.round2.fouls = { team_a: 0, team_b: 0 };
+          room.round2.isComplete = false;
+          room.round2.timeFreezeUsed = false;
+          room.round2.timer = 45;
+          setR2CardRoles(room);
+          dispatchR2Card(room);
         } else if (targetRound === 'round3') {
           room.round3.turnIndex = 0;
           room.round3.kickerTeam = 'team_a';
-          const teamA = room.players.filter(p => p.team === 'team_a');
-          const teamB = room.players.filter(p => p.team === 'team_b');
-          room.round3.currentKickerId = teamA[0]?.id;
-          room.round3.currentGoalieId = teamB[0]?.id;
-          room.round3.currentCategory = PENALTY_CATEGORIES[0];
+          room.round3.currentCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
           room.round3.phase = 'duelist_selection';
+          room.round3.currentQuestion = null;
           room.round3.shotsHistory = [];
+          room.round3.isComplete = false;
+          room.round3.tieBreakActive = false;
+          room.round3.tieBreakData = null;
+          room.round3.interceptBuzzedBy = null;
+          const teamA = room.players.filter(player => player.team === 'team_a');
+          const teamB = room.players.filter(player => player.team === 'team_b');
+          room.round3.currentKickerId = teamA[0]?.id || null;
+          room.round3.currentGoalieId = teamB[0]?.id || null;
+          assignReferee(room, 'round3');
         } else if (targetRound === 'round4') {
           room.round4.currentTopicIndex = 0;
-          room.round4.currentTopic = AUCTION_TOPICS[0];
-          room.round4.highestBid = 3;
+          dispatchR4Topic(room);
+          room.round4.highestBid = room.round4.currentTopic?.minBid || 3;
           room.round4.highestBidderTeam = null;
+          room.round4.highestBidderPlayerId = null;
           room.round4.phase = 'bidding';
+          room.round4.timer = 60;
+          room.round4.itemsNamed = [];
+          room.round4.usedLifelines = { team_a: [], team_b: [] };
+          assignReferee(room, 'round4');
         }
 
         await persistAndBroadcast(room);
+        publishSecrets(room);
         break;
       }
 
       case 'r1_action_score': {
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
         const r1 = room.round1;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (player.id !== getRoundRefereeId(room, 'round1')) {
+          emitError('اعتماد الإجابة محصور بجهاز الحكم المكلّف فقط.', 'r1_action_score');
+          return;
+        }
+        if (!r1.currentQuestion || !r1.actionToken || r1.actionToken !== payload.actionToken) {
+          emitError('انتهت صلاحية السؤال ده — اطلب سؤال جديد.', 'r1_action_score');
+          return;
+        }
+        r1.actionToken = null;
+
         const nextStreak = Math.min(r1.streak + 1, 10);
         r1.streak = nextStreak;
         r1.pendingPoints = r1.streakLadder[nextStreak] || 0;
-        r1.subBatchQuestionsAnswered = (r1.subBatchQuestionsAnswered || 0) + 1;
 
-        r1.currentQuestion = drawLocalR1Question({
-          roomId: room.code,
-          mode: 'one_two_bank',
-          slotType: 'random'
-        });
-        r1.actionToken = 'act_' + Math.random().toString(36).substring(2, 9);
-
-        broadcastToRoom('sound_trigger', { sound: 'correct' });
-        await persistAndBroadcast(room);
-        break;
-      }
-
-      case 'r1_action_bank': {
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
-        const r1 = room.round1;
-        const team = r1.activeTeam;
-        if (room.teams[team]) {
-          room.teams[team].score += r1.pendingPoints;
-          room.teams[team].bank += r1.pendingPoints;
+        advanceR1Quota(room);
+        if (r1.totalQuestionsAnswered < R1_TOTAL_QUESTIONS) {
+          dispatchR1Question(room);
         }
-        r1.pendingPoints = 0;
-        r1.streak = 0;
-
-        broadcastToRoom('sound_trigger', { sound: 'bank' });
-        broadcastToRoom('confetti_trigger', {});
+        broadcastToRoom('sound_trigger', { sound: 'correct', streak: nextStreak });
         await persistAndBroadcast(room);
+        publishSecrets(room);
         break;
       }
 
       case 'r1_action_break': {
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
         const r1 = room.round1;
-        r1.streak = 0;
-        r1.pendingPoints = 0;
-        r1.subBatchQuestionsAnswered = (r1.subBatchQuestionsAnswered || 0) + 1;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (player.id !== getRoundRefereeId(room, 'round1')) {
+          emitError('كسر الستريك محصور بجهاز الحكم المكلّف فقط.', 'r1_action_break');
+          return;
+        }
+        if (!r1.currentQuestion || !r1.actionToken || r1.actionToken !== payload.actionToken) {
+          emitError('انتهت صلاحية السؤال ده — اطلب سؤال جديد.', 'r1_action_break');
+          return;
+        }
+        r1.actionToken = null;
 
-        r1.currentQuestion = drawLocalR1Question({
-          roomId: room.code,
-          mode: 'one_two_bank',
-          slotType: 'random'
-        });
-        r1.actionToken = 'act_' + Math.random().toString(36).substring(2, 9);
+        const answering = findPlayer(room, r1.answeringPlayerId);
+        if (answering?.character?.id === 'abdelrahman_eltouny' && r1.streak > 1) {
+          r1.streak = Math.max(1, r1.streak - 1);
+          r1.pendingPoints = r1.streakLadder[r1.streak] || 0;
+          broadcastToRoom('notification', {
+            title: '🛡️ درع بيلافيتا!',
+            message: 'درع التوني خفّى كسر الستريك.'
+          });
+        } else {
+          r1.streak = 0;
+          r1.pendingPoints = 0;
+          broadcastToRoom('sound_trigger', { sound: 'buzzer' });
+        }
 
-        broadcastToRoom('sound_trigger', { sound: 'buzzer' });
+        advanceR1Quota(room);
+        if (r1.totalQuestionsAnswered < R1_TOTAL_QUESTIONS) {
+          dispatchR1Question(room);
+        }
         await persistAndBroadcast(room);
+        publishSecrets(room);
+        break;
+      }
+
+      case 'r1_action_bank': {
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        const r1 = room.round1;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (player.team !== r1.activeTeam) {
+          emitError('أمان الخزنة متاح للفريق المجيب فقط.', 'r1_action_bank');
+          return;
+        }
+        const banked = r1.pendingPoints || 0;
+        if (banked > 0) {
+          room.teams[r1.activeTeam].bank += banked;
+          room.teams[r1.activeTeam].score += banked;
+          const answering = findPlayer(room, r1.answeringPlayerId);
+          if (answering) answering.scoreContribution = (answering.scoreContribution || 0) + banked;
+          r1.history.push({ team: r1.activeTeam, amount: banked, player: answering?.name || '' });
+          r1.pendingPoints = 0;
+          r1.streak = 0;
+          broadcastToRoom('sound_trigger', { sound: 'bank_safe' });
+          broadcastToRoom('confetti_trigger', {});
+        }
+        await persistAndBroadcast(room);
+        break;
+      }
+
+      case 'r1_pass_turn': {
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        if (!isHost(room)) {
+          emitError('تبديل الدور متاح للمضيف فقط.', 'r1_pass_turn');
+          return;
+        }
+        const r1 = room.round1;
+        if (!r1.currentQuestion || !r1.actionToken || r1.actionToken !== payload.actionToken) {
+          emitError('انتهت صلاحية السؤال ده.', 'r1_pass_turn');
+          return;
+        }
+        r1.actionToken = null;
+        r1.pendingPoints = 0;
+        r1.streak = 0;
+        r1.activeTeam = r1.activeTeam === 'team_a' ? 'team_b' : 'team_a';
+        const activePlayers = room.players.filter(player => player.team === r1.activeTeam);
+        if (activePlayers.length) {
+          const index = activePlayers.findIndex(candidate => candidate.id === r1.answeringPlayerId);
+          r1.answeringPlayerId = activePlayers[(index + 1) % activePlayers.length].id;
+        }
+        assignReferee(room, 'round1');
+        dispatchR1Question(room);
+        await persistAndBroadcast(room);
+        publishSecrets(room);
         break;
       }
 
       case 'r2_award_point': {
-        const { team } = payload;
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
         const r2 = room.round2;
-        if (room.teams[team]) {
-          room.teams[team].score += 500;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (player.id !== getRoundRefereeId(room, 'round2')) {
+          emitError('احتساب نقاط الجولة 2 محصور بالحكم المكلّف.', 'r2_award_point');
+          return;
         }
-        r2.currentWordIndex = (r2.currentWordIndex || 0) + 1;
-        if (r2.currentWordIndex >= 5) {
+        const team = r2.activeTurnTeam;
+        if (payload.team && payload.team !== team) {
+          emitError('النقاط تُحتسب للفريق المجيب في الدور الحالي فقط.', 'r2_award_point');
+          return;
+        }
+        if (r2.isComplete || r2.currentWordIndex >= R2_TOTAL_CARDS) {
+          emitError('خلصت بطاقات الجولة 2.', 'r2_award_point');
+          return;
+        }
+        if (!r2.actionToken || r2.actionToken !== payload.actionToken) {
+          emitError('انتهت صلاحية البطاقة دي.', 'r2_award_point');
+          return;
+        }
+        r2.actionToken = null;
+        room.teams[team].score += 500;
+        r2.currentWordIndex += 1;
+
+        if (r2.currentWordIndex >= R2_TOTAL_CARDS) {
           r2.isComplete = true;
+          r2.currentWord = null;
+          r2.isTimerRunning = false;
           broadcastToRoom('sound_trigger', { sound: 'whistle' });
         } else {
-          r2.activeTurnTeam = r2.activeTurnTeam === 'team_a' ? 'team_b' : 'team_a';
-          r2.refereePlayerId = r2.activeTurnTeam === 'team_a' ? r2.activeClueGiverB : r2.activeClueGiverA;
-          r2.currentWord = drawLocalQuestion({
-            roomId: room.code,
-            mode: 'edini_fi_seri',
-            slotType: 'random'
-          }) || PASSWORD_WORDS[r2.currentWordIndex % PASSWORD_WORDS.length];
+          setR2CardRoles(room, { toggleTurn: true });
+          dispatchR2Card(room);
         }
-        r2.actionToken = 'act_' + Math.random().toString(36).substring(2, 9);
-
         broadcastToRoom('sound_trigger', { sound: 'correct' });
         await persistAndBroadcast(room);
+        publishSecrets(room);
         break;
       }
 
       case 'r2_skip_card': {
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
         const r2 = room.round2;
-        r2.currentWordIndex = (r2.currentWordIndex || 0) + 1;
-        if (r2.currentWordIndex >= 5) {
-          r2.isComplete = true;
-        } else {
-          r2.activeTurnTeam = r2.activeTurnTeam === 'team_a' ? 'team_b' : 'team_a';
-          r2.refereePlayerId = r2.activeTurnTeam === 'team_a' ? r2.activeClueGiverB : r2.activeClueGiverA;
-          r2.currentWord = drawLocalQuestion({
-            roomId: room.code,
-            mode: 'edini_fi_seri',
-            slotType: 'random'
-          }) || PASSWORD_WORDS[r2.currentWordIndex % PASSWORD_WORDS.length];
+        const player = findPlayer(room);
+        if (!player) return;
+        if (player.id !== getRoundRefereeId(room, 'round2')) {
+          emitError('تخطي البطاقة محصور بالحكم المكلّف.', 'r2_skip_card');
+          return;
         }
-        r2.actionToken = 'act_' + Math.random().toString(36).substring(2, 9);
+        if (r2.isComplete || r2.currentWordIndex >= R2_TOTAL_CARDS) {
+          emitError('خلصت بطاقات الجولة 2.', 'r2_skip_card');
+          return;
+        }
+        if (!r2.actionToken || r2.actionToken !== payload.actionToken) {
+          emitError('انتهت صلاحية البطاقة دي.', 'r2_skip_card');
+          return;
+        }
+        r2.actionToken = null;
+        r2.currentWordIndex += 1;
 
+        if (r2.currentWordIndex >= R2_TOTAL_CARDS) {
+          r2.isComplete = true;
+          r2.currentWord = null;
+          r2.isTimerRunning = false;
+          broadcastToRoom('sound_trigger', { sound: 'whistle' });
+        } else {
+          setR2CardRoles(room, { toggleTurn: true });
+          dispatchR2Card(room);
+        }
+        broadcastToRoom('sound_trigger', { sound: 'buzzer' });
+        await persistAndBroadcast(room);
+        publishSecrets(room);
+        break;
+      }
+
+      case 'r2_foul': {
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        const r2 = room.round2;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (player.id !== getRoundRefereeId(room, 'round2')) {
+          emitError('تسجيل المخالفة محصور بالحكم المكلّف.', 'r2_foul');
+          return;
+        }
+        const team = r2.activeTurnTeam;
+        if (payload.team && payload.team !== team) {
+          emitError('المخالفة تُسجّل على الفريق المجيب في الدور الحالي فقط.', 'r2_foul');
+          return;
+        }
+        if (r2.isComplete || r2.currentWordIndex >= R2_TOTAL_CARDS) {
+          emitError('خلصت بطاقات الجولة 2.', 'r2_foul');
+          return;
+        }
+        if (!r2.actionToken || r2.actionToken !== payload.actionToken) {
+          emitError('انتهت صلاحية البطاقة دي.', 'r2_foul');
+          return;
+        }
+        r2.actionToken = null;
+        r2.fouls[team] = (r2.fouls[team] || 0) + 1;
+        room.teams[team].score = Math.max(0, room.teams[team].score - 200);
+        r2.activeTurnTeam = team === 'team_a' ? 'team_b' : 'team_a';
+        r2.refereePlayerId = getRoundRefereeId(room, 'round2');
+        r2.actionToken = `act_${Math.random().toString(36).substring(2, 12)}`;
         broadcastToRoom('sound_trigger', { sound: 'buzzer' });
         await persistAndBroadcast(room);
         break;
       }
 
-      case 'r2_foul': {
-        const { team } = payload;
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
+      case 'r2_time_freeze': {
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
         const r2 = room.round2;
-        r2.fouls[team] = (r2.fouls[team] || 0) + 1;
-        if (room.teams[team]) {
-          room.teams[team].score = Math.max(0, room.teams[team].score - 200);
+        const player = findPlayer(room);
+        if (!player) return;
+        if (player.id !== getRoundRefereeId(room, 'round2')) {
+          emitError('تجميد الوقت محصور بالحكم المكلّف.', 'r2_time_freeze');
+          return;
         }
-        broadcastToRoom('sound_trigger', { sound: 'buzzer' });
+        if (r2.isComplete || !r2.currentWord) {
+          emitError('مفيش بطاقة شغالة دلوقتي.', 'r2_time_freeze');
+          return;
+        }
+        if (r2.timeFreezeUsed) {
+          emitError('تجميد الوقت اتستخدم مرة واحدة في البطاقة دي.', 'r2_time_freeze');
+          return;
+        }
+        r2.timeFreezeUsed = true;
+        r2.timer += R2_TIME_FREEZE_SECONDS;
+        broadcastToRoom('notification', {
+          title: '⏱️ تجميد الوقت',
+          message: `اتضاف ${R2_TIME_FREEZE_SECONDS} ثانية لوقت البطاقة.`
+        });
         await persistAndBroadcast(room);
         break;
       }
 
       case 'r3_select_duelists': {
-        const { kickerId, goalieId } = payload;
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
-        room.round3.currentKickerId = kickerId;
-        room.round3.currentGoalieId = goalieId;
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        const r3 = room.round3;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (r3.isComplete || r3.turnIndex >= R3_TOTAL_SHOTS) return;
+        if (r3.phase !== 'duelist_selection') {
+          emitError('اختيار المبارزين متاح وقت اختيار الثنائيات بس.', 'r3_select_duelists');
+          return;
+        }
+
+        const defendingTeam = r3.kickerTeam === 'team_a' ? 'team_b' : 'team_a';
+        if (payload.kickerId) {
+          const candidate = room.players.find(candidatePlayer => candidatePlayer.id === payload.kickerId);
+          if (player.team !== r3.kickerTeam || candidate?.team !== r3.kickerTeam) {
+            emitError('المسدد لازم يكون من الفريق الضارب.', 'r3_select_duelists');
+            return;
+          }
+          r3.currentKickerId = payload.kickerId;
+        }
+        if (payload.goalieId) {
+          const candidate = room.players.find(candidatePlayer => candidatePlayer.id === payload.goalieId);
+          if (player.team !== defendingTeam || candidate?.team !== defendingTeam) {
+            emitError('الحارس لازم يكون من الفريق المدافع.', 'r3_select_duelists');
+            return;
+          }
+          r3.currentGoalieId = payload.goalieId;
+        }
+
+        // The neutral referee must never be one of the duelists.
+        if ([r3.currentKickerId, r3.currentGoalieId].includes(r3.refereePlayerId)) {
+          assignReferee(room, 'round3', { rotate: true });
+        } else {
+          assignReferee(room, 'round3');
+        }
+        r3.currentQuestion = null;
+        r3.interceptBuzzedBy = null;
+        r3.interceptAt = null;
+        r3.tieBreakActive = false;
+        r3.tieBreakData = null;
         await persistAndBroadcast(room);
         break;
       }
 
       case 'r3_start_shootout': {
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
-        room.round3.phase = 'shootout';
-        room.round3.currentQuestion = drawLocalCategoryQuestion(
-          'hat_fi_qoraybi',
-          room.round3.currentCategory,
-          room.code
-        );
-        room.round3.shotStartedAt = Date.now();
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        const r3 = room.round3;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (!isHost(room) && player.id !== getRoundRefereeId(room, 'round3')) {
+          emitError('بدء التسديد محصور بالمضيف أو الحكم المكلّف.', 'r3_start_shootout');
+          return;
+        }
+        if (r3.isComplete || r3.turnIndex >= R3_TOTAL_SHOTS) return;
+        if (r3.phase !== 'duelist_selection') {
+          emitError('التسديد اتبدأ بالفعل للركلة دي.', 'r3_start_shootout');
+          return;
+        }
+        if (!r3.currentKickerId || !r3.currentGoalieId) {
+          emitError('اختار المسدد والحارس الأول.', 'r3_start_shootout');
+          return;
+        }
+        if (!dispatchR3Question(room)) {
+          emitError('مفيش سؤال متاح للتصنيف ده.', 'r3_start_shootout');
+          return;
+        }
+        r3.phase = 'shootout';
+        r3.interceptBuzzedBy = null;
+        r3.interceptAt = null;
+        r3.shotStartedAt = Date.now();
+        r3.tieBreakActive = false;
+        r3.tieBreakData = null;
+        broadcastToRoom('sound_trigger', { sound: 'whistle' });
         await persistAndBroadcast(room);
+        publishSecrets(room);
         break;
       }
 
       case 'r3_intercept_buzz': {
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
-        room.round3.interceptBuzzedBy = socketId;
-        room.round3.interceptAt = Date.now();
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        const r3 = room.round3;
+        if (r3.phase !== 'shootout') {
+          emitError('مفيش تسديدة شغالة دلوقتي.', 'r3_intercept_buzz');
+          return;
+        }
+        if (socket.id !== r3.currentGoalieId) {
+          emitError('زرار الصد للحارس المدافع فقط.', 'r3_intercept_buzz');
+          return;
+        }
+        if (r3.interceptBuzzedBy) return;
+        r3.interceptBuzzedBy = socket.id;
+        r3.interceptAt = Date.now();
         broadcastToRoom('sound_trigger', { sound: 'buzzer' });
+        broadcastToRoom('notification', {
+          title: '🧤 صد!',
+          message: 'الحارس ضغط زرار الصد!'
+        });
+        await persistAndBroadcast(room);
+        break;
+      }
+
+      case 'r3_submit_answer': {
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        const r3 = room.round3;
+        if (r3.isComplete || r3.phase !== 'shootout' || !r3.shotStartedAt) {
+          emitError('مفيش تسديدة شغالة دلوقتي.', 'r3_submit_answer');
+          return;
+        }
+        if (socket.id !== r3.currentKickerId) {
+          emitError('الإجابة من المسدد الحالي فقط.', 'r3_submit_answer');
+          return;
+        }
+        if (r3.tieBreakActive) return;
+
+        const options = r3.currentQuestion?.options || [];
+        if (typeof payload.option !== 'string' || !options.includes(payload.option)) {
+          emitError('الإجابة لازم تكون من الاختيارات المعتمدة.', 'r3_submit_answer');
+          return;
+        }
+
+        const answerAt = Date.now();
+        const heldSecret = localSecrets.round3;
+        const holdsAnswer = !!heldSecret && heldSecret.questionId === `r3-${r3.turnIndex}`;
+
+        if (holdsAnswer) {
+          await resolveR3Submission(room, payload.option, answerAt);
+          break;
+        }
+
+        // This client does not know the answer: ask the client that dispatched
+        // the question to validate and settle the shot.
+        if (channel) {
+          channel.send({
+            type: 'broadcast',
+            event: 'r3_answer_submitted',
+            payload: {
+              turnIndex: r3.turnIndex,
+              option: payload.option,
+              answerAt
+            }
+          });
+        }
+        break;
+      }
+
+      case 'r3_resolve_tiebreak': {
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        const r3 = room.round3;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (player.id !== getRoundRefereeId(room, 'round3')) {
+          emitError('حسم التعادل محصور بالحكم المحايد.', 'r3_resolve_tiebreak');
+          return;
+        }
+        if (!r3.tieBreakActive) return;
+        if (!['goal', 'saved', 'missed'].includes(payload.result)) return;
+        settleR3Shot(room, payload.result, {
+          tieBreak: true,
+          answerMs: r3.tieBreakData?.answerMs ?? null,
+          interceptMs: r3.tieBreakData?.interceptMs ?? null
+        });
         await persistAndBroadcast(room);
         break;
       }
 
       case 'r3_record_shot': {
-        const { result } = payload;
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
         const r3 = room.round3;
-        r3.shotsHistory.push({
-          shotIndex: r3.turnIndex,
-          kickerTeam: r3.kickerTeam,
-          result
-        });
-        if (result === 'goal' && room.teams[r3.kickerTeam]) {
-          room.teams[r3.kickerTeam].score += 1000;
-          room.teams[r3.kickerTeam].penaltyScore = (room.teams[r3.kickerTeam].penaltyScore || 0) + 1;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (player.id !== getRoundRefereeId(room, 'round3')) {
+          emitError('تسجيل الركلة محصور بالحكم المحايد.', 'r3_record_shot');
+          return;
         }
-        r3.turnIndex += 1;
-        r3.kickerTeam = r3.kickerTeam === 'team_a' ? 'team_b' : 'team_a';
-        r3.phase = 'duelist_selection';
-        r3.currentCategory = PENALTY_CATEGORIES[r3.turnIndex % PENALTY_CATEGORIES.length];
-        r3.currentQuestion = null;
-        r3.interceptBuzzedBy = null;
-
-        if (r3.turnIndex >= r3.totalShots) {
-          r3.isComplete = true;
-          broadcastToRoom('sound_trigger', { sound: 'whistle' });
-        } else {
-          broadcastToRoom('sound_trigger', { sound: result === 'goal' ? 'correct' : 'buzzer' });
+        if (!r3.tieBreakActive) {
+          emitError('التسجيل اليدوي متاح في حالة التعادل فقط.', 'r3_record_shot');
+          return;
         }
+        if (!['goal', 'saved', 'missed'].includes(payload.result)) return;
+        settleR3Shot(room, payload.result, { tieBreak: true });
         await persistAndBroadcast(room);
         break;
       }
 
       case 'r4_bid': {
-        const { amount } = payload;
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
-        room.round4.highestBid += amount;
-        room.round4.highestBidderPlayerId = socketId;
-        room.round4.highestBidderTeam = localPlayer?.team || 'team_a';
-        broadcastToRoom('sound_trigger', { sound: 'gavel' });
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        const r4 = room.round4;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (!r4.currentTopic || !r4.topicId) {
+          emitError('مفيش موضوع مزاد نشط.', 'r4_bid');
+          return;
+        }
+        if (r4.phase !== 'bidding') {
+          emitError('المزايدة خلصت على الموضوع ده.', 'r4_bid');
+          return;
+        }
+        if (payload.topicId && payload.topicId !== r4.topicId) {
+          emitError('موضوع المزاد اتغير.', 'r4_bid');
+          return;
+        }
+        if (!R4_BID_INCREMENTS.includes(payload.increment)) {
+          emitError('قيمة المزايدة غير صحيحة.', 'r4_bid');
+          return;
+        }
+        if (Number.isInteger(payload.expectedBid) && payload.expectedBid !== r4.highestBid) {
+          emitError('تغيّرت أعلى مزايدة — راجع الرقم الحالي.', 'r4_bid');
+          return;
+        }
+        if (r4.highestBidderTeam === player.team) {
+          emitError('فريقك صاحب أعلى مزايدة بالفعل.', 'r4_bid');
+          return;
+        }
+
+        r4.highestBid += payload.increment;
+        r4.highestBidderTeam = player.team;
+        r4.highestBidderPlayerId = player.id;
+        if (r4.refereePlayerId) {
+          const referee = room.players.find(candidate => candidate.id === r4.refereePlayerId);
+          if (referee?.team === player.team) assignReferee(room, 'round4', { rotate: true });
+        }
+        broadcastToRoom('sound_trigger', { sound: 'bid' });
+        await persistAndBroadcast(room);
+        publishSecrets(room);
+        break;
+      }
+
+      case 'r4_use_lifeline': {
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        const r4 = room.round4;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (!r4.currentTopic || !r4.topicId) {
+          emitError('مفيش موضوع مزاد نشط.', 'r4_use_lifeline');
+          return;
+        }
+        if (r4.phase !== 'bidding' && r4.phase !== 'execution') {
+          emitError('انتهت مرحلة استخدام وسائل المساعدة.', 'r4_use_lifeline');
+          return;
+        }
+        if (payload.topicId && payload.topicId !== r4.topicId) {
+          emitError('موضوع المزاد اتغير.', 'r4_use_lifeline');
+          return;
+        }
+        if (!R4_LIFELINES.includes(payload.lifelineType)) {
+          emitError('وسيلة مساعدة غير معروفة.', 'r4_use_lifeline');
+          return;
+        }
+        if (payload.team && payload.team !== player.team) {
+          emitError('مينفعش تستخدم وسيلة مساعدة لفريق الخصم.', 'r4_use_lifeline');
+          return;
+        }
+        const team = player.team;
+        if (r4.highestBidderTeam !== team) {
+          emitError('وسائل المساعدة متاحة لصاحب أعلى مزاد فقط.', 'r4_use_lifeline');
+          return;
+        }
+        if (!r4.usedLifelines) r4.usedLifelines = { team_a: [], team_b: [] };
+        if (!r4.usedLifelines[team]) r4.usedLifelines[team] = [];
+        if (r4.usedLifelines[team].includes(payload.lifelineType)) {
+          emitError('الوسيلة دي اتستخدمت من قبل لفريقك.', 'r4_use_lifeline');
+          return;
+        }
+
+        const validItems = r4.currentTopic.validItems || [];
+        const unrevealed = validItems.filter(item => !r4.itemsNamed.includes(item));
+        if (payload.lifelineType === 'rival_hint' && !unrevealed.length) {
+          emitError('مفيش إجابات متبقية للتلميح.', 'r4_use_lifeline');
+          return;
+        }
+        if (payload.lifelineType === 'opponent_help' && !unrevealed.length) {
+          emitError('مفيش إجابات متبقية يمكن للخصم يساعد فيها.', 'r4_use_lifeline');
+          return;
+        }
+
+        r4.usedLifelines[team].push(payload.lifelineType);
+        if (payload.lifelineType === 'call_friend') {
+          r4.timer += R4_CALL_FRIEND_SECONDS;
+          broadcastToRoom('sound_trigger', { sound: 'bid' });
+          broadcastToRoom('notification', {
+            title: `📞 اتصل بصديق (+${R4_CALL_FRIEND_SECONDS} ثانية)`,
+            message: `${room.teams[team]?.name || 'الفريق'} استخدم وسيلة اتصل بصديق.`
+          });
+        } else if (payload.lifelineType === 'rival_hint') {
+          broadcastToRoom('sound_trigger', { sound: 'bid' });
+          broadcastToRoom('notification', {
+            title: '💡 هينت من الخصم!',
+            message: `تلميح الخصم يكشف إجابة مؤكدة: "${unrevealed[0]}"`
+          });
+        } else {
+          r4.itemsNamed = [...r4.itemsNamed, unrevealed[0]];
+          broadcastToRoom('sound_trigger', { sound: 'correct' });
+          broadcastToRoom('notification', {
+            title: '🤝 استعين بالخصم!',
+            message: `الخصم ساعد بإجابة معتمدة: "${unrevealed[0]}"`
+          });
+        }
         await persistAndBroadcast(room);
         break;
       }
 
       case 'r4_toggle_item': {
-        const { item } = payload;
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
-        const list = room.round4.itemsNamed || [];
-        if (list.includes(item)) {
-          room.round4.itemsNamed = list.filter(i => i !== item);
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        const r4 = room.round4;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (player.id !== getRoundRefereeId(room, 'round4')) {
+          emitError('تدقيق إجابات المزاد محصور بالحكم المكلّف.', 'r4_toggle_item');
+          return;
+        }
+        if (!r4.currentTopic || !r4.topicId || payload.topicId !== r4.topicId) {
+          emitError('موضوع المزاد اتغير.', 'r4_toggle_item');
+          return;
+        }
+        if (r4.phase === 'resolved') {
+          emitError('تم اعتماد نتيجة المزاد بالفعل.', 'r4_toggle_item');
+          return;
+        }
+        const validItems = r4.currentTopic.validItems || [];
+        if (typeof payload.item !== 'string' || !validItems.includes(payload.item)) {
+          emitError('العنصر ده مش من القائمة المعتمدة.', 'r4_toggle_item');
+          return;
+        }
+        if (r4.itemsNamed.includes(payload.item)) {
+          r4.itemsNamed = r4.itemsNamed.filter(item => item !== payload.item);
         } else {
-          room.round4.itemsNamed = [...list, item];
+          r4.itemsNamed = [...r4.itemsNamed, payload.item];
           broadcastToRoom('sound_trigger', { sound: 'correct' });
         }
         await persistAndBroadcast(room);
@@ -894,34 +2024,103 @@ export function createSupabaseSocket(customClient = null) {
       }
 
       case 'r4_resolve_bid': {
-        const { success } = payload;
-        if (!cachedRoomState) return;
-        const room = cachedRoomState;
-        const team = room.round4.highestBidderTeam;
-        if (success && team && room.teams[team]) {
-          const awarded = room.round4.highestBid * 400;
-          room.teams[team].score += awarded;
-          broadcastToRoom('sound_trigger', { sound: 'correct' });
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        const r4 = room.round4;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (player.id !== getRoundRefereeId(room, 'round4')) {
+          emitError('اعتماد نتيجة المزاد محصور بالحكم المكلّف.', 'r4_resolve_bid');
+          return;
+        }
+        if (!r4.currentTopic || !r4.topicId || payload.topicId !== r4.topicId) {
+          emitError('موضوع المزاد اتغير.', 'r4_resolve_bid');
+          return;
+        }
+        if (r4.phase === 'resolved') {
+          emitError('تم اعتماد نتيجة المزاد بالفعل.', 'r4_resolve_bid');
+          return;
+        }
+        if (typeof payload.success !== 'boolean') {
+          emitError('نتيجة المزاد غير صحيحة.', 'r4_resolve_bid');
+          return;
+        }
+        const winningTeam = r4.highestBidderTeam;
+        if (!winningTeam) {
+          emitError('مفيش صاحب مزاد معتمد.', 'r4_resolve_bid');
+          return;
+        }
+        if (payload.success && (r4.itemsNamed?.length || 0) < r4.highestBid) {
+          emitError(`لم يصل الفريق للرقم المطلوب (${r4.itemsNamed?.length || 0}/${r4.highestBid}).`, 'r4_resolve_bid');
+          return;
+        }
+
+        r4.phase = 'resolved';
+        if (payload.success) {
+          const reward = r4.highestBid * 400;
+          room.teams[winningTeam].score += reward;
+          broadcastToRoom('sound_trigger', { sound: 'goal_roar' });
           broadcastToRoom('confetti_trigger', {});
+          broadcastToRoom('notification', {
+            title: 'أنا قدها ونص! 🏆',
+            message: `${room.teams[winningTeam].name} حقق الرقم المطلوب وكسب ${reward} نقطة!`
+          });
         } else {
           broadcastToRoom('sound_trigger', { sound: 'buzzer' });
+          broadcastToRoom('notification', {
+            title: 'المزاد لم يكتمل',
+            message: `${room.teams[winningTeam].name} لم يوفِ بالمزاد.`
+          });
         }
-        room.round4.phase = 'resolved';
+
+        r4.currentTopicIndex += 1;
+        if (r4.currentTopicIndex >= R4_TOTAL_TOPICS) {
+          r4.currentTopic = null;
+          r4.topicId = null;
+          broadcastToRoom('sound_trigger', { sound: 'fanfare' });
+          broadcastToRoom('confetti_trigger', {});
+        } else {
+          dispatchR4Topic(room);
+          r4.highestBid = r4.currentTopic?.minBid || 3;
+          r4.timer = 60;
+          r4.itemsNamed = [];
+          r4.phase = 'bidding';
+          r4.usedLifelines = { team_a: [], team_b: [] };
+          r4.highestBidderTeam = null;
+          r4.highestBidderPlayerId = null;
+          assignReferee(room, 'round4');
+        }
         await persistAndBroadcast(room);
+        publishSecrets(room);
         break;
       }
 
       case 'send_chat': {
-        const { text, isTaunt } = payload;
+        if (!cachedRoomState) return;
+        const now = Date.now();
+        if (now - lastChatAt < CHAT_RATE_LIMIT_MS) return;
+        lastChatAt = now;
+        const text = sanitizeChatText(payload.text);
+        if (!text) return;
         const chatItem = {
-          id: 'chat_' + Math.random().toString(36).substring(2, 9),
+          id: `chat_${Math.random().toString(36).substring(2, 9)}`,
           sender: localPlayer?.name || 'مشارك',
           text,
           team: localPlayer?.team || 'team_a',
-          isTaunt: Boolean(isTaunt),
+          isTaunt: Boolean(payload.isTaunt),
           time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
         };
         broadcastToRoom('chat_received', chatItem);
+        break;
+      }
+
+      case 'judge_secret_request': {
+        // The active referee asks for the secret of the current question.
+        const room = cachedRoomState;
+        if (!room) return;
+        const secret = localSecrets[payload?.roundKey];
+        if (secret) sendJudgeSecret(room, payload.roundKey, secret);
         break;
       }
 
