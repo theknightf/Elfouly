@@ -207,13 +207,29 @@ async function runSupabaseAuthorityTests() {
     // ------------------------------------------------------------------
     console.log('\n🔹 Test 5: The penalty answer must be validated by the answer holder...');
     hostSocket.emit('change_round', { roomCode: testRoomCode, targetRound: 'round3' });
-    await waitForState(hostSocket, (state: any) => state.status === 'round3', 25000, 'round3');
+    const round3State = await waitForState(hostSocket, (state: any) => state.status === 'round3', 25000, 'round3');
 
-    // The defending team names the goalie, the kicking team names the kicker.
-    clientB.emit('r3_select_duelists', { roomCode: testRoomCode, goalieId: joinedB.player.id });
-    await delay(700);
-    hostSocket.emit('r3_select_duelists', { roomCode: testRoomCode, kickerId: joinedC.player.id });
-    await delay(700);
+    // The duelists are chosen from the teams the engine assigned, not by a
+    // hardcoded assumption about who kicks first.
+    const socketsById: Record<string, any> = {
+      [created.player.id]: hostSocket,
+      [joinedB.player.id]: clientB,
+      [joinedC.player.id]: clientC
+    };
+    const kickerTeam = round3State.round3?.kickerTeam || 'team_a';
+    const defendingTeam = kickerTeam === 'team_a' ? 'team_b' : 'team_a';
+    const humans = (round3State.players || []).filter((player: any) => !player.isBot && socketsById[player.id]);
+    const kickerPlayer = humans.find((player: any) => player.team === kickerTeam);
+    const goaliePlayer = humans.find((player: any) => player.team === defendingTeam);
+    assert(kickerPlayer && goaliePlayer, 'Both teams need a human duelist for the shootout');
+
+    const kickerSocket = socketsById[kickerPlayer.id];
+    const goalieSocket = socketsById[goaliePlayer.id];
+
+    goalieSocket.emit('r3_select_duelists', { roomCode: testRoomCode, goalieId: goaliePlayer.id });
+    await delay(500);
+    kickerSocket.emit('r3_select_duelists', { roomCode: testRoomCode, kickerId: kickerPlayer.id });
+    await delay(500);
 
     hostSocket.emit('r3_start_shootout', { roomCode: testRoomCode });
     const shootoutState = await waitForState(
@@ -224,10 +240,14 @@ async function runSupabaseAuthorityTests() {
     );
     const options = shootoutState.round3?.currentQuestion?.options || [];
     assert(options.length >= 2, 'The penalty question must expose its options');
+    assert(
+      shootoutState.round3.currentKickerId === kickerPlayer.id,
+      'The chosen kicker must be the player allowed to answer'
+    );
 
     // The kicker does not know the answer: the client that dispatched the
     // question performs the validation and settles the shot.
-    clientC.emit('r3_submit_answer', { roomCode: testRoomCode, option: options[0] });
+    kickerSocket.emit('r3_submit_answer', { roomCode: testRoomCode, option: options[0] });
     const settledState = await waitForState(
       hostSocket,
       (state: any) => (state.round3?.shotsHistory?.length || 0) >= 1,
@@ -239,7 +259,8 @@ async function runSupabaseAuthorityTests() {
 
     // A non kicker cannot answer.
     const turnIndexBefore = settledState.round3.turnIndex;
-    clientB.emit('r3_submit_answer', { roomCode: testRoomCode, option: options[0] });
+    const nonKickerSocket = [hostSocket, clientB, clientC].find(candidate => candidate !== kickerSocket);
+    nonKickerSocket.emit('r3_submit_answer', { roomCode: testRoomCode, option: options[0] });
     await delay(900);
     const turnIndexAfter = (await supabase
       .from('rooms')
