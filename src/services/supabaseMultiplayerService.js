@@ -456,7 +456,10 @@ export function createSupabaseSocket(customClient = null) {
     },
 
     emit(event, payload = {}) {
-      handleClientAction(event, payload);
+      Promise.resolve(handleClientAction(event, payload)).catch(err => {
+        console.error(`[SupabaseSocket] Unhandled error in action "${event}":`, err);
+        emitError('تعذر تنفيذ العملية، تأكد من الاتصال بالإنترنت', event);
+      });
       return socket;
     },
 
@@ -690,7 +693,9 @@ export function createSupabaseSocket(customClient = null) {
         } else if (event === 'r3_answer_submitted') {
           // The kicker submitted an answer; the client that dispatched the
           // question (and therefore holds the answer) settles the shot.
-          const room = cachedRoomState;
+          // Reload from PostgreSQL: the broadcast can arrive before this
+          // client's cached snapshot has switched to the shootout phase.
+          const room = await currentRoom();
           if (!room || !payload) return;
           const r3 = room.round3;
           if (r3.phase !== 'shootout' || payload.turnIndex !== r3.turnIndex) return;
@@ -1839,16 +1844,30 @@ export function createSupabaseSocket(customClient = null) {
 
         // This client does not know the answer: ask the client that dispatched
         // the question to validate and settle the shot.
+        const submission = {
+          turnIndex: r3.turnIndex,
+          option: payload.option,
+          answerAt
+        };
         if (channel) {
           channel.send({
             type: 'broadcast',
             event: 'r3_answer_submitted',
-            payload: {
-              turnIndex: r3.turnIndex,
-              option: payload.option,
-              answerAt
-            }
+            payload: submission
           });
+          // Realtime deliveries can be dropped (for example while the answer
+          // holder is still switching channels): ask once more if the shot is
+          // still pending after a short grace period.
+          setTimeout(() => {
+            const pending = cachedRoomState?.round3;
+            if (!channel || !pending) return;
+            if (pending.phase !== 'shootout' || pending.turnIndex !== submission.turnIndex) return;
+            channel.send({
+              type: 'broadcast',
+              event: 'r3_answer_submitted',
+              payload: submission
+            });
+          }, 2500);
         }
         break;
       }

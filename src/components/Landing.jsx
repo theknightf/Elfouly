@@ -92,16 +92,21 @@ export default function Landing() {
   };
 
   const handleCreate = (nameOverride) => {
-    const cleanName = validateName(nameOverride);
-    if (!cleanName) {
-      // Open Create Modal immediately so user has an obvious, tactile prompt!
-      setActiveModal('create');
-      return;
-    }
+    const rawCandidate = typeof nameOverride === 'string' ? nameOverride : playerName;
+    const trimmed = rawCandidate.trim();
+    const heroName = CHARACTERS.find(c => c.id === selectedHero)?.name.split(' ')[0] || 'فولي';
+    const cleanName = (trimmed || `كابتن ${heroName} 🦁`).slice(0, 20);
+
     setFormError(null);
     clearActionError();
     sounds.playTap();
     setIsCreating(true);
+
+    // Failsafe timeout to prevent blocked UI state
+    setTimeout(() => {
+      setIsCreating(false);
+    }, 5000);
+
     createRoom(cleanName, selectedHero);
   };
 

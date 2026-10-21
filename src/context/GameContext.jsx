@@ -603,12 +603,29 @@ export function GameProvider({ children }) {
   const createRoom = (playerName, characterId) => {
     if (!socket) {
       showToast('مش متصل بالسيرفر', CONNECTION_STATUS_MESSAGES[connectionStatus] || 'بنتصل بالسيرفر…');
+      setActionError({
+        message: 'مش متصل بالسيرفر حالياً.. جاري إعادة المحاولة',
+        field: 'general',
+        action: 'create_room'
+      });
       return;
     }
 
     clearSavedSession();
     setActionError(null);
-    socket.emit('create_room', { playerName, characterId });
+    try {
+      socket.emit('create_room', {
+        playerName: (playerName && playerName.trim()) || 'كابتن فولي 🦁',
+        characterId: characterId || 'faris'
+      });
+    } catch (err) {
+      console.error('Failed to emit create_room:', err);
+      setActionError({
+        message: 'تعذر إنشاء الغرفة.. جرب تاني',
+        field: 'general',
+        action: 'create_room'
+      });
+    }
   };
 
   // Join room action
