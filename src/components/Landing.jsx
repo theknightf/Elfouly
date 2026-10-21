@@ -7,16 +7,9 @@ import {
   Crown,
   Loader2,
   LogIn,
-  PlusCircle,
   Sparkles,
-  Users,
-  WifiOff,
-  Clock,
-  AlertTriangle,
   Volume2,
   VolumeX,
-  Trophy,
-  Settings as SettingsIcon,
   X
 } from 'lucide-react';
 
@@ -47,7 +40,9 @@ export default function Landing() {
   const [joinCode, setJoinCode] = useState('');
   const [formError, setFormError] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [activeModal, setActiveModal] = useState(null); // 'create' | 'join' | 'info' | null
+  const [activeModal, setActiveModal] = useState(null); // 'create' | 'join' | 'info' | 'characters' | null
+  const [isCreating, setIsCreating] = useState(false);
+  const [selectedHero, setSelectedHero] = useState(CHARACTERS[0].id);
 
   const nameInputRef = useRef(null);
   const joinButtonRef = useRef(null);
@@ -66,6 +61,12 @@ export default function Landing() {
     }
   }, []);
 
+  useEffect(() => {
+    if (actionError) {
+      setIsCreating(false);
+    }
+  }, [actionError]);
+
   const fieldError = (field) => {
     if (formError?.field === field) return formError.message;
     if (actionError?.field === field) return actionError.message;
@@ -76,23 +77,28 @@ export default function Landing() {
     ? actionError.message
     : null;
 
-  const validateName = () => {
-    const cleanName = playerName.trim();
+  const validateName = (nameToValidate) => {
+    const candidate = typeof nameToValidate === 'string' ? nameToValidate : playerName;
+    const cleanName = candidate.trim();
     if (!cleanName) {
       setFormError({ field: 'playerName', message: 'اكتب اسمك الأول يا كابتن.. الاسم مطلوب!' });
-      nameInputRef.current?.focus();
       return null;
     }
     return cleanName.slice(0, 20);
   };
 
-  const handleCreate = () => {
-    const cleanName = validateName();
-    if (!cleanName) return;
+  const handleCreate = (nameOverride) => {
+    const cleanName = validateName(nameOverride);
+    if (!cleanName) {
+      // Open the dedicated Create Room modal so the user gets an intuitive dialog
+      setActiveModal('create');
+      return;
+    }
     setFormError(null);
     clearActionError();
     sounds.playTap();
-    createRoom(cleanName);
+    setIsCreating(true);
+    createRoom(cleanName, selectedHero);
   };
 
   const handleJoin = () => {
@@ -108,7 +114,7 @@ export default function Landing() {
     setFormError(null);
     clearActionError();
     sounds.playTap();
-    joinRoom(`QZ-${joinCode}`, cleanName);
+    joinRoom(`QZ-${joinCode}`, cleanName, selectedHero);
   };
 
   const handlePasteCode = async () => {
@@ -213,10 +219,7 @@ export default function Landing() {
                 ? 'border-arena-red bg-arena-red/20 text-arena-red'
                 : 'border-arena-yellow bg-arena-yellow/20 text-arena-yellow'
             }`}>
-              {connectionStatus === 'connecting' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              {connectionStatus === 'waking_up' && <Clock className="w-3.5 h-3.5 animate-pulse" />}
-              {connectionStatus === 'failed' && <WifiOff className="w-3.5 h-3.5" />}
-              {connectionStatus === 'misconfigured' && <AlertTriangle className="w-3.5 h-3.5" />}
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
               <span>{connectionStatusMessage}</span>
               {connectionStatus === 'failed' && (
                 <button
@@ -238,63 +241,84 @@ export default function Landing() {
           
           {/* Quick Start Card / Nickname Form */}
           <div className="w-full md:max-w-md bg-black/75 backdrop-blur-md border-[3px] border-[#090614] rounded-2xl p-4 sm:p-5 shadow-[0_6px_0_0_#090614] space-y-3">
-            <div>
-              <label htmlFor="player-name" className="block text-xs font-black text-arena-yellow mb-1.5 flex items-center justify-between">
-                <span>اسمك في الساحة (مطلوب)</span>
-                <span className="font-mono text-[10px] text-gray-400">{playerName.length}/20</span>
-              </label>
-              <input
-                id="player-name"
-                ref={nameInputRef}
-                type="text"
-                value={playerName}
-                onChange={handleNameChange}
-                maxLength={20}
-                required
-                autoComplete="nickname"
-                placeholder="مثال: كابتن فولي 🦁"
-                className={`w-full rounded-xl bg-slate-900/90 border-2 px-3.5 py-2.5 text-sm font-bold text-white placeholder-gray-500 outline-none transition-colors ${
-                  fieldError('playerName') ? 'border-arena-red' : 'border-amber-500/40 focus:border-arena-cyan'
-                }`}
-              />
-              {fieldError('playerName') && (
-                <p className="mt-1 text-xs font-bold text-arena-red">{fieldError('playerName')}</p>
-              )}
-            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreate();
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label htmlFor="player-name" className="block text-xs font-black text-arena-yellow mb-1.5 flex items-center justify-between">
+                  <span>اسمك في الساحة (مطلوب)</span>
+                  <span className="font-mono text-[10px] text-gray-400">{playerName.length}/20</span>
+                </label>
+                <input
+                  id="player-name"
+                  ref={nameInputRef}
+                  type="text"
+                  value={playerName}
+                  onChange={handleNameChange}
+                  maxLength={20}
+                  required
+                  autoComplete="nickname"
+                  placeholder="مثال: كابتن فولي 🦁"
+                  className={`w-full rounded-xl bg-slate-900/90 border-2 px-3.5 py-2.5 text-sm font-bold text-white placeholder-gray-500 outline-none transition-colors ${
+                    fieldError('playerName') ? 'border-arena-red' : 'border-amber-500/40 focus:border-arena-cyan'
+                  }`}
+                />
+                {fieldError('playerName') && (
+                  <p className="mt-1 text-xs font-bold text-arena-red">{fieldError('playerName')}</p>
+                )}
+                {generalError && (
+                  <p className="mt-1 text-xs font-bold text-arena-yellow bg-arena-yellow/10 p-1.5 rounded-lg border border-arena-yellow/30">{generalError}</p>
+                )}
+              </div>
 
-            {/* Quick Action Grid inside Card */}
-            <div className="grid grid-cols-2 gap-2.5 pt-1">
-              <button
-                type="button"
-                onClick={handleCreate}
-                disabled={!isConnected}
-                className="menu-btn btn-green h-12"
-              >
-                <span className="font-rubik font-black text-sm text-amber-100">عمل غرفة</span>
-                <Crown className="w-5 h-5 text-amber-300" />
-              </button>
+              {/* Quick Action Grid inside Card */}
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                <button
+                  type="submit"
+                  disabled={isCreating}
+                  className="menu-btn btn-green h-12 cursor-pointer"
+                >
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 text-amber-200 animate-spin" />
+                      <span className="font-rubik font-black text-xs text-amber-100">جاري الإنشاء...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-rubik font-black text-sm text-amber-100">عمل غرفة</span>
+                      <Crown className="w-5 h-5 text-amber-300" />
+                    </>
+                  )}
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveModal('join')}
-                className="menu-btn btn-blue h-12"
-              >
-                <span className="font-rubik font-black text-sm text-amber-100">دخول بكود</span>
-                <LogIn className="w-5 h-5 text-amber-200" />
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveModal('join')}
+                  className="menu-btn btn-blue h-12 cursor-pointer"
+                >
+                  <span className="font-rubik font-black text-sm text-amber-100">دخول بكود</span>
+                  <LogIn className="w-5 h-5 text-amber-200" />
+                </button>
+              </div>
+            </form>
           </div>
 
           {/* Right-Hand Arcade Action Column (Stitch Screen 4 Matching Palette) */}
           <div className="w-full md:w-56 flex flex-col gap-2.5" data-purpose="arcade-buttons-stack">
             {/* Button 1: Play */}
             <button
-              onClick={handleCreate}
-              disabled={!isConnected}
+              onClick={() => handleCreate()}
+              disabled={isCreating}
               aria-label="العب"
-              className="menu-btn btn-green"
+              className="menu-btn btn-green cursor-pointer"
             >
-              <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">العب (هوست)</span>
+              <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">
+                {isCreating ? 'جاري الإنشاء...' : 'العب (هوست)'}
+              </span>
               <span className="text-xl">🏆</span>
             </button>
 
@@ -302,17 +326,17 @@ export default function Landing() {
             <button
               onClick={() => setActiveModal('join')}
               aria-label="غرفة"
-              className="menu-btn btn-blue"
+              className="menu-btn btn-blue cursor-pointer"
             >
               <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">انضم لغرفة</span>
               <span className="text-xl">👥</span>
             </button>
 
-            {/* Button 3: Leaderboard */}
+            {/* Button 3: Leaderboard / Rules */}
             <button
               onClick={() => setActiveModal('info')}
               aria-label="الترتيب"
-              className="menu-btn btn-purple"
+              className="menu-btn btn-purple cursor-pointer"
             >
               <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">قوانين الساحة</span>
               <span className="text-xl">📜</span>
@@ -322,7 +346,7 @@ export default function Landing() {
             <button
               onClick={() => setActiveModal('characters')}
               aria-label="الشخصيات"
-              className="menu-btn btn-brown"
+              className="menu-btn btn-brown cursor-pointer"
             >
               <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">أبطال الصعيد</span>
               <span className="text-xl">🛡️</span>
@@ -332,6 +356,95 @@ export default function Landing() {
         </div>
 
       </div>
+
+      {/* ========================================================================= */}
+      {/* MODAL 0: CREATE ROOM DIALOG (RETRO ARCADE STYLE)                          */}
+      {/* ========================================================================= */}
+      {activeModal === 'create' && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="w-full max-w-sm bg-slate-900 border-[3.5px] border-[#090614] rounded-2xl p-5 shadow-[0_8px_0_0_#090614] relative space-y-4">
+            <button
+              onClick={() => setActiveModal(null)}
+              className="absolute top-3 left-3 text-gray-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center space-y-1">
+              <span className="text-3xl">👑</span>
+              <h2 className="font-rubik font-black text-lg text-arena-yellow">إنشاء ساحة كويز جديدة (هوست)</h2>
+              <p className="text-xs text-gray-300">أدخل اسمك وابدأ الغرفة وشارك الكود مع أصحابك</p>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreate();
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label className="block text-[11px] font-bold text-gray-300 mb-1 flex items-center justify-between">
+                  <span>اسمك في الساحة</span>
+                  <span className="text-[10px] text-gray-500">{playerName.length}/20</span>
+                </label>
+                <input
+                  type="text"
+                  value={playerName}
+                  onChange={handleNameChange}
+                  autoFocus
+                  required
+                  placeholder="مثال: كابتن فولي 🦁"
+                  className="w-full rounded-xl bg-black/60 border border-white/20 px-3 py-2 text-sm text-white font-bold placeholder-gray-500 focus:border-arena-yellow outline-none"
+                />
+                {fieldError('playerName') && (
+                  <p className="mt-1 text-xs font-bold text-arena-red">{fieldError('playerName')}</p>
+                )}
+              </div>
+
+              {/* Character quick pick */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-300 mb-1">اختار بطلك المفضل</label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {CHARACTERS.slice(0, 4).map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setSelectedHero(c.id)}
+                      className={`p-1.5 rounded-xl border flex flex-col items-center gap-1 transition-all ${
+                        selectedHero === c.id
+                          ? 'border-arena-yellow bg-arena-yellow/20 scale-105'
+                          : 'border-white/10 bg-black/40 hover:border-white/30'
+                      }`}
+                    >
+                      <span className="text-xl">{c.avatar}</span>
+                      <span className="text-[9px] font-bold text-white truncate max-w-full">{c.name.split(' ')[0]}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isCreating}
+                className="menu-btn btn-green h-12 w-full justify-center gap-2 mt-2"
+              >
+                {isCreating ? (
+                  <>
+                    <Loader2 className="w-5 h-5 text-amber-200 animate-spin" />
+                    <span className="font-rubik font-black text-sm text-amber-100">جاري إنشاء الغرفة...</span>
+                  </>
+                ) : (
+                  <>
+                    <Crown className="w-5 h-5 text-amber-200" />
+                    <span className="font-rubik font-black text-sm text-amber-100">أنشئ الساحة والعب الآن 🚀</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* MODAL 1: JOIN ROOM DIALOG (RETRO ARCADE STYLE)                            */}
@@ -362,6 +475,9 @@ export default function Landing() {
                   placeholder="اكتب اسمك..."
                   className="w-full rounded-xl bg-black/60 border border-white/20 px-3 py-2 text-sm text-white font-bold"
                 />
+                {fieldError('playerName') && (
+                  <p className="mt-1 text-xs font-bold text-arena-red">{fieldError('playerName')}</p>
+                )}
               </div>
 
               <div>
@@ -399,7 +515,6 @@ export default function Landing() {
                 ref={joinButtonRef}
                 type="button"
                 onClick={handleJoin}
-                disabled={!isConnected}
                 className="menu-btn btn-blue h-12 w-full justify-center gap-2 mt-2"
               >
                 <LogIn className="w-5 h-5 text-amber-200" />
@@ -425,8 +540,8 @@ export default function Landing() {
 
             <div className="text-center space-y-1">
               <span className="text-2xl">📜</span>
-              <h2 className="font-rubik font-black text-lg text-arena-yellow">جولات ساحة الكويز</h2>
-              <p className="text-xs text-gray-300">4 جولات ملحمية لحسم اللقب بين الفريقين</p>
+              <h2 className="font-rubik font-black text-lg text-arena-yellow">قواعد ساحة الكويز</h2>
+              <p className="text-xs text-gray-300">ماتش 2 ضد 2.. 4 جولات ملحمية لا مجال فيها للتعادل</p>
             </div>
 
             <div className="space-y-2 text-xs">

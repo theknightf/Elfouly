@@ -601,11 +601,12 @@ export function GameProvider({ children }) {
 
   // Create room action
   const createRoom = (playerName, characterId) => {
-    if (!socket || !isConnected) {
+    if (!socket) {
       showToast('مش متصل بالسيرفر', CONNECTION_STATUS_MESSAGES[connectionStatus] || 'بنتصل بالسيرفر…');
       return;
     }
 
+    clearSavedSession();
     setActionError(null);
     socket.emit('create_room', { playerName, characterId });
   };

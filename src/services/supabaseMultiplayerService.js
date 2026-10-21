@@ -793,6 +793,9 @@ export function createSupabaseSocket(customClient = null) {
   // PostgreSQL holds, so a client with a stale snapshot cannot roll the room
   // back (for example writing an old room status over a newer one).
   async function currentRoom() {
+    if (cachedRoomState && cachedRoomState.code === currentRoomCode) {
+      return cachedRoomState;
+    }
     if (currentRoomCode) {
       const fresh = await loadRoomFromDb(currentRoomCode);
       if (fresh) return fresh;
@@ -1078,31 +1081,45 @@ export function createSupabaseSocket(customClient = null) {
         localPlayer = player;
         cachedRoomState = initial;
 
-        setupChannel(roomCode, player);
+        let created = false;
+        let attempts = 0;
+        let activeRoomCode = roomCode;
 
-        try {
-          const { error: insertErr } = await supabase.from('rooms').insert({
-            room_id: roomCode,
-            host_id: socketId,
-            status: 'lobby',
-            players: publicState(initial).players,
-            teams: initial.teams,
-            state: {
-              round1: initial.round1,
-              round2: initial.round2,
-              round3: initial.round3,
-              round4: initial.round4
+        while (!created && attempts < 3) {
+          attempts++;
+          try {
+            const { error: insertErr } = await supabase.from('rooms').insert({
+              room_id: activeRoomCode,
+              host_id: socketId,
+              status: 'lobby',
+              players: publicState(initial).players,
+              teams: initial.teams,
+              state: {
+                round1: initial.round1,
+                round2: initial.round2,
+                round3: initial.round3,
+                round4: initial.round4
+              }
+            });
+            if (!insertErr) {
+              created = true;
+            } else if (insertErr.code === '23505') {
+              activeRoomCode = generateRoomCode();
+              initial.code = activeRoomCode;
+            } else {
+              console.error('[SupabaseSocket] Error inserting room into DB:', insertErr);
+              break;
             }
-          });
-          if (insertErr) {
-            console.error('[SupabaseSocket] Error inserting room into DB:', insertErr);
+          } catch (err) {
+            console.error('[SupabaseSocket] Error creating room in DB:', err);
+            break;
           }
-        } catch (err) {
-          console.error('[SupabaseSocket] Error creating room in DB:', err);
         }
 
+        setupChannel(activeRoomCode, player);
+
         trigger('room_created', {
-          roomCode,
+          roomCode: activeRoomCode,
           playerToken,
           player: publicState(initial).players[0],
           room: sanitizeForViewer(initial, socketId)
@@ -1259,7 +1276,7 @@ export function createSupabaseSocket(customClient = null) {
 
       case 'add_demo_player': {
         const cleanCode = normalizeRoomCode(payload.roomCode || currentRoomCode);
-        const room = await loadRoomFromDb(cleanCode);
+        const room = await currentRoom();
         if (!room) return;
         if (room.players.length >= MAX_PLAYERS) return;
 
