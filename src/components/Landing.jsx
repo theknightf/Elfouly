@@ -286,7 +286,8 @@ export default function Landing() {
               {/* Quick Action Buttons inside Card */}
               <div className="grid grid-cols-2 gap-2.5 pt-1">
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={handleCreate}
                   disabled={isCreating}
                   className="menu-btn btn-green h-12 cursor-pointer active:scale-95 transition-transform"
                 >
@@ -433,7 +434,8 @@ export default function Landing() {
               </div>
 
               <button
-                type="submit"
+                type="button"
+                onClick={handleCreate}
                 disabled={isCreating}
                 className="menu-btn btn-green h-12 w-full justify-center gap-2 mt-2 cursor-pointer active:scale-95 transition-transform"
               >
