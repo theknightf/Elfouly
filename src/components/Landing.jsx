@@ -99,7 +99,7 @@ export default function Landing() {
 
     setFormError(null);
     clearActionError();
-    sounds.playTap();
+    sounds?.playTap?.();
     setIsCreating(true);
 
     // Failsafe timeout to prevent blocked UI state
@@ -122,7 +122,7 @@ export default function Landing() {
 
     setFormError(null);
     clearActionError();
-    sounds.playTap();
+    sounds?.playTap?.();
     joinRoom(`QZ-${joinCode}`, cleanName, selectedHero);
   };
 
@@ -161,7 +161,7 @@ export default function Landing() {
 
   const toggleSound = () => {
     setSoundEnabled(prev => !prev);
-    sounds.playTap();
+    sounds?.playTap?.();
   };
 
   return (

@@ -73,12 +73,12 @@ export default function AuctionBiddingView({ isMobile = false }) {
 
   const handleBidIncrement = (increment) => {
     const nextBid = highestBid + increment;
-    sounds.playTap();
+    sounds?.playTap?.();
     r4Bid(nextBid);
   };
 
   const handleFold = () => {
-    sounds.playWrong();
+    sounds?.playWrong?.();
     showToast('انسحاب!', 'قرر الفريق عدم المزايدة أكثر.');
   };
 

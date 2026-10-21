@@ -76,26 +76,26 @@ export default function PasswordDualView({ isMobile = false }) {
 
   const handleFreeze = () => {
     r2TimeFreeze();
-    sounds.playPowerup();
+    sounds?.playPowerup?.();
   };
 
   const handleAwardA = () => {
-    sounds.playCorrect();
+    sounds?.playCorrect?.();
     r2AwardPoint('team_a');
   };
 
   const handleAwardB = () => {
-    sounds.playCorrect();
+    sounds?.playCorrect?.();
     r2AwardPoint('team_b');
   };
 
   const handleFoulA = () => {
-    sounds.playWrong();
+    sounds?.playWrong?.();
     r2Foul('team_a');
   };
 
   const handleFoulB = () => {
-    sounds.playWrong();
+    sounds?.playWrong?.();
     r2Foul('team_b');
   };
 

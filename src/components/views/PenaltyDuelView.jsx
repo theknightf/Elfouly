@@ -54,12 +54,12 @@ export default function PenaltyDuelView({ isMobile = false }) {
       return;
     }
     setSelectedOption(option);
-    sounds.playTap();
+    sounds?.playTap?.();
     r3SubmitAnswer(option);
   };
 
   const handleGoalieBuzz = () => {
-    sounds.playBuzzer();
+    sounds?.playBuzzer?.();
     r3InterceptBuzz();
   };
 

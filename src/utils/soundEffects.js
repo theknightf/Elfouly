@@ -306,6 +306,44 @@ class SoundEngine {
       osc.stop(now + n.t + n.d + 0.05);
     });
   }
+
+  // 12. Button Tap / Click feedback
+  playTap() {
+    if (this.isMuted) return;
+    try {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(650, now);
+      osc.frequency.exponentialRampToValueAtTime(320, now + 0.04);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.05);
+    } catch (e) {
+      // Audio errors must never bubble up
+    }
+  }
+
+  // Wrong / Error buzzer alias
+  playWrong() {
+    this.playBuzzer();
+  }
+
+  // Powerup chime alias
+  playPowerup() {
+    this.playStreakUp(3);
+  }
+
+  // Goal celebration alias
+  playGoal() {
+    this.playGoalRoar();
+  }
 }
 
 export const sounds = new SoundEngine();
