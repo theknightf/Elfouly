@@ -5,7 +5,6 @@ import { Volume2, VolumeX, Wifi, WifiOff, Tv, Smartphone, Copy, Check, Loader2, 
 export default function Header() {
   const {
     roomState,
-    isConnected,
     connectionStatus,
     reconnect,
     isAudioMuted,

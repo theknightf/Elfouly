@@ -35,6 +35,7 @@ export default function Round2Password() {
   const isLocalPreview = !viewerId;
   const isClueGiver = isLocalPreview || viewerId === r2.activeClueGiverA || viewerId === r2.activeClueGiverB;
   const isReferee = isLocalPreview || viewerId === r2.refereePlayerId;
+  const isHostPlayer = isLocalPreview || !!currentPlayer?.isHost;
   const activeTeamKey = r2.activeTurnTeam === 'team_b' ? 'team_b' : 'team_a';
   const activeTeam = activeTeamKey === 'team_a' ? teamA : teamB;
   const activeClueGiver = activeTeamKey === 'team_a' ? clueGiverA : clueGiverB;
@@ -287,16 +288,18 @@ export default function Round2Password() {
         )}
       </div>
 
-      {/* Navigation to Round 3 */}
-      <div className="flex justify-end pt-2">
-        <button
-          onClick={() => changeRound('round3')}
-          className="btn-arcade-purple px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 cursor-pointer shadow-xl hover:brightness-110"
-        >
-          <span>انتقل للجولة 3: "حط في قريبي" (Penalty Shootouts)</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
+      {/* Navigation to Round 3 (host authority only) */}
+      {isHostPlayer && (
+        <div className="flex justify-end pt-2">
+          <button
+            onClick={() => changeRound('round3')}
+            className="btn-arcade-purple px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 cursor-pointer shadow-xl hover:brightness-110"
+          >
+            <span>انتقل للجولة 3: "حط في قريبي" (Penalty Shootouts)</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
     </div>
   );

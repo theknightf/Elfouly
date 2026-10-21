@@ -22,7 +22,7 @@ if (rawAllowedOrigins && rawAllowedOrigins.trim() !== '') {
   corsOrigins = parsed.length === 1 ? parsed[0] : parsed;
 } else {
   if (process.env.NODE_ENV === 'production') {
-    console.error('❌ [CONFIGURATION ERROR] ALLOWED_ORIGINS is required in production. Set it to the exact frontend origin(s), separated by commas.');
+    console.error('❌ [SECURITY] ALLOWED_ORIGINS must be set in production. Refusing to start with wildcard CORS.');
     process.exit(1);
   }
   corsOrigins = '*';
@@ -558,8 +558,7 @@ function stopCountdown(room, reason = null) {
 }
 
 function isValidActionToken(expectedToken, receivedToken) {
-  if (!expectedToken) return true;
-  if (receivedToken === undefined || receivedToken === null) return true;
+  if (!expectedToken) return false;
   return typeof receivedToken === 'string' && receivedToken === expectedToken;
 }
 
@@ -2143,7 +2142,7 @@ io.on('connection', (socket) => {
       socket.emit('error_message', '🚫 انتهت صلاحية موضوع المزاد. انتظر الموضوع الجديد.');
       return;
     }
-    if (!['call_friend', 'rival_hint'].includes(lifelineType)) {
+    if (!['call_friend', 'rival_hint', 'opponent_help'].includes(lifelineType)) {
       socket.emit('error_message', '🚫 وسيلة مساعدة غير معروفة.');
       return;
     }
@@ -2153,6 +2152,11 @@ io.on('connection', (socket) => {
     }
     team = caller.team;
 
+    if (r4.highestBidderTeam !== team) {
+      socket.emit('error_message', '🚫 وسائل المساعدة متاحة لصاحب أعلى مزاد فقط.');
+      return;
+    }
+
     if (!r4.usedLifelines) r4.usedLifelines = { team_a: [], team_b: [] };
     if (!r4.usedLifelines[team]) r4.usedLifelines[team] = [];
 
@@ -2161,8 +2165,13 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (lifelineType === 'rival_hint' && !(r4.currentTopic.validItems || []).length) {
+    const validItems = r4.currentTopic?.validItems || [];
+    if (lifelineType === 'rival_hint' && !validItems.length) {
       socket.emit('error_message', '🚫 لا توجد إجابات معتمدة متاحة لهذا التلميح.');
+      return;
+    }
+    if (lifelineType === 'opponent_help' && !validItems.some(item => !r4.itemsNamed.includes(item))) {
+      socket.emit('error_message', '🚫 لا توجد إجابات متبقية يمكن للخصم المساعدة بها.');
       return;
     }
 
@@ -2176,13 +2185,21 @@ io.on('connection', (socket) => {
         message: `${room.teams[team]?.name || 'الفريق'} استخدم وسيلة اتصل بصديق وحصل على +20 ثانية!`
       });
     } else if (lifelineType === 'rival_hint') {
-      const validItems = r4.currentTopic?.validItems || [];
       const unrevealed = validItems.filter(item => !r4.itemsNamed.includes(item));
       const hintItem = unrevealed.length > 0 ? unrevealed[0] : (validItems[0] || 'إجابة مفتاحية');
       io.to(roomCode).emit('sound_trigger', { sound: 'bid' });
       io.to(roomCode).emit('notification', {
         title: '💡 هينت من الخصم!',
         message: `تلميح الخصم يكشف إجابة مؤكدة: "${hintItem}"`
+      });
+    } else if (lifelineType === 'opponent_help') {
+      if (!r4.itemsNamed) r4.itemsNamed = [];
+      const assistedItem = validItems.find(item => !r4.itemsNamed.includes(item));
+      r4.itemsNamed.push(assistedItem);
+      io.to(roomCode).emit('sound_trigger', { sound: 'correct' });
+      io.to(roomCode).emit('notification', {
+        title: '🤝 استعين بالخصم!',
+        message: `الخصم ساعد بإجابة معتمدة: "${assistedItem}"`
       });
     }
 
@@ -2310,8 +2327,12 @@ io.on('connection', (socket) => {
     const { room, player } = context;
 
     if (typeof text !== 'string') return;
-    const cleanText = text
-      .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    const cleanText = Array.from(text)
+      .map(char => {
+        const code = char.charCodeAt(0);
+        return code < 32 || code === 127 ? ' ' : char;
+      })
+      .join('')
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, MAX_CHAT_LENGTH);

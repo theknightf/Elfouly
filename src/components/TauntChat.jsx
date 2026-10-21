@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useGame } from '../context/GameContext';
-import { MessageSquare, Send, Sparkles, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { MessageSquare, Send, Sparkles, X } from 'lucide-react';
 
 export default function TauntChat() {
   const { roomState, sendTaunt } = useGame();

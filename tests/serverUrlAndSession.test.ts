@@ -300,6 +300,38 @@ async function run() {
     serverProcess.kill('SIGTERM');
   }
 
+  // ---------------------------------------------------------------------------
+  // 5. Production must refuse to start with wildcard CORS
+  // ---------------------------------------------------------------------------
+  console.log('\n🔹 Part 5: Production CORS fail-fast');
+  const productionPort = await getFreePort();
+  const productionProcess = spawn(
+    process.execPath,
+    [serverPath],
+    {
+      cwd: rootDir,
+      env: {
+        ...process.env,
+        PORT: String(productionPort),
+        NODE_ENV: 'production',
+        ALLOWED_ORIGINS: ''
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    }
+  );
+  const productionExitCode = await new Promise<number | null>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      productionProcess.kill('SIGKILL');
+      reject(new Error('Production server did not fail fast without ALLOWED_ORIGINS'));
+    }, 10000);
+    productionProcess.once('exit', (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
+  });
+  assert(productionExitCode === 1, `Expected exit code 1 without ALLOWED_ORIGINS, got ${productionExitCode}`);
+  console.log('   ✅ PASS: Production refuses to start without ALLOWED_ORIGINS');
+
   console.log('\n================================================================================');
   console.log('🏁 ALL SERVER URL, HARDENING & SESSION TESTS PASSED (100% SUCCESS)');
   console.log('================================================================================\n');

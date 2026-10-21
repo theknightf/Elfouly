@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { CHARACTERS } from '../data/characters';
-import { 
-  Smartphone, Zap, Shield, Vault, Flame, Check, X, 
-  Gavel, Radio, RotateCcw, PhoneCall, Lightbulb, CheckSquare, Square,
-  HelpCircle, Eye, EyeOff
+import {
+  Smartphone, Zap, Shield, Vault, Flame, PhoneCall, Lightbulb, CheckSquare, Square, UserPlus
 } from 'lucide-react';
 
 export default function MobileController() {
@@ -13,7 +11,6 @@ export default function MobileController() {
     r1Score,
     r1Break,
     r1Bank,
-    r1PassTurn,
     r2AwardPoint,
     r2SkipCard,
     r2Foul,
@@ -32,7 +29,6 @@ export default function MobileController() {
   } = useGame();
 
   const [simulatedPlayerId, setSimulatedPlayerId] = useState(roomState?.players?.[0]?.id || 'p1');
-  const [showSecretInR1, setShowSecretInR1] = useState(false);
 
   const player = roomState?.players?.find(p => p.id === simulatedPlayerId) || roomState?.players?.[0];
   const char = player?.character || CHARACTERS[0];
@@ -63,6 +59,7 @@ export default function MobileController() {
   const isKickerInR3 = r3.currentKickerId === player?.id;
   const isGoalieInR3 = r3.currentGoalieId === player?.id;
   const isRefereeInR3 = r3.refereePlayerId === player?.id;
+  const canStartR3 = !!player?.isHost || isRefereeInR3;
   const isDuelistSelectionInR3 = r3.phase === 'duelist_selection';
   const kickingTeamKeyInR3 = r3.kickerTeam || 'team_a';
   const isKickingTeamInR3 = player?.team === kickingTeamKeyInR3;
@@ -72,7 +69,8 @@ export default function MobileController() {
   const r4 = roomState?.round4 || {};
   const teamLifelines = r4.usedLifelines?.[player?.team] || [];
   const isHighestBidderTeamInR4 = r4.highestBidderTeam === player?.team;
-  const isOpposingVerifierInR4 = !!r4.highestBidderTeam && !isHighestBidderTeamInR4;
+  const isRefereeInR4 = !!player && r4.refereePlayerId === player.id;
+  const canUseLifelinesInR4 = !!player?.team && r4.highestBidderTeam === player.team;
 
   return (
     <div className="max-w-md mx-auto px-4 py-4 space-y-4 animate-fadeIn">
@@ -388,7 +386,12 @@ export default function MobileController() {
 
                 <button
                   onClick={r3StartShootout}
-                  className="w-full btn-arcade-green py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+                  disabled={!canStartR3}
+                  className={`w-full py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg ${
+                    canStartR3
+                      ? 'btn-arcade-green cursor-pointer'
+                      : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                  }`}
                 >
                   <span>بدء ركلة الجزاء ⚔️</span>
                 </button>
@@ -499,12 +502,12 @@ export default function MobileController() {
             {/* Lifelines Bar for Auction */}
             <div className="bg-arena-card/80 p-2.5 rounded-xl border border-white/10 space-y-1.5">
               <div className="text-[10px] font-bold text-gray-400">وسائل المساعدة (Lifelines):</div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   onClick={() => r4UseLifeline('call_friend')}
-                  disabled={teamLifelines.includes('call_friend')}
+                  disabled={!canUseLifelinesInR4 || teamLifelines.includes('call_friend')}
                   className={`py-2 px-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 ${
-                    teamLifelines.includes('call_friend')
+                    !canUseLifelinesInR4 || teamLifelines.includes('call_friend')
                       ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
                       : 'btn-arcade-dark text-arena-yellow border border-arena-yellow/30 hover:border-arena-yellow'
                   }`}
@@ -515,9 +518,9 @@ export default function MobileController() {
 
                 <button
                   onClick={() => r4UseLifeline('rival_hint')}
-                  disabled={teamLifelines.includes('rival_hint')}
+                  disabled={!canUseLifelinesInR4 || teamLifelines.includes('rival_hint')}
                   className={`py-2 px-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 ${
-                    teamLifelines.includes('rival_hint')
+                    !canUseLifelinesInR4 || teamLifelines.includes('rival_hint')
                       ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
                       : 'btn-arcade-dark text-arena-cyan border border-arena-cyan/30 hover:border-arena-cyan'
                   }`}
@@ -525,17 +528,32 @@ export default function MobileController() {
                   <Lightbulb className="w-3.5 h-3.5" />
                   <span>هينت من الخصم 💡</span>
                 </button>
+
+                <button
+                  onClick={() => r4UseLifeline('opponent_help')}
+                  disabled={!canUseLifelinesInR4 || teamLifelines.includes('opponent_help')}
+                  className={`py-2 px-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 ${
+                    !canUseLifelinesInR4 || teamLifelines.includes('opponent_help')
+                      ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                      : 'btn-arcade-dark text-arena-green border border-arena-green/30 hover:border-arena-green'
+                  }`}
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>استعين بالخصم</span>
+                </button>
               </div>
             </div>
 
-            {/* Anti-Cheat Zero Self-Grading Check */}
-            {isHighestBidderTeamInR4 ? (
+            {/* Only the designated referee can verify or resolve the auction. */}
+            {!isRefereeInR4 ? (
               <div className="bg-arena-card/90 p-4 rounded-xl border border-arena-yellow/40 text-center space-y-2">
                 <div className="text-xs font-black text-arena-yellow flex items-center justify-center gap-1.5">
-                  <span>قفل منع التقييم الذاتي 🚫</span>
+                  <span>{isHighestBidderTeamInR4 ? 'قفل منع التقييم الذاتي 🚫' : 'لوحة التحقق عند الحكم 🛡️'}</span>
                 </div>
                 <p className="text-[11px] text-gray-300 leading-relaxed">
-                  أنت وفريقك أصحاب المزاد الأعلى ({r4.highestBid || 0} إجابات)! اذكر إجاباتك بصوت واضح، وحكم الفريق الخصم هو المسؤول عن تدقيق العناصر واعتماد النتيجة.
+                  {isHighestBidderTeamInR4
+                    ? `أنت وفريقك أصحاب المزاد الأعلى (${r4.highestBid || 0} إجابات)! اذكر إجاباتك بصوت واضح، وحكم الفريق الخصم هو المسؤول عن تدقيق العناصر واعتماد النتيجة.`
+                    : 'انتظر حكم الفريق الخصم لاعتماد العناصر المذكورة، ثم يعتمد نتيجة المزاد من جهازه.'}
                 </p>
                 <div className="text-[10px] text-arena-cyan font-bold bg-arena-darker/60 p-2 rounded-lg">
                   العناصر التي تم التحقق منها حتى الآن: {r4.itemsNamed?.length || 0} / {r4.highestBid || 0}

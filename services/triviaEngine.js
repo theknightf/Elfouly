@@ -509,49 +509,13 @@ export class TriviaEngine {
     return chosenQuestion;
   }
 
-  generateBatchSync(category, mode, count = 50) {
-    const results = [];
-    const isFootball = isFootballQuestion({ category });
-
-    for (let i = 0; i < count; i++) {
-      const qText = `سؤال جديد وحصري في ${category} #${Date.now()}_${i}`;
-      const hash = crypto.createHash('md5').update(`${mode}_${category}_${qText}`).digest('hex');
-      const answer = `إجابة صحيحة لسؤال ${category} #${i + 1}`;
-      results.push({
-        id: crypto.randomUUID(),
-        mode,
-        category,
-        question_text: qText,
-        correct_answer: answer,
-        options: mode === 'hat_fi_qoraybi' ? [answer, `بديل أول #${i + 1}`, `بديل ثاني #${i + 1}`, `بديل ثالث #${i + 1}`] : null,
-        forbidden_words: mode === 'edini_fi_seri' ? [`محظور أول #${i + 1}`, `محظور ثاني #${i + 1}`, `محظور ثالث #${i + 1}`, `محظور رابع #${i + 1}`] : null,
-        acceptable_answers: mode === 'meen_yezawwed' ? [`إجابة مقبولة أولى #${i + 1}`, `إجابة مقبولة ثانية #${i + 1}`, `إجابة مقبولة ثالثة #${i + 1}`, `إجابة مقبولة رابعة #${i + 1}`, `إجابة مقبولة خامسة #${i + 1}`] : null,
-        content_hash: hash,
-        is_post_2010_football: isFootball,
-        created_at: new Date().toISOString()
-      });
-    }
-    return results;
+  generateBatchSync(category, mode, _count = 50) {
+    this.reportExhaustion(mode, category);
+    return [];
   }
 
   async triggerAsyncReplenish(category, mode) {
-    const key = `${mode}_${category}`;
-    if (this.backgroundReplenishing.has(key)) return;
-
-    this.backgroundReplenishing.add(key);
-    console.log(`[TriviaEngine Fallback] Threshold reached for (${key}). Triggering background replenish...`);
-
-    setTimeout(async () => {
-      try {
-        const freshBatch = await this.generateBatch(category, mode, 50);
-        this.upsertQuestions(freshBatch);
-        console.log(`[TriviaEngine Fallback] Successfully replenished ${freshBatch.length} fresh questions for ${key}.`);
-      } catch (err) {
-        console.error(`[TriviaEngine Fallback] Error replenishing ${key}:`, err);
-      } finally {
-        this.backgroundReplenishing.delete(key);
-      }
-    }, 100);
+    this.reportExhaustion(mode, category);
   }
 
   /**

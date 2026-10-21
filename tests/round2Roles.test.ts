@@ -308,7 +308,9 @@ async function run() {
             sockets,
             room => room.status === 'round2' && room.round2.currentWordIndex === cardIndex + 1
           );
-          refereeSocket.emit('r2_award_point', { roomCode, team: activeTeam });
+          const actionToken = currentStates[0].round2.actionToken;
+          assert(actionToken, `Card ${cardIndex + 1}: server did not issue an action token`);
+          refereeSocket.emit('r2_award_point', { roomCode, team: activeTeam, actionToken });
           currentStates = await nextStatesPromise;
         }
       }
@@ -322,50 +324,63 @@ async function run() {
       const clueGiverA = initial.round2.activeClueGiverA;
       const clueGiverB = initial.round2.activeClueGiverB;
       const activeTeam = initial.round2.activeTurnTeam;
+      const actionToken = initial.round2.actionToken;
       const socketA = sockets.find(socket => socket.id === clueGiverA);
       const socketB = sockets.find(socket => socket.id === clueGiverB);
       const guesser = sockets.find(socket => socket.id !== clueGiverA && socket.id !== clueGiverB);
       assert(socketA && socketB && guesser, 'Could not resolve the Round 2 role sockets');
+      assert(actionToken, 'Server did not issue a Round 2 action token');
 
       await expectErrorMessage(socketA, () => {
-        socketA.emit('r2_award_point', { roomCode, team: activeTeam });
+        socketA.emit('r2_award_point', { roomCode, team: activeTeam, actionToken });
       }, /فريقك|ممنوع/);
 
       await expectErrorMessage(socketA, () => {
-        socketA.emit('r2_foul', { roomCode, team: activeTeam });
+        socketA.emit('r2_foul', { roomCode, team: activeTeam, actionToken });
       }, /فريقك|ممنوع/);
 
       const ownTeamB = activeTeam === 'team_a' ? 'team_b' : 'team_a';
       await expectErrorMessage(socketB, () => {
-        socketB.emit('r2_award_point', { roomCode, team: ownTeamB });
+        socketB.emit('r2_award_point', { roomCode, team: ownTeamB, actionToken });
       }, /فريقك|ممنوع/);
 
       await expectErrorMessage(socketB, () => {
-        socketB.emit('r2_foul', { roomCode, team: ownTeamB });
+        socketB.emit('r2_foul', { roomCode, team: ownTeamB, actionToken });
       }, /فريقك|ممنوع/);
 
       await expectErrorMessage(guesser, () => {
-        guesser.emit('r2_award_point', { roomCode, team: activeTeam });
+        guesser.emit('r2_award_point', { roomCode, team: activeTeam, actionToken });
       }, /لوحة التحكيم|مقفولة|الحكم/);
+
+      await expectErrorMessage(socketB, () => {
+        socketB.emit('r2_award_point', { roomCode, team: activeTeam });
+      }, /صلاحية/);
 
       const afterFoulPromise = waitForRoomState(
         sockets[0],
         room => room.status === 'round2' && room.round2.activeTurnTeam === ownTeamB
       );
-      socketB.emit('r2_foul', { roomCode, team: activeTeam });
+      socketB.emit('r2_foul', { roomCode, team: activeTeam, actionToken });
       const afterFoul = await afterFoulPromise;
 
       assert(afterFoul.teams[activeTeam].score === 0, 'Foul should not push the score below zero');
       assert(afterFoul.round2.fouls[activeTeam] === 1, 'The opposing clue-giver foul was not recorded');
       assert(afterFoul.round2.refereePlayerId === clueGiverA, 'The judge seat did not pass to the other clue-giver');
 
+      const rotatedToken = afterFoul.round2.actionToken;
+      assert(rotatedToken && rotatedToken !== actionToken, 'The foul did not rotate the action token');
+
       const awardPromise = waitForRoomState(
         sockets[0],
         room => room.status === 'round2' && room.round2.currentWordIndex === 1
       );
-      socketA.emit('r2_award_point', { roomCode, team: ownTeamB });
+      socketA.emit('r2_award_point', { roomCode, team: ownTeamB, actionToken: rotatedToken });
       const afterAward = await awardPromise;
       assert(afterAward.teams[ownTeamB].score === 500, 'The opposing clue-giver could not award the active team');
+
+      await expectErrorMessage(socketA, () => {
+        socketA.emit('r2_award_point', { roomCode, team: ownTeamB, actionToken: rotatedToken });
+      }, /صلاحية|مكتملة|الحكم/);
     });
 
     await test('Only the current referee can skip the card or freeze the timer', async () => {
@@ -376,7 +391,9 @@ async function run() {
       const refereeId = initial.round2.refereePlayerId;
       const refereeSocket = sockets.find(socket => socket.id === refereeId);
       const outsider = sockets.find(socket => socket.id !== refereeId);
+      const actionToken = initial.round2.actionToken;
       assert(refereeSocket && outsider, 'Could not resolve the referee socket');
+      assert(actionToken, 'Server did not issue a Round 2 action token');
 
       await expectErrorMessage(outsider, () => {
         outsider.emit('r2_time_freeze', { roomCode });
@@ -398,7 +415,7 @@ async function run() {
         sockets[0],
         room => room.status === 'round2' && room.round2.currentWordIndex === 1
       );
-      refereeSocket.emit('r2_skip_card', { roomCode });
+      refereeSocket.emit('r2_skip_card', { roomCode, actionToken });
       const skipped = await skippedPromise;
       assert(skipped.round2.currentWordIndex === 1, 'The referee could not skip the card');
       assert(skipped.round2.activeClueGiverA !== initial.round2.activeClueGiverA, 'Team A clue-giver did not rotate after skip');

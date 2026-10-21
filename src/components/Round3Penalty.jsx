@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
-import { Shield, Flame, Trophy, ArrowRight, Eye, EyeOff, Radio, CheckCircle, XCircle } from 'lucide-react';
+import { Shield, Flame, ArrowRight, Eye, EyeOff, Radio, CheckCircle, XCircle } from 'lucide-react';
 
 export default function Round3Penalty() {
   const {
@@ -55,6 +55,8 @@ export default function Round3Penalty() {
   const isKicker = currentPlayer?.id === r3.currentKickerId;
   const isGoalie = currentPlayer?.id === r3.currentGoalieId;
   const isReferee = currentPlayer?.id === r3.refereePlayerId;
+  const canStartShootout = !!currentPlayer?.isHost || isReferee;
+  const isHostPlayer = !!currentPlayer?.isHost;
 
   useEffect(() => {
     setSelectedOption(null);
@@ -319,7 +321,12 @@ export default function Round3Penalty() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
             <button
               onClick={r3StartShootout}
-              className="btn-arcade-green py-4 px-8 rounded-2xl font-black text-base flex items-center gap-2 shadow-2xl hover:brightness-110 cursor-pointer w-full sm:w-auto justify-center"
+              disabled={!canStartShootout}
+              className={`py-4 px-8 rounded-2xl font-black text-base flex items-center gap-2 shadow-2xl w-full sm:w-auto justify-center ${
+                canStartShootout
+                  ? 'btn-arcade-green hover:brightness-110 cursor-pointer'
+                  : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+              }`}
             >
               <span>تأكيد المبارزين والانطلاق للتسديد 1v1! ⚽</span>
               <ArrowRight className="w-5 h-5" />
@@ -337,13 +344,6 @@ export default function Round3Penalty() {
                 تخصص التسديد: {currentCategory?.name || currentQ?.kickerHint}
               </span>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => r3SelectDuelists(null, null)}
-                  className="text-[11px] text-gray-400 hover:text-white underline"
-                  title="تغيير المبارزين لهذه الركلة"
-                >
-                  تغيير المبارزين 🔄
-                </button>
                 <span className="text-xs font-mono font-bold text-gray-400">
                   الضربة رقم {turnIndex + 1} من 10
                 </span>
@@ -495,16 +495,18 @@ export default function Round3Penalty() {
         </div>
       )}
 
-      {/* Navigation to Round 4 */}
-      <div className="flex justify-end pt-2">
-        <button
-          onClick={() => changeRound('round4')}
-          className="btn-arcade-purple px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 cursor-pointer shadow-xl hover:brightness-110"
-        >
-          <span>انتقل للجولة الفاصلة: "مين يزوّد؟" (Blind Auction)</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
+      {/* Navigation to Round 4 (host authority only) */}
+      {isHostPlayer && (
+        <div className="flex justify-end pt-2">
+          <button
+            onClick={() => changeRound('round4')}
+            className="btn-arcade-purple px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 cursor-pointer shadow-xl hover:brightness-110"
+          >
+            <span>انتقل للجولة الفاصلة: "مين يزوّد؟" (Blind Auction)</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
     </div>
   );

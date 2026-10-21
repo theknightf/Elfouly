@@ -27,6 +27,9 @@ export default function BonusAuction() {
   const [timeLeft, setTimeLeft] = useState(r4.timer || 60);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const usedLifelines = r4.usedLifelines?.[currentPlayer?.team] || [];
+  const isR4Referee = !!currentPlayer && r4.refereePlayerId === currentPlayer.id;
+  const canUseLifelines = !!currentPlayer?.team && r4.highestBidderTeam === currentPlayer.team;
+  const isHostPlayer = !!currentPlayer?.isHost;
 
   // Countdown timer
   useEffect(() => {
@@ -47,6 +50,11 @@ export default function BonusAuction() {
     }
     return () => clearInterval(interval);
   }, [isTimerRunning, timeLeft]);
+
+  useEffect(() => {
+    setTimeLeft(r4.timer || 60);
+    setIsTimerRunning(false);
+  }, [r4.topicId, r4.timer]);
 
   const checkedItems = r4.itemsNamed || [];
   const toggleItemCheck = (item) => {
@@ -184,9 +192,9 @@ export default function BonusAuction() {
               {/* Call a friend */}
               <button
                 onClick={() => handleUseLifeline('call_friend')}
-                disabled={usedLifelines.includes('call_friend')}
+                disabled={!canUseLifelines || usedLifelines.includes('call_friend')}
                 className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                  usedLifelines.includes('call_friend')
+                  !canUseLifelines || usedLifelines.includes('call_friend')
                     ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed'
                     : 'bg-arena-darker hover:bg-arena-cyan/20 border-arena-cyan text-arena-cyan'
                 }`}
@@ -198,9 +206,9 @@ export default function BonusAuction() {
               {/* Opponent hint */}
               <button
                 onClick={() => handleUseLifeline('rival_hint')}
-                disabled={usedLifelines.includes('rival_hint')}
+                disabled={!canUseLifelines || usedLifelines.includes('rival_hint')}
                 className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                  usedLifelines.includes('rival_hint')
+                  !canUseLifelines || usedLifelines.includes('rival_hint')
                     ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed'
                     : 'bg-arena-darker hover:bg-arena-yellow/20 border-arena-yellow text-arena-yellow'
                 }`}
@@ -212,9 +220,9 @@ export default function BonusAuction() {
               {/* Opponent help */}
               <button
                 onClick={() => handleUseLifeline('opponent_help')}
-                disabled={usedLifelines.includes('opponent_help')}
+                disabled={!canUseLifelines || usedLifelines.includes('opponent_help')}
                 className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                  usedLifelines.includes('opponent_help')
+                  !canUseLifelines || usedLifelines.includes('opponent_help')
                     ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed'
                     : 'bg-arena-darker hover:bg-arena-green/20 border-arena-green text-arena-green'
                 }`}
@@ -240,7 +248,12 @@ export default function BonusAuction() {
 
             <button
               onClick={() => r4ResolveBid(false)}
-              className="btn-arcade-red py-3.5 px-6 rounded-2xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer hover:brightness-110"
+              disabled={!isR4Referee}
+              className={`py-3.5 px-6 rounded-2xl font-black text-sm flex items-center justify-center gap-2 ${
+                isR4Referee
+                  ? 'btn-arcade-red cursor-pointer hover:brightness-110'
+                  : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+              }`}
             >
               <X className="w-5 h-5" />
               <span>انسحب من المزاد 🏳️</span>
@@ -262,10 +275,14 @@ export default function BonusAuction() {
             </div>
           </div>
 
-          {currentPlayer && currentPlayer.team === highestBidderTeamKey && !currentPlayer.isHost ? (
+          {!isR4Referee ? (
             <div className="p-6 bg-arena-darker/90 rounded-2xl border border-arena-yellow/30 text-center space-y-3">
-              <span className="text-3xl">🗣️</span>
-              <div className="text-sm font-black text-arena-yellow">أنت في وضع التسميع الشفوي!</div>
+              <span className="text-3xl">{currentPlayer?.team === highestBidderTeamKey ? '🗣️' : '🛡️'}</span>
+              <div className="text-sm font-black text-arena-yellow">
+                {currentPlayer?.team === highestBidderTeamKey
+                  ? 'أنت في وضع التسميع الشفوي!'
+                  : 'لوحة التحقق عند الحكم المعتمد'}
+              </div>
               <p className="text-xs text-gray-300 leading-relaxed">
                 سرد الإجابات يتم بصوت واضح في الساحة.. المحكم الخصم (<span className="text-arena-cyan font-bold">{opposingTeam.name}</span>) هو المسؤول عن مطابقة العناصر مع القائمة المعتمدة وإدخال النقاط منعاً للتلاعب (Cross-Team Verification).
               </p>
@@ -320,17 +337,19 @@ export default function BonusAuction() {
 
       </div>
 
-      {/* Navigation to Grand Finale */}
-      <div className="flex justify-end pt-2">
-        <button
-          onClick={() => changeRound('game_over')}
-          className="btn-arcade-cyan px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 cursor-pointer shadow-xl hover:brightness-110"
-        >
-          <Trophy className="w-4 h-4" />
-          <span>تتويج بطل الساحة وإعلان النتائج النهائية!</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
+      {/* Navigation to Grand Finale (host authority only) */}
+      {isHostPlayer && (
+        <div className="flex justify-end pt-2">
+          <button
+            onClick={() => changeRound('game_over')}
+            className="btn-arcade-cyan px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 cursor-pointer shadow-xl hover:brightness-110"
+          >
+            <Trophy className="w-4 h-4" />
+            <span>تتويج بطل الساحة وإعلان النتائج النهائية!</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
     </div>
   );

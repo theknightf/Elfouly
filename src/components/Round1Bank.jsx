@@ -33,6 +33,14 @@ export default function Round1Bank() {
   const answeringPlayer = roomState?.players?.find(p => p.id === r1.answeringPlayerId) || roomState?.players?.[0];
   const readerPlayer = roomState?.players?.find(p => p.id === r1.readerPlayerId) || roomState?.players?.[1];
 
+  // The server is the only authority: grading, banking and turn changes are
+  // restricted to the assigned referee, the answering team and the host.
+  const viewerId = roomState?.viewerId || currentPlayer?.id;
+  const isLocalPreview = !viewerId;
+  const isR1Referee = isLocalPreview || viewerId === r1.refereePlayerId;
+  const isActiveTeamMember = isLocalPreview || currentPlayer?.team === activeTeamKey;
+  const isHostPlayer = isLocalPreview || !!currentPlayer?.isHost;
+
   const currentStreak = r1.streak || 0;
   const pendingPoints = r1.pendingPoints || 0;
 
@@ -99,15 +107,17 @@ export default function Round1Bank() {
             </div>
           </div>
 
-          {/* Switch Turn Button */}
-          <button
-            onClick={r1PassTurn}
-            className="btn-arcade-dark px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5"
-            title="تبديل الدور للفريق الآخر"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>بدّل الدور</span>
-          </button>
+          {/* Switch Turn Button (host authority only) */}
+          {isHostPlayer && (
+            <button
+              onClick={r1PassTurn}
+              className="btn-arcade-dark px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5"
+              title="تبديل الدور للفريق الآخر"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>بدّل الدور</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -239,16 +249,24 @@ export default function Round1Bank() {
             {/* Answer Display Section */}
             <div className="mt-6 pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 bg-arena-darker/60 p-4 rounded-2xl">
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowAnswer(!showAnswer)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-arena-darker border border-white/10 hover:border-arena-cyan text-xs font-bold text-gray-300 transition-all cursor-pointer"
-                >
-                  {showAnswer ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5 text-arena-yellow" />}
-                  <span>{showAnswer ? 'إخفاء الإجابة' : 'كشف الإجابة (للحكم)'}</span>
-                </button>
-                {showAnswer && (
-                  <span className="text-sm font-black text-arena-green bg-emerald-950/80 px-3 py-1 rounded-lg border border-arena-green/50">
-                    الإجابة: {currentQ.answer}
+                {isR1Referee ? (
+                  <>
+                    <button
+                      onClick={() => setShowAnswer(!showAnswer)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-arena-darker border border-white/10 hover:border-arena-cyan text-xs font-bold text-gray-300 transition-all cursor-pointer"
+                    >
+                      {showAnswer ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5 text-arena-yellow" />}
+                      <span>{showAnswer ? 'إخفاء الإجابة' : 'كشف الإجابة (للحكم)'}</span>
+                    </button>
+                    {showAnswer && (
+                      <span className="text-sm font-black text-arena-green bg-emerald-950/80 px-3 py-1 rounded-lg border border-arena-green/50">
+                        الإجابة: {currentQ.answer}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-[11px] text-gray-500 font-bold">
+                    🔒 الإجابة مخفية إلا عن الحكم المكلّف
                   </span>
                 )}
               </div>
@@ -274,9 +292,10 @@ export default function Round1Bank() {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={r1Bank}
-                  disabled={pendingPoints === 0}
+                  disabled={pendingPoints === 0 || !isActiveTeamMember}
+                  title={isActiveTeamMember ? 'تأمين النقاط المعلقة' : 'الأمان في الخزنة متاح للفريق المجيب فقط'}
                   className={`btn-arcade-yellow py-3.5 px-4 rounded-2xl text-sm font-black flex flex-col items-center justify-center gap-1 ${
-                    pendingPoints === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:brightness-110'
+                    pendingPoints === 0 || !isActiveTeamMember ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:brightness-110'
                   }`}
                 >
                   <Vault className="w-5 h-5 fill-current" />
@@ -305,15 +324,7 @@ export default function Round1Bank() {
                 <span className="text-[10px] text-arena-yellow font-mono">Zero Self-Grading 🛡️</span>
               </div>
 
-              {currentPlayer && currentPlayer.team === activeTeamKey && !currentPlayer.isHost ? (
-                <div className="p-4 bg-arena-darker/80 rounded-xl text-center space-y-1.5 border border-white/10">
-                  <span className="text-2xl">🚫</span>
-                  <div className="text-xs font-black text-arena-red">قفل منع التقييم الذاتي (Anti-Cheat)</div>
-                  <p className="text-[11px] text-gray-400">
-                    أنت في الفريق المجيب! اعتماد الإجابة وصعود السلّم محصور بجهاز الحكم الخصم ({readerPlayer?.name || 'الحكم'}) فقط.
-                  </p>
-                </div>
-              ) : (
+              {isR1Referee ? (
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={handleScoreClick}
@@ -333,21 +344,33 @@ export default function Round1Bank() {
                     <span className="text-[10px] font-mono">اكسر الستريك</span>
                   </button>
                 </div>
+              ) : (
+                <div className="p-4 bg-arena-darker/80 rounded-xl text-center space-y-1.5 border border-white/10">
+                  <span className="text-2xl">🚫</span>
+                  <div className="text-xs font-black text-arena-red">قفل منع التقييم الذاتي (Anti-Cheat)</div>
+                  <p className="text-[11px] text-gray-400">
+                    {currentPlayer?.team === activeTeamKey
+                      ? `أنت في الفريق المجيب! اعتماد الإجابة وصعود السلّم محصور بجهاز الحكم الخصم (${readerPlayer?.name || 'الحكم'}) فقط.`
+                      : `لوحة التحكيم محصورة بجهاز الحكم المكلّف (${readerPlayer?.name || 'الحكم'}) — انتظر قراره.`}
+                  </p>
+                </div>
               )}
             </div>
 
           </div>
 
-          {/* Navigation to Round 2 */}
-          <div className="flex justify-end pt-2">
-            <button
-              onClick={() => changeRound('round2')}
-              className="btn-arcade-purple px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 cursor-pointer shadow-xl hover:brightness-110"
-            >
-              <span>انتقل للجولة 2: "اديني في سري" (Password)</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
+          {/* Navigation to Round 2 (host authority only) */}
+          {isHostPlayer && (
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => changeRound('round2')}
+                className="btn-arcade-purple px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 cursor-pointer shadow-xl hover:brightness-110"
+              >
+                <span>انتقل للجولة 2: "اديني في سري" (Password)</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
         </div>
 

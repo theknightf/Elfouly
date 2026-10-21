@@ -4,7 +4,7 @@
  * Verifies:
  * 1. Post-2010 Football Strict Guardrail (100% compliance, zero pre-2010 references).
  * 2. Session Deduplication (zero duplicate questions within a match session).
- * 3. Dynamic Fallback ("القلاية" Infinite Bank): triggers background replenish on low inventory without blocking.
+ * 3. Exhaustion Guard: low inventory reports exhaustion and never fabricates synthetic questions.
  * 4. Character Attribute Targeting accuracy.
  */
 
@@ -169,24 +169,21 @@ async function main() {
     (triviaEngine as any).inMemoryBank = snapshot.memory;
   };
 
-  // Test 4: Dynamic Fallback ("القلاية" Low-Inventory Async Replenish)
-  await runTest('Dynamic Fallback ("القلاية" Infinite Bank Replenishment)', async () => {
+  // Test 4: Exhaustion must report, not fabricate.
+  await runTest('Content Exhaustion Never Fabricates Synthetic Questions', async () => {
     const snapshot = snapshotBank();
     try {
-      const roomId = 'replenish_test_room';
-      triviaEngine.resetRoomSession(roomId);
-
       const initialCount = (triviaEngine as any).inMemoryBank.length;
+      const generated = (triviaEngine as any).generateBatchSync('capitals_and_flags', 'one_two_bank', 5);
+      assert(Array.isArray(generated) && generated.length === 0, 'generateBatchSync must not fabricate questions');
 
-      // Trigger replenish directly or through low inventory query
       await (triviaEngine as any).triggerAsyncReplenish('capitals_and_flags', 'one_two_bank');
-
-      // Wait for the background replenishment task to finish, including persistence.
-      await new Promise(resolve => setTimeout(resolve, 450));
+      await new Promise(resolve => setTimeout(resolve, 250));
 
       const finalCount = (triviaEngine as any).inMemoryBank.length;
-      assert(finalCount > initialCount, `Bank should have expanded. Initial: ${initialCount}, Final: ${finalCount}`);
-      console.log(`     ↳ Bank expanded from ${initialCount} to ${finalCount} items asynchronously in background.`);
+      assert(finalCount === initialCount, `Bank changed after exhaustion. Initial: ${initialCount}, Final: ${finalCount}`);
+      assert(fs.readFileSync(bankPath, 'utf-8') === snapshot.raw, 'Exhaustion must not persist synthetic questions');
+      console.log(`     ↳ Bank stayed at ${initialCount} real questions; exhaustion reported without synthetic fallback.`);
     } finally {
       restoreBank(snapshot);
     }

@@ -13,6 +13,7 @@ import {
 } from '../utils/localQuestionEngine';
 import { sounds } from '../utils/soundEffects';
 import { getServerUrl } from '../utils/serverUrl';
+import { createSupabaseSocket } from '../services/supabaseMultiplayerService';
 
 export const CONNECTION_STATUS_MESSAGES = {
   connecting: 'بنتصل بالسيرفر…',
@@ -305,74 +306,11 @@ export function GameProvider({ children }) {
     let pingTimer = null;
     let socketInstance = null;
 
+    const isExplicitSocketIo = import.meta.env.VITE_MULTIPLAYER_PROVIDER === 'socketio';
     const serverUrl = getServerUrl();
-    if (!serverUrl) {
-      setConnectionStatus('misconfigured');
-      setIsConnected(false);
-      return;
-    }
+    const useSupabase = !isExplicitSocketIo;
 
-    setConnectionStatus('connecting');
-    setIsConnected(false);
-
-    // If first connection takes > 4 seconds, show "السيرفر بيصحى، استنى لحد دقيقة"
-    wakingTimer = setTimeout(() => {
-      if (!isCancelled) {
-        setConnectionStatus((curr) => (curr === 'connecting' ? 'waking_up' : curr));
-      }
-    }, 4000);
-
-    // After 60 seconds of retries, switch to 'failed' if not connected
-    failureTimer = setTimeout(() => {
-      if (!isCancelled) {
-        setConnectionStatus((curr) => (curr !== 'connected' && curr !== 'misconfigured' ? 'failed' : curr));
-      }
-    }, 60000);
-
-    const initConnection = async () => {
-      // Wake-up: call /api/health to wake sleeping host, retrying up to 20 times, 5 seconds apart
-      let healthy = false;
-      const maxRetries = 20;
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        if (isCancelled) return;
-        try {
-          const controller = new AbortController();
-          const fetchTimer = setTimeout(() => controller.abort(), 4500);
-          const res = await fetch(`${serverUrl}/api/health`, { signal: controller.signal });
-          clearTimeout(fetchTimer);
-          if (res.ok) {
-            healthy = true;
-            break;
-          }
-        } catch (e) {
-          // Host is sleeping or still starting
-        }
-
-        if (attempt < maxRetries - 1 && !isCancelled) {
-          setConnectionStatus('waking_up');
-          await new Promise((r) => setTimeout(r, 5000));
-        }
-      }
-
-      // In production, if health check fails after all 10 retries, mark failed
-      if (!healthy && !isCancelled && import.meta.env.PROD) {
-        clearTimeout(wakingTimer);
-        clearTimeout(failureTimer);
-        setConnectionStatus('failed');
-        return;
-      }
-
-      if (isCancelled) return;
-
-      const s = io(serverUrl, {
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelayMax: 5000,
-        timeout: 10000
-      });
-      socketInstance = s;
-
+    const attachListeners = (s) => {
       const tryRejoin = () => {
         const saved = readSavedSession();
         if (saved) {
@@ -381,7 +319,6 @@ export function GameProvider({ children }) {
       };
 
       s.on('connect', () => {
-        console.log('Connected to Quiz Arena server!');
         clearTimeout(wakingTimer);
         clearTimeout(failureTimer);
         setConnectionStatus('connected');
@@ -405,10 +342,9 @@ export function GameProvider({ children }) {
       });
 
       s.on('disconnect', (reason) => {
-        console.log('Disconnected from Quiz Arena server:', reason);
         clearInterval(pingTimer);
         setIsConnected(false);
-        if (reason !== 'io client disconnect') {
+        if (reason !== 'io client disconnect' && reason !== 'client_closed') {
           setConnectionStatus('connecting');
           clearTimeout(wakingTimer);
           wakingTimer = setTimeout(() => {
@@ -533,7 +469,91 @@ export function GameProvider({ children }) {
           messages: [...(prev.messages || []), msg]
         }));
       });
+    };
 
+    if (useSupabase) {
+      setConnectionStatus('connecting');
+      setIsConnected(false);
+
+      const s = createSupabaseSocket();
+      socketInstance = s;
+      attachListeners(s);
+      setSocket(s);
+
+      return () => {
+        isCancelled = true;
+        clearInterval(pingTimer);
+        s.disconnect();
+      };
+    }
+
+    if (!serverUrl) {
+      setConnectionStatus('misconfigured');
+      setIsConnected(false);
+      return;
+    }
+
+    setConnectionStatus('connecting');
+    setIsConnected(false);
+
+    // If first connection takes > 4 seconds, show "السيرفر بيصحى، استنى لحد دقيقة"
+    wakingTimer = setTimeout(() => {
+      if (!isCancelled) {
+        setConnectionStatus((curr) => (curr === 'connecting' ? 'waking_up' : curr));
+      }
+    }, 4000);
+
+    // After 60 seconds of retries, switch to 'failed' if not connected
+    failureTimer = setTimeout(() => {
+      if (!isCancelled) {
+        setConnectionStatus((curr) => (curr !== 'connected' && curr !== 'misconfigured' ? 'failed' : curr));
+      }
+    }, 60000);
+
+    const initConnection = async () => {
+      // Wake-up: call /api/health to wake sleeping host, retrying up to 20 times, 5 seconds apart
+      let healthy = false;
+      const maxRetries = 20;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        if (isCancelled) return;
+        try {
+          const controller = new AbortController();
+          const fetchTimer = setTimeout(() => controller.abort(), 4500);
+          const res = await fetch(`${serverUrl}/api/health`, { signal: controller.signal });
+          clearTimeout(fetchTimer);
+          if (res.ok) {
+            healthy = true;
+            break;
+          }
+        } catch (e) {
+          // Host is sleeping or still starting
+        }
+
+        if (attempt < maxRetries - 1 && !isCancelled) {
+          setConnectionStatus('waking_up');
+          await new Promise((r) => setTimeout(r, 5000));
+        }
+      }
+
+      // In production, if health check fails after all 10 retries, mark failed
+      if (!healthy && !isCancelled && import.meta.env.PROD) {
+        clearTimeout(wakingTimer);
+        clearTimeout(failureTimer);
+        setConnectionStatus('failed');
+        return;
+      }
+
+      if (isCancelled) return;
+
+      const s = io(serverUrl, {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelayMax: 5000,
+        timeout: 10000
+      });
+      socketInstance = s;
+      attachListeners(s);
       setSocket(s);
     };
 
@@ -1123,21 +1143,29 @@ export function GameProvider({ children }) {
         const r4 = { ...prev.round4 };
         const callerTeam = currentPlayer?.team;
         if (!callerTeam || !r4.currentTopic || !['bidding', 'execution'].includes(r4.phase)) return prev;
-        if (!['call_friend', 'rival_hint'].includes(lifelineType)) return prev;
+        if (r4.highestBidderTeam !== callerTeam) return prev;
+        if (!['call_friend', 'rival_hint', 'opponent_help'].includes(lifelineType)) return prev;
         if (!r4.usedLifelines) r4.usedLifelines = { team_a: [], team_b: [] };
         if (!r4.usedLifelines[callerTeam]) r4.usedLifelines[callerTeam] = [];
         if (r4.usedLifelines[callerTeam].includes(lifelineType)) return prev;
         const validItems = r4.currentTopic.validItems || [];
+        const unrevealed = validItems.filter(item => !r4.itemsNamed?.includes(item));
         if (lifelineType === 'rival_hint' && validItems.length === 0) return prev;
+        if (lifelineType === 'opponent_help' && unrevealed.length === 0) return prev;
         r4.usedLifelines[callerTeam].push(lifelineType);
         if (lifelineType === 'call_friend') {
           r4.timer += 20;
           sounds.playBid();
           showToast('📞 اتصل بصديق (+20 ثانية)', 'تم تمديد الوقت 20 ثانية إضافية!');
-        } else {
+        } else if (lifelineType === 'rival_hint') {
           sounds.playBid();
-          const hint = validItems.find(item => !r4.itemsNamed?.includes(item)) || validItems[0];
+          const hint = unrevealed[0] || validItems[0];
           showToast('💡 هينت من الخصم!', `تلميح الخصم يكشف: "${hint}"`);
+        } else {
+          if (!r4.itemsNamed) r4.itemsNamed = [];
+          r4.itemsNamed.push(unrevealed[0]);
+          sounds.playCorrect();
+          showToast('🤝 استعين بالخصم!', `الخصم ساعد بإجابة معتمدة: "${unrevealed[0]}"`);
         }
         return { ...prev, round4: r4 };
       });

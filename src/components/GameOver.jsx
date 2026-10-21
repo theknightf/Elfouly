@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import { sounds } from '../utils/soundEffects';
-import { Trophy, Crown, Sparkles, RotateCcw, Share2, Award, Zap, Shield, Flame } from 'lucide-react';
+import { Trophy, Crown, RotateCcw, Share2, Award } from 'lucide-react';
 
 export default function GameOver() {
   const {
     roomState,
+    currentPlayer,
     changeRound,
     fireConfetti,
     showToast
@@ -13,6 +14,7 @@ export default function GameOver() {
 
   const teamA = roomState?.teams?.team_a || { name: 'فريق الحيتان', score: 0, bank: 0 };
   const teamB = roomState?.teams?.team_b || { name: 'فريق الوحوش', score: 0, bank: 0 };
+  const isHostPlayer = !!currentPlayer?.isHost;
 
   const isTeamAWinner = teamA.score >= teamB.score;
   const winner = isTeamAWinner ? teamA : teamB;
@@ -131,13 +133,15 @@ export default function GameOver() {
 
       {/* Action Buttons */}
       <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
-        <button
-          onClick={() => changeRound('lobby')}
-          className="btn-arcade-green px-8 py-4 rounded-2xl font-black text-base flex items-center gap-2 cursor-pointer shadow-xl hover:brightness-110"
-        >
-          <RotateCcw className="w-5 h-5" />
-          <span>العب سهرة جديدة من البداية 🎮</span>
-        </button>
+        {isHostPlayer && (
+          <button
+            onClick={() => changeRound('lobby')}
+            className="btn-arcade-green px-8 py-4 rounded-2xl font-black text-base flex items-center gap-2 cursor-pointer shadow-xl hover:brightness-110"
+          >
+            <RotateCcw className="w-5 h-5" />
+            <span>العب سهرة جديدة من البداية 🎮</span>
+          </button>
+        )}
 
         <button
           onClick={() => {

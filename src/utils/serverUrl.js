@@ -18,8 +18,8 @@ export function getServerUrl({ env, location } = {}) {
     ? location
     : (typeof window !== 'undefined' && window.location ? window.location : {});
 
-  // 1. If env.VITE_SERVER_URL is set, use it (trim trailing slash)
-  const envUrl = currentEnv?.VITE_SERVER_URL;
+  // 1. If env.VITE_SERVER_URL or env.VITE_SOCKET_URL is set, use it (trim trailing slash)
+  const envUrl = currentEnv?.VITE_SERVER_URL || currentEnv?.VITE_SOCKET_URL;
   if (typeof envUrl === 'string' && envUrl.trim() !== '') {
     return envUrl.trim().replace(/\/+$/, '');
   }
