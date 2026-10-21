@@ -33,11 +33,11 @@ function GameScreen() {
         </div>
       )}
 
-      {/* Top Header */}
-      <Header />
+      {/* Top Header (rendered during active match & room) */}
+      {!showLanding && <Header />}
 
       {/* Main Content Area */}
-      <main className="flex-1 pb-20">
+      <main className={`flex-1 ${showLanding ? '' : 'pb-20'}`}>
         <ErrorBoundary>
           {showLanding ? (
             <Landing />

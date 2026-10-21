@@ -1116,6 +1116,18 @@ export function createSupabaseSocket(customClient = null) {
           }
         }
 
+        if (!created) {
+          localPlayer = null;
+          cachedRoomState = null;
+          trigger('error_message', 'تعذر إنشاء الغرفة على السيرفر.. جرب تاني.');
+          trigger('action_error', {
+            message: 'تعذر إنشاء الغرفة على السيرفر.. جرب تاني.',
+            field: 'general',
+            action: 'create_room'
+          });
+          break;
+        }
+
         setupChannel(activeRoomCode, player);
 
         trigger('room_created', {
@@ -1275,7 +1287,6 @@ export function createSupabaseSocket(customClient = null) {
       }
 
       case 'add_demo_player': {
-        const cleanCode = normalizeRoomCode(payload.roomCode || currentRoomCode);
         const room = await currentRoom();
         if (!room) return;
         if (room.players.length >= MAX_PLAYERS) return;

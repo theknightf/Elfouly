@@ -10,7 +10,11 @@ import {
   Sparkles,
   Volume2,
   VolumeX,
-  X
+  X,
+  ScrollText,
+  Shield,
+  HelpCircle,
+  Play
 } from 'lucide-react';
 
 const ROOM_BODY_LENGTH = 6;
@@ -90,7 +94,7 @@ export default function Landing() {
   const handleCreate = (nameOverride) => {
     const cleanName = validateName(nameOverride);
     if (!cleanName) {
-      // Open the dedicated Create Room modal so the user gets an intuitive dialog
+      // Open Create Modal immediately so user has an obvious, tactile prompt!
       setActiveModal('create');
       return;
     }
@@ -156,63 +160,63 @@ export default function Landing() {
   };
 
   return (
-    <div className="relative min-h-[90vh] flex items-center justify-center p-2 sm:p-4 font-arabic animate-fadeIn">
+    <div className="min-h-screen w-full flex items-center justify-center p-2 sm:p-4 md:p-6 font-arabic selection:bg-arena-yellow selection:text-black">
       
       {/* ========================================================================= */}
-      {/* 16-BIT RETRO EGYPTIAN ARCADE FRAME (STITCH SCREEN 4: MINYA LOTUS SCENE)   */}
+      {/* 16-BIT RETRO EGYPTIAN ARCADE CABINET FRAME (STITCH SCREEN 4)              */}
       {/* ========================================================================= */}
-      <div className="relative w-full max-w-4xl min-h-[720px] rounded-[28px] overflow-hidden border-[4px] border-[#090614] shadow-[0_12px_32px_rgba(0,0,0,0.8)] bg-slate-950 flex flex-col justify-between">
+      <div className="relative w-full max-w-4xl min-h-[640px] md:min-h-[720px] rounded-[24px] md:rounded-[32px] overflow-hidden border-[4px] md:border-[6px] border-[#090614] shadow-[0_16px_48px_rgba(0,0,0,0.9)] bg-slate-950 flex flex-col justify-between">
         
-        {/* Authentic Pixel Art Recreation Scene */}
+        {/* Authentic Pixel Art Recreation Scene Background */}
         <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
           <img
             alt="Minya Lotus University and El Ekhsas Roundabout pixel art scene"
-            className="w-full h-full object-cover object-center pixelated-bg opacity-75 md:opacity-85"
+            className="w-full h-full object-cover object-center pixelated-bg opacity-75 md:opacity-85 scale-[1.02]"
             src={PIXEL_ART_BG}
           />
           {/* Subtle scanline and atmospheric vignette overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/70" />
-          <div className="absolute inset-0 pixel-grid-pattern opacity-40 pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/75" />
+          <div className="absolute inset-0 pixel-grid-pattern opacity-30 pointer-events-none" />
         </div>
 
         {/* Top Header Bar */}
         <header className="relative z-10 w-full pt-4 px-4 sm:px-6 flex justify-between items-center">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <button
               onClick={toggleSound}
               aria-label="تبديل الصوت"
-              className="w-10 h-10 rounded-xl bg-black/75 border-2 border-amber-500/80 text-amber-300 flex items-center justify-center backdrop-blur-md active:scale-95 shadow-md transition-transform cursor-pointer"
+              className="w-10 h-10 rounded-xl bg-black/80 border-2 border-amber-500/80 text-amber-300 flex items-center justify-center backdrop-blur-md active:scale-95 shadow-md transition-transform cursor-pointer hover:border-amber-400"
             >
               {soundEnabled ? <Volume2 className="w-5 h-5 text-amber-300" /> : <VolumeX className="w-5 h-5 text-gray-400" />}
             </button>
-            <div className="hidden sm:flex flex-col text-right">
-              <span className="font-pixel text-[9px] text-arena-cyan">KENZ ELFOLY</span>
-              <span className="text-[11px] font-bold text-amber-200">كنز الفولي - سهرة الصعيد</span>
+            <div className="flex flex-col text-right">
+              <span className="font-pixel text-[9px] text-arena-cyan tracking-wider">KENZ ELFOLY</span>
+              <span className="text-[11px] font-bold text-amber-200">سهرة الصعيد 🕹️</span>
             </div>
           </div>
 
           <div className="bg-black/80 border-2 border-amber-400/80 px-3.5 py-1.5 rounded-full text-xs font-bold text-amber-200 tracking-wider flex items-center gap-2 shadow-lg backdrop-blur-md">
             <span className="inline-block w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
-            <span className="font-rubik font-black">عروس الصعيد - ساحة المنيا</span>
+            <span className="font-rubik font-black text-xs sm:text-sm">عروس الصعيد - ساحة المنيا</span>
           </div>
         </header>
 
         {/* Hero Title & Arcade Central Hub */}
-        <div className="relative z-10 px-4 sm:px-8 py-6 text-center space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/60 border border-arena-yellow/50 text-arena-yellow text-[11px] font-black backdrop-blur-sm">
+        <div className="relative z-10 px-4 sm:px-8 py-4 sm:py-6 text-center space-y-2">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-black/70 border border-arena-yellow/60 text-arena-yellow text-xs font-black backdrop-blur-sm shadow-md">
             <Sparkles className="w-3.5 h-3.5 text-arena-yellow" />
             <span>بكسل آرت مصري أصيل 🕹️ دوري المحافظات</span>
           </div>
 
-          <h1 className="text-4xl sm:text-6xl font-black tracking-tight text-white drop-shadow-[0_4px_0_#090614] font-rubik">
+          <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight text-white drop-shadow-[0_5px_0_#090614] font-rubik leading-tight">
             كنز <span className="text-arena-cyan">الفولي</span>
           </h1>
 
-          <p className="text-xs sm:text-sm text-amber-100/90 font-bold max-w-lg mx-auto drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]">
-            Kenz Elfoly — حلبة المنيا للأذكياء والصيع: 4 جولات ملحمية بين فريقين (2 ضد 2).
+          <p className="text-xs sm:text-sm md:text-base text-amber-100/90 font-bold max-w-lg mx-auto drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
+            حلبة المنيا للأذكياء والصيع: 4 جولات ملحمية بين فريقين (2 ضد 2).
           </p>
 
-          {/* Connection Status Ribbon */}
+          {/* Connection Status Ribbon if disconnected */}
           {!isConnected && (
             <div className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold mt-2 ${
               connectionStatus === 'failed' || connectionStatus === 'misconfigured'
@@ -235,12 +239,12 @@ export default function Landing() {
         </div>
 
         {/* ========================================================================= */}
-        {/* INTERACTIVE ARCADE MENU BUTTON STACK (STITCH SCREEN 4 VERTICAL PALETTE)   */}
+        {/* INTERACTIVE ACTION HUB (BALANCED DUAL-COLUMN FOR DESKTOP & MOBILE)        */}
         {/* ========================================================================= */}
-        <div className="relative z-10 px-4 sm:px-8 pb-8 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="relative z-10 px-4 sm:px-8 pb-8 flex flex-col md:flex-row items-stretch md:items-end justify-between gap-5 max-w-3xl mx-auto w-full">
           
           {/* Quick Start Card / Nickname Form */}
-          <div className="w-full md:max-w-md bg-black/75 backdrop-blur-md border-[3px] border-[#090614] rounded-2xl p-4 sm:p-5 shadow-[0_6px_0_0_#090614] space-y-3">
+          <div className="flex-1 bg-black/80 backdrop-blur-md border-[3px] border-[#090614] rounded-2xl p-4 sm:p-5 shadow-[0_8px_0_0_#090614] space-y-3">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -250,7 +254,7 @@ export default function Landing() {
             >
               <div>
                 <label htmlFor="player-name" className="block text-xs font-black text-arena-yellow mb-1.5 flex items-center justify-between">
-                  <span>اسمك في الساحة (مطلوب)</span>
+                  <span>اسمك في الساحة</span>
                   <span className="font-mono text-[10px] text-gray-400">{playerName.length}/20</span>
                 </label>
                 <input
@@ -260,9 +264,8 @@ export default function Landing() {
                   value={playerName}
                   onChange={handleNameChange}
                   maxLength={20}
-                  required
                   autoComplete="nickname"
-                  placeholder="مثال: كابتن فولي 🦁"
+                  placeholder="اكتب اسمك (مثال: كابتن فولي 🦁)"
                   className={`w-full rounded-xl bg-slate-900/90 border-2 px-3.5 py-2.5 text-sm font-bold text-white placeholder-gray-500 outline-none transition-colors ${
                     fieldError('playerName') ? 'border-arena-red' : 'border-amber-500/40 focus:border-arena-cyan'
                   }`}
@@ -275,17 +278,17 @@ export default function Landing() {
                 )}
               </div>
 
-              {/* Quick Action Grid inside Card */}
+              {/* Quick Action Buttons inside Card */}
               <div className="grid grid-cols-2 gap-2.5 pt-1">
                 <button
                   type="submit"
                   disabled={isCreating}
-                  className="menu-btn btn-green h-12 cursor-pointer"
+                  className="menu-btn btn-green h-12 cursor-pointer active:scale-95 transition-transform"
                 >
                   {isCreating ? (
                     <>
                       <Loader2 className="w-4 h-4 text-amber-200 animate-spin" />
-                      <span className="font-rubik font-black text-xs text-amber-100">جاري الإنشاء...</span>
+                      <span className="font-rubik font-black text-xs text-amber-100">جاري البدء...</span>
                     </>
                   ) : (
                     <>
@@ -298,7 +301,7 @@ export default function Landing() {
                 <button
                   type="button"
                   onClick={() => setActiveModal('join')}
-                  className="menu-btn btn-blue h-12 cursor-pointer"
+                  className="menu-btn btn-blue h-12 cursor-pointer active:scale-95 transition-transform"
                 >
                   <span className="font-rubik font-black text-sm text-amber-100">دخول بكود</span>
                   <LogIn className="w-5 h-5 text-amber-200" />
@@ -307,14 +310,14 @@ export default function Landing() {
             </form>
           </div>
 
-          {/* Right-Hand Arcade Action Column (Stitch Screen 4 Matching Palette) */}
-          <div className="w-full md:w-56 flex flex-col gap-2.5" data-purpose="arcade-buttons-stack">
-            {/* Button 1: Play */}
+          {/* Right-Hand Arcade Action Column (Stitch Screen 4 Vertical Palette) */}
+          <div className="w-full md:w-56 flex flex-col gap-2.5 shrink-0" data-purpose="arcade-buttons-stack">
+            {/* Button 1: Play / Create */}
             <button
               onClick={() => handleCreate()}
               disabled={isCreating}
               aria-label="العب"
-              className="menu-btn btn-green cursor-pointer"
+              className="menu-btn btn-green cursor-pointer active:scale-95 transition-transform"
             >
               <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">
                 {isCreating ? 'جاري الإنشاء...' : 'العب (هوست)'}
@@ -326,7 +329,7 @@ export default function Landing() {
             <button
               onClick={() => setActiveModal('join')}
               aria-label="غرفة"
-              className="menu-btn btn-blue cursor-pointer"
+              className="menu-btn btn-blue cursor-pointer active:scale-95 transition-transform"
             >
               <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">انضم لغرفة</span>
               <span className="text-xl">👥</span>
@@ -336,7 +339,7 @@ export default function Landing() {
             <button
               onClick={() => setActiveModal('info')}
               aria-label="الترتيب"
-              className="menu-btn btn-purple cursor-pointer"
+              className="menu-btn btn-purple cursor-pointer active:scale-95 transition-transform"
             >
               <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">قوانين الساحة</span>
               <span className="text-xl">📜</span>
@@ -346,7 +349,7 @@ export default function Landing() {
             <button
               onClick={() => setActiveModal('characters')}
               aria-label="الشخصيات"
-              className="menu-btn btn-brown cursor-pointer"
+              className="menu-btn btn-brown cursor-pointer active:scale-95 transition-transform"
             >
               <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">أبطال الصعيد</span>
               <span className="text-xl">🛡️</span>
@@ -365,7 +368,7 @@ export default function Landing() {
           <div className="w-full max-w-sm bg-slate-900 border-[3.5px] border-[#090614] rounded-2xl p-5 shadow-[0_8px_0_0_#090614] relative space-y-4">
             <button
               onClick={() => setActiveModal(null)}
-              className="absolute top-3 left-3 text-gray-400 hover:text-white"
+              className="absolute top-3 left-3 text-gray-400 hover:text-white cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -411,7 +414,7 @@ export default function Landing() {
                       key={c.id}
                       type="button"
                       onClick={() => setSelectedHero(c.id)}
-                      className={`p-1.5 rounded-xl border flex flex-col items-center gap-1 transition-all ${
+                      className={`p-1.5 rounded-xl border flex flex-col items-center gap-1 transition-all cursor-pointer ${
                         selectedHero === c.id
                           ? 'border-arena-yellow bg-arena-yellow/20 scale-105'
                           : 'border-white/10 bg-black/40 hover:border-white/30'
@@ -427,7 +430,7 @@ export default function Landing() {
               <button
                 type="submit"
                 disabled={isCreating}
-                className="menu-btn btn-green h-12 w-full justify-center gap-2 mt-2"
+                className="menu-btn btn-green h-12 w-full justify-center gap-2 mt-2 cursor-pointer active:scale-95 transition-transform"
               >
                 {isCreating ? (
                   <>
@@ -454,7 +457,7 @@ export default function Landing() {
           <div className="w-full max-w-sm bg-slate-900 border-[3.5px] border-[#090614] rounded-2xl p-5 shadow-[0_8px_0_0_#090614] relative space-y-4">
             <button
               onClick={() => setActiveModal(null)}
-              className="absolute top-3 left-3 text-gray-400 hover:text-white"
+              className="absolute top-3 left-3 text-gray-400 hover:text-white cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -500,7 +503,7 @@ export default function Landing() {
                   <button
                     type="button"
                     onClick={handlePasteCode}
-                    className="p-2.5 rounded-xl bg-slate-800 border border-white/20 text-gray-300 hover:text-white"
+                    className="p-2.5 rounded-xl bg-slate-800 border border-white/20 text-gray-300 hover:text-white cursor-pointer"
                     title="لصق من الحافظة"
                   >
                     <ClipboardPaste className="w-4 h-4" />
@@ -515,7 +518,7 @@ export default function Landing() {
                 ref={joinButtonRef}
                 type="button"
                 onClick={handleJoin}
-                className="menu-btn btn-blue h-12 w-full justify-center gap-2 mt-2"
+                className="menu-btn btn-blue h-12 w-full justify-center gap-2 mt-2 cursor-pointer active:scale-95 transition-transform"
               >
                 <LogIn className="w-5 h-5 text-amber-200" />
                 <span className="font-rubik font-black text-sm text-amber-100">انضمام للساحة</span>
@@ -533,7 +536,7 @@ export default function Landing() {
           <div className="w-full max-w-md bg-slate-900 border-[3.5px] border-[#090614] rounded-2xl p-5 shadow-[0_8px_0_0_#090614] relative space-y-3 max-h-[85vh] overflow-y-auto">
             <button
               onClick={() => setActiveModal(null)}
-              className="absolute top-3 left-3 text-gray-400 hover:text-white"
+              className="absolute top-3 left-3 text-gray-400 hover:text-white cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -565,7 +568,7 @@ export default function Landing() {
 
             <button
               onClick={() => setActiveModal(null)}
-              className="w-full py-2.5 rounded-xl bg-arena-yellow font-rubik font-black text-sm text-black"
+              className="w-full py-2.5 rounded-xl bg-arena-yellow font-rubik font-black text-sm text-black cursor-pointer hover:brightness-110 active:scale-95 transition-transform"
             >
               فهمت يا كابتن 👍
             </button>
@@ -581,7 +584,7 @@ export default function Landing() {
           <div className="w-full max-w-lg bg-slate-900 border-[3.5px] border-[#090614] rounded-2xl p-5 shadow-[0_8px_0_0_#090614] relative space-y-3 max-h-[85vh] overflow-y-auto">
             <button
               onClick={() => setActiveModal(null)}
-              className="absolute top-3 left-3 text-gray-400 hover:text-white"
+              className="absolute top-3 left-3 text-gray-400 hover:text-white cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -607,7 +610,7 @@ export default function Landing() {
 
             <button
               onClick={() => setActiveModal(null)}
-              className="w-full py-2.5 rounded-xl bg-arena-cyan font-rubik font-black text-sm text-black"
+              className="w-full py-2.5 rounded-xl bg-arena-cyan font-rubik font-black text-sm text-black cursor-pointer hover:brightness-110 active:scale-95 transition-transform"
             >
               تمام يا ريس
             </button>
