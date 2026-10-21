@@ -66,13 +66,38 @@ export default function BankTurnView({ isMobile = false }) {
   };
 
   return (
-    <div className={`space-y-4 ${isMobile ? 'text-right' : ''}`}>
+    <div className={`space-y-4 pixel-grid-pattern ${isMobile ? 'text-right' : ''}`}>
       
-      {/* Turn & Player Alternation Banner */}
-      <div className="bg-arena-card rounded-2xl p-4 border border-white/10 shadow-lg flex flex-wrap items-center justify-between gap-3">
+      {/* Egyptian Arcade Header Banner (Stitch Screen 5) */}
+      <div className="relative bg-surface-container-low border-[3px] border-[#090614] rounded-2xl p-3 shadow-[0_4px_0_0_#090614] overflow-hidden flex items-center justify-between">
+        <div className="flex items-center gap-2.5 z-10">
+          <div className="w-9 h-9 rounded-xl bg-primary-container flex items-center justify-center border-2 border-[#090614] shadow-[0_2px_0_#090614]">
+            <span className="text-lg">🏺</span>
+          </div>
+          <div>
+            <h2 className="font-headline-sm text-sm md:text-base text-arena-yellow font-black leading-tight">
+              1 تو (Double or Bank) — حلبة الصعيد
+            </h2>
+            <p className="text-[11px] text-on-surface-variant font-bold">
+              قرية الإخصاص.. منيا عروس الصعيد
+            </p>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
-          <span className="bg-arena-yellow/20 text-arena-yellow font-black text-xs px-2.5 py-1 rounded-lg border border-arena-yellow/30">
-            السؤال {currentTurnQNumber} من 12 (فقرة {activeTeam.name.split('(')[0]})
+          <span className="font-pixel text-[9px] bg-surface-container-highest px-2 py-1 rounded-lg text-arena-cyan border border-[#090614]">
+            سؤال {currentTurnQNumber}/12
+          </span>
+          <span className="font-pixel text-[9px] bg-arena-yellow/20 text-arena-yellow px-2 py-1 rounded-lg border border-arena-yellow/40">
+            ×{currentStreak}
+          </span>
+        </div>
+      </div>
+
+      {/* Turn & Player Alternation Banner */}
+      <div className="bg-arena-card rounded-2xl p-3.5 border-2 border-[#090614] shadow-[0_4px_0_0_#090614] flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="bg-arena-yellow/20 text-arena-yellow font-black text-xs px-2.5 py-1 rounded-lg border border-arena-yellow/30 font-pixel text-[10px]">
+            فقرة {activeTeam.name.split('(')[0]}
           </span>
           <span className="text-xs text-gray-400 font-bold">
             إجمالي الجولة: {r1.totalQuestionsAnswered || 0}/48
@@ -81,44 +106,49 @@ export default function BankTurnView({ isMobile = false }) {
 
         {/* Dynamic Answering vs Referee indicators */}
         <div className="flex items-center gap-2 text-xs">
-          <div className="bg-arena-cyan/10 border border-arena-cyan/40 px-3 py-1 rounded-xl text-arena-cyan font-bold flex items-center gap-1.5">
+          <div className="bg-arena-cyan/15 border-2 border-[#090614] px-3 py-1 rounded-xl text-arena-cyan font-bold flex items-center gap-1.5 shadow-[0_2px_0_#090614]">
             <span>المجيب:</span>
             <span className="font-black text-white">{designatedAnsweringPlayer?.name || 'لاعب الإجابة'}</span>
           </div>
-          <div className="bg-arena-red/10 border border-arena-red/40 px-3 py-1 rounded-xl text-arena-red font-bold flex items-center gap-1.5">
+          <div className="bg-arena-red/15 border-2 border-[#090614] px-3 py-1 rounded-xl text-arena-red font-bold flex items-center gap-1.5 shadow-[0_2px_0_#090614]">
             <span>الحكم:</span>
             <span className="font-black text-white">{designatedReaderPlayer?.name || 'حكم الخصم'}</span>
           </div>
         </div>
       </div>
 
-      {/* Main Question Surface */}
-      <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-2 border-arena-cyan/40 shadow-2xl relative overflow-hidden">
+      {/* Main Papyrus Sandstone Question Surface */}
+      <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] relative overflow-hidden">
+        {/* Sandstone Egyptian Corner Motifs */}
+        <div className="absolute top-2 right-3 font-pixel text-[8px] text-arena-yellow/30 select-none">𓉐 𓉑 𓉒</div>
+        <div className="absolute top-2 left-3 font-pixel text-[8px] text-arena-yellow/30 select-none">𓋹 𓊪 𓈖</div>
+
         <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/30">
-            {activeQuestion.categoryName || activeQuestion.category || 'عام'}
+          <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/30 flex items-center gap-1">
+            <span>🌍</span>
+            <span>{activeQuestion.categoryName || activeQuestion.category || 'عام'}</span>
           </span>
-          <span className="text-xs font-mono font-bold text-gray-400">
-            القيمة القادمة: +{nextValue.toLocaleString()} نقطة
+          <span className="font-pixel text-[10px] text-arena-yellow">
+            القيمة: +{nextValue.toLocaleString()} نقطة
           </span>
         </div>
 
         {/* Question Text (Visible to ALL participants) */}
-        <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed text-right min-h-[60px]">
+        <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed text-right min-h-[60px] drop-shadow-[0_2px_0_#090614]">
           {activeQuestion.question_text || activeQuestion.question}
         </h3>
 
         {/* Referee Answer Key (STRICTLY HIDDEN from the answering team) */}
         {isR1Referee && (
-          <div className="mt-5 pt-4 border-t border-white/10 bg-emerald-950/40 p-3 rounded-2xl border border-emerald-500/30 flex items-center justify-between">
+          <div className="mt-5 pt-4 border-t-2 border-dashed border-emerald-500/40 bg-emerald-950/40 p-3.5 rounded-2xl border-2 border-[#090614] flex items-center justify-between shadow-[0_3px_0_#090614]">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-arena-green" />
+              <ShieldCheck className="w-5 h-5 text-arena-green" />
               <span className="text-xs font-bold text-gray-300">مفتاح إجابة الحكم:</span>
-              <span className="text-sm font-black text-arena-green">
+              <span className="text-sm md:text-base font-black text-arena-green">
                 {activeQuestion.correct_answer || activeQuestion.answer}
               </span>
             </div>
-            <span className="text-[10px] text-gray-400">خاص بفريق التحكيم الخصم 🛡️</span>
+            <span className="text-[10px] text-gray-400 font-pixel text-[8px]">خاص بالحكم 🛡️</span>
           </div>
         )}
 
@@ -129,19 +159,25 @@ export default function BankTurnView({ isMobile = false }) {
         )}
       </div>
 
-      {/* Vault Status Box */}
-      <div className="bg-arena-darker/90 p-4 rounded-2xl border border-arena-yellow/30 flex items-center justify-between">
-        <div>
-          <div className="text-[11px] text-gray-400 font-bold">النقاط المعلقة في الخزنة:</div>
-          <div className="text-2xl md:text-3xl font-black font-mono text-arena-yellow">
-            {pendingPoints.toLocaleString()} <span className="text-xs font-bold text-gray-300">نقطة</span>
+      {/* POT & Vault Status Display (Stitch Screen 5 Style) */}
+      <div className="bg-gradient-to-r from-surface-container-high via-surface-container to-surface-container-high p-4 rounded-2xl border-[3px] border-[#090614] shadow-[0_4px_0_0_#090614] flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-primary-container/20 border-2 border-arena-yellow flex items-center justify-center animate-bounce text-xl">
+            🔥
+          </div>
+          <div>
+            <div className="font-headline-sm text-sm md:text-base text-arena-yellow font-black flex items-center gap-1.5">
+              <span>سلسلة الحظ (Streak)</span>
+              <span className="font-pixel text-xs text-arena-cyan">×{currentStreak}</span>
+            </div>
+            <span className="text-[11px] text-gray-400 font-bold">
+              {currentStreak === 0 ? 'ابدأ السلسلة بإجابة صحيحة' : 'لو غلطت هتصفّر العداد كله!'}
+            </span>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-[11px] text-gray-400 font-bold">الستريك الحالي:</div>
-          <div className="text-xl font-black font-mono text-arena-cyan">
-            ×{currentStreak}
-          </div>
+        <div className="text-left bg-surface-container-lowest px-3.5 py-1.5 rounded-xl border-2 border-arena-yellow shadow-[0_2px_0_0_#6b4c00]">
+          <span className="block font-pixel text-[8px] text-arena-yellow uppercase tracking-wider">على المحك (POT)</span>
+          <span className="font-pixel text-base md:text-lg text-arena-yellow">+{pendingPoints.toLocaleString()}</span>
         </div>
       </div>
 

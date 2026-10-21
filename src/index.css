@@ -145,3 +145,117 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #00F2FE;
 }
+
+/* ========================================================================= */
+/* Egyptian Arcade Pop & Pixel Art Classes (Stitch UI Kit)                   */
+/* ========================================================================= */
+.font-pixel {
+  font-family: 'Press Start 2P', monospace;
+}
+
+.font-rubik {
+  font-family: 'Rubik', sans-serif;
+}
+
+.pixel-border-gold {
+  box-shadow: 
+    0 -3px 0 0 #090614,
+    0 4px 0 0 #090614,
+    -3px 0 0 0 #090614,
+    3px 0 0 0 #090614,
+    inset 0 3px 0 0 rgba(255, 255, 255, 0.4),
+    inset 0 -3px 0 0 #6b4c00;
+}
+
+.pixel-border-chunky {
+  border: 3px solid #090614;
+  box-shadow: 0 4px 0 0 #090614;
+}
+
+.pixel-border-card {
+  border: 3.5px solid #090614;
+  box-shadow: 0 5px 0 0 #090614, inset 0 2px 0 0 rgba(255, 255, 255, 0.2);
+}
+
+.pixel-border-cyan {
+  border: 3.5px solid #090614;
+  box-shadow: 0 4px 0 #00616d, inset 0 2px 0 rgba(255, 255, 255, 0.4);
+}
+
+.pixel-border-red {
+  border: 3.5px solid #090614;
+  box-shadow: 0 4px 0 #690005, inset 0 2px 0 rgba(255, 255, 255, 0.3);
+}
+
+.pixel-box-shadow {
+  box-shadow: 0 5px 0 0 #090614;
+}
+
+.pixel-bevel-pressed:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 0 #090614 !important;
+}
+
+.pixel-grid-pattern {
+  background-size: 8px 8px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+}
+
+.sandstone-pattern {
+  background-color: #211c35;
+  background-image: radial-gradient(#37314b 15%, transparent 16%), radial-gradient(#151028 15%, transparent 16%);
+  background-size: 8px 8px;
+}
+
+/* 3D Tactile Arcade Menu Buttons from Minya Street UI */
+.menu-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 3px solid #24140e;
+  box-shadow: 
+    inset 0 3px 0 0 rgba(255, 255, 255, 0.35),
+    inset 0 -3px 0 0 rgba(0, 0, 0, 0.45),
+    0 4px 6px rgba(0, 0, 0, 0.6);
+  transition: all 0.08s ease-in-out;
+  cursor: pointer;
+}
+
+.menu-btn:active {
+  transform: translateY(2px) scale(0.98);
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.2),
+    inset 0 -2px 0 0 rgba(0, 0, 0, 0.5),
+    0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.btn-green {
+  background: linear-gradient(180deg, #3f7b49 0%, #25582f 50%, #173d1f 100%);
+  border-color: #112814;
+}
+
+.btn-blue {
+  background: linear-gradient(180deg, #2a5d8c 0%, #1a4269 50%, #102e4d 100%);
+  border-color: #0b1e33;
+}
+
+.btn-purple {
+  background: linear-gradient(180deg, #5b306b 0%, #442052 50%, #2b1236 100%);
+  border-color: #1f0b26;
+}
+
+.btn-brown {
+  background: linear-gradient(180deg, #996232 0%, #76451e 50%, #542d10 100%);
+  border-color: #381a06;
+}
+
+.btn-crimson {
+  background: linear-gradient(180deg, #872e29 0%, #681d19 50%, #4a110e 100%);
+  border-color: #2b0806;
+}

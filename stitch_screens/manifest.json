@@ -1,0 +1,62 @@
+[
+  {
+    "index": 1,
+    "id": "8a4d62d4a3dc4f40b97da6dfba2cd874",
+    "title": "مين يزوّد؟ - بكسل آرت مصري",
+    "htmlFile": "1_مين_يزوّد؟_-_بكسل_آرت_مصري.html",
+    "pngFile": "1_مين_يزوّد؟_-_بكسل_آرت_مصري.png",
+    "htmlSize": 24045,
+    "pngSize": 74134,
+    "width": "780",
+    "height": "2528",
+    "deviceType": "MOBILE"
+  },
+  {
+    "index": 2,
+    "id": "a8a8f3d473b340819d5c79f77446993e",
+    "title": "اديني في سري - بكسل آرت مصري",
+    "htmlFile": "2_اديني_في_سري_-_بكسل_آرت_مصري.html",
+    "pngFile": "2_اديني_في_سري_-_بكسل_آرت_مصري.png",
+    "htmlSize": 24673,
+    "pngSize": 74895,
+    "width": "780",
+    "height": "2272",
+    "deviceType": "MOBILE"
+  },
+  {
+    "index": 3,
+    "id": "cfb59948354740e59ea2ff1f6dc3e9ed",
+    "title": "في المقص - بكسل آرت مصري",
+    "htmlFile": "3_في_المقص_-_بكسل_آرت_مصري.html",
+    "pngFile": "3_في_المقص_-_بكسل_آرت_مصري.png",
+    "htmlSize": 26837,
+    "pngSize": 78010,
+    "width": "780",
+    "height": "2254",
+    "deviceType": "MOBILE"
+  },
+  {
+    "index": 4,
+    "id": "1d3c44b3875441c787d7957d2372a8e1",
+    "title": "قائمة اللعبة الرئيسية - منيا عروس الصعيد (تطابق بكسل أصلي)",
+    "htmlFile": "4_قائمة_اللعبة_الرئيسية_-_منيا_عروس_الصعيد_(تطابق_بكسل_أصلي).html",
+    "pngFile": "4_قائمة_اللعبة_الرئيسية_-_منيا_عروس_الصعيد_(تطابق_بكسل_أصلي).png",
+    "htmlSize": 17519,
+    "pngSize": 222343,
+    "width": "780",
+    "height": "1768",
+    "deviceType": "MOBILE"
+  },
+  {
+    "index": 5,
+    "id": "27b72f05347643079232393258718f62",
+    "title": "1 تو (One-Two) - بكسل آرت مصري",
+    "htmlFile": "5_1_تو_(One-Two)_-_بكسل_آرت_مصري.html",
+    "pngFile": "5_1_تو_(One-Two)_-_بكسل_آرت_مصري.png",
+    "htmlSize": 24618,
+    "pngSize": 69592,
+    "width": "780",
+    "height": "2414",
+    "deviceType": "MOBILE"
+  }
+]

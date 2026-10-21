@@ -100,24 +100,27 @@ export default function PasswordDualView({ isMobile = false }) {
   };
 
   return (
-    <div className={`space-y-5 ${isMobile ? 'text-right' : ''}`}>
+    <div className={`space-y-5 arcade-pattern ${isMobile ? 'text-right' : ''}`}>
       
-      {/* Header Info Banner */}
-      <div className="bg-arena-card rounded-2xl p-4 border border-white/10 flex flex-wrap items-center justify-between gap-3 shadow-lg">
-        <div className="flex items-center gap-2">
-          <span className="bg-arena-yellow/20 text-arena-yellow text-xs font-black px-2.5 py-1 rounded-lg border border-arena-yellow/30">
-            بطاقة {((r2.currentWordIndex || 0) + 1)} من 5
-          </span>
-          <span className="text-xs text-gray-300 font-bold">
-            الدور على: <span className="text-arena-cyan font-black">{r2ActiveTurnTeam === 'team_a' ? teamA.name : teamB.name}</span>
-          </span>
+      {/* Egyptian Arcade Header (Stitch Screen 2) */}
+      <div className="relative bg-surface-container rounded-2xl p-3.5 border-[3px] border-[#090614] shadow-[0_4px_0_0_#090614] flex flex-wrap items-center justify-between gap-3 overflow-hidden">
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-xl bg-primary-container border-2 border-[#090614] shadow-[0_2px_0_0_#090614] flex items-center justify-center text-xl">
+            🤫
+          </div>
+          <div>
+            <div className="font-pixel text-[9px] text-arena-cyan tracking-wider">طور التحدي المصري</div>
+            <h2 className="font-headline-sm text-sm md:text-base text-arena-yellow font-black leading-tight">
+              اديني في سري (Password)
+            </h2>
+          </div>
         </div>
 
-        {/* Live Timer Control */}
-        <div className="flex items-center gap-2 bg-arena-darker/90 px-3 py-1.5 rounded-xl border border-white/10">
+        {/* Center Arcade Countdown Timer */}
+        <div className="flex items-center gap-2 bg-surface-container-lowest px-3 py-1.5 rounded-full border-2 border-arena-yellow shadow-[0_0_10px_rgba(255,184,0,0.25)]">
           <Timer className={`w-4 h-4 ${timeLeft <= 10 ? 'text-arena-red animate-pulse' : 'text-arena-yellow'}`} />
-          <span className={`font-mono text-base font-black ${timeLeft <= 10 ? 'text-arena-red' : 'text-white'}`}>
-            {timeLeft}s
+          <span className={`font-pixel text-sm md:text-base ${timeLeft <= 10 ? 'text-arena-red' : 'text-arena-yellow'}`}>
+            00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
           </span>
           {isTimerRunning ? (
             <button
@@ -135,6 +138,10 @@ export default function PasswordDualView({ isMobile = false }) {
             </button>
           )}
         </div>
+
+        <span className="font-pixel text-[9px] bg-surface-container-highest px-2 py-1 rounded-lg text-white border border-[#090614]">
+          بطاقة {((r2.currentWordIndex || 0) + 1)}/5
+        </span>
       </div>
 
       {/* CLUE-GIVERS MUTUAL SUPERVISION VIEW */}
@@ -142,19 +149,19 @@ export default function PasswordDualView({ isMobile = false }) {
         <div className="space-y-4">
           
           {/* Secret Word & Forbidden Words Card */}
-          <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-2 border-arena-yellow/50 shadow-2xl relative">
+          <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] relative">
             <div className="flex items-center justify-between mb-4">
               <span className="text-xs font-bold text-arena-yellow bg-arena-yellow/10 px-3 py-1 rounded-full border border-arena-yellow/30">
                 {activeQuestion.categoryName || 'كلمة السر'}
               </span>
-              <span className="text-xs font-bold text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-500/30">
+              <span className="text-xs font-bold text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-500/30 font-pixel text-[8px]">
                 مشتركة للملقنين فقط 🔒
               </span>
             </div>
 
             <div className="text-center py-4 space-y-1">
               <div className="text-xs text-gray-400 font-bold">الكلمة المستهدفة (Target Word):</div>
-              <div className="text-3xl md:text-4xl font-black text-arena-yellow tracking-wide">
+              <div className="text-3xl md:text-4xl font-black text-arena-yellow tracking-wide drop-shadow-[0_2px_0_#090614]">
                 {activeQuestion.question_text || activeQuestion.question}
               </div>
             </div>

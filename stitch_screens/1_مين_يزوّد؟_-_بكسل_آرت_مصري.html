@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+
+<html class="dark" dir="rtl" lang="ar"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>QUIZ ARENA - مين يزوّد؟</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "surface-dim": "#151028",
+            "primary-fixed": "#ffdea8",
+            "on-secondary-fixed": "#001f24",
+            "secondary-fixed": "#9cf0ff",
+            "tertiary-fixed-dim": "#ffb3b6",
+            "on-primary-fixed": "#271900",
+            "inverse-surface": "#e7deff",
+            "tertiary-container": "#ffb0b3",
+            "secondary-fixed-dim": "#00daf3",
+            "primary-fixed-dim": "#ffba20",
+            "outline-variant": "#514532",
+            "on-surface-variant": "#d5c4ab",
+            "on-tertiary-fixed": "#40000c",
+            "surface-variant": "#37314b",
+            "surface-container-lowest": "#0f0a22",
+            "on-secondary-fixed-variant": "#004f58",
+            "secondary": "#bdf4ff",
+            "primary": "#ffdca1",
+            "surface-tint": "#ffba20",
+            "primary-container": "#ffb800",
+            "on-primary": "#412d00",
+            "surface-container-high": "#2c2640",
+            "on-tertiary-fixed-variant": "#920028",
+            "on-primary-container": "#6b4c00",
+            "tertiary-fixed": "#ffdada",
+            "inverse-on-surface": "#322d46",
+            "surface-container-low": "#1d1830",
+            "on-tertiary-container": "#a6002e",
+            "on-tertiary": "#68001a",
+            "on-background": "#e7deff",
+            "on-error-container": "#ffdad6",
+            "background": "#151028",
+            "inverse-primary": "#7c5800",
+            "on-surface": "#e7deff",
+            "error-container": "#93000a",
+            "on-secondary": "#00363d",
+            "surface-container-highest": "#37314b",
+            "tertiary": "#ffd7d8",
+            "surface": "#151028",
+            "on-primary-fixed-variant": "#5e4200",
+            "error": "#ffb4ab",
+            "on-error": "#690005",
+            "on-secondary-container": "#00616d",
+            "surface-bright": "#3b3650",
+            "surface-container": "#211c35",
+            "outline": "#9e8f78",
+            "secondary-container": "#00e3fd"
+          },
+          "borderRadius": {
+            "DEFAULT": "1rem",
+            "lg": "2rem",
+            "xl": "3rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "space-md": "1rem",
+            "space-lg": "1.5rem",
+            "margin-mobile": "1rem",
+            "gutter-mobile": "0.75rem",
+            "margin": "1.5rem",
+            "space-xl": "2.25rem",
+            "gutter": "1rem",
+            "space-sm": "0.5rem",
+            "space-xs": "0.25rem"
+          },
+          "fontFamily": {
+            "headline-lg": ["Rubik"],
+            "body-lg": ["Rubik"],
+            "display-hero-mobile": ["Rubik"],
+            "display-hero": ["Rubik"],
+            "body-md": ["Rubik"],
+            "label-badge": ["Rubik"],
+            "headline-sm": ["Rubik"],
+            "label-numeric": ["Rubik"],
+            "headline-md": ["Rubik"]
+          },
+          "fontSize": {
+            "headline-lg": ["28px", { "lineHeight": "36px", "fontWeight": "800" }],
+            "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "600" }],
+            "display-hero-mobile": ["34px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "900" }],
+            "display-hero": ["44px", { "lineHeight": "52px", "letterSpacing": "-0.02em", "fontWeight": "900" }],
+            "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "500" }],
+            "label-badge": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "800" }],
+            "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "700" }],
+            "label-numeric": ["20px", { "lineHeight": "24px", "fontWeight": "900" }],
+            "headline-md": ["22px", { "lineHeight": "28px", "fontWeight": "800" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 600, 'GRAD' 0, 'opsz' 24;
+      display: inline-block;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    .pixel-corners {
+      box-shadow: 0 4px 0 0 #090614, inset 0 2px 0 0 rgba(255,255,255,0.2);
+    }
+    .pixel-shadow-heavy {
+      box-shadow: 0 6px 0 0 #090614;
+    }
+    .pixel-shadow-amber {
+      box-shadow: 0 5px 0 0 #6b4c00;
+    }
+    .pixel-shadow-red {
+      box-shadow: 0 5px 0 0 #40000c;
+    }
+    .pixel-shadow-cyan {
+      box-shadow: 0 5px 0 0 #004f58;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface min-h-screen pb-24 font-body-md antialiased selection:bg-primary-container selection:text-on-primary-container">
+<!-- TOP APP BAR -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-space-md py-space-sm bg-surface-container dark:bg-surface-container border-b-[3px] border-surface-container-lowest shadow-[0_4px_0_0_#090614] rounded-b-lg">
+<!-- Leading Mascot/Avatar -->
+<div class="flex items-center gap-2">
+<div class="relative w-11 h-11 rounded-lg bg-surface-container-high border-[2.5px] border-surface-container-lowest flex items-center justify-center shadow-[0_3px_0_0_#090614] overflow-hidden">
+<span class="text-2xl select-none" title="Pharaoh Cartoon Mascot Icon">👑</span>
+<div class="absolute bottom-0 right-0 w-3 h-3 bg-primary-container rounded-full border border-surface-container-lowest"></div>
+</div>
+<div>
+<div class="font-headline-md text-headline-md text-primary tracking-tight leading-none drop-shadow-[0_2px_0_#090614]">
+          QUIZ ARENA
+        </div>
+<div class="font-label-badge text-label-badge text-on-surface-variant flex items-center gap-1 mt-0.5">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed-dim inline-block animate-ping"></span>
+<span>مزاد بلدي مباشر</span>
+</div>
+</div>
+</div>
+<!-- Live Auction Countdown HUD -->
+<div class="flex items-center gap-2">
+<div class="bg-surface-container-lowest px-3 py-1 rounded-lg border-[2px] border-outline-variant flex items-center gap-1.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]">
+<span class="material-symbols-outlined text-primary-container text-lg animate-pulse" data-icon="timer">timer</span>
+<span class="font-label-numeric text-label-numeric text-primary tracking-wider font-mono" id="countdown">00:45</span>
+</div>
+<!-- Trailing Icon Button -->
+<button class="w-10 h-10 rounded-lg bg-surface-container-high border-[2.5px] border-surface-container-lowest text-on-surface-variant flex items-center justify-center shadow-[0_3px_0_0_#090614] active:translate-y-1 active:shadow-none transition-all">
+<span class="material-symbols-outlined text-xl" data-icon="settings">settings</span>
+</button>
+</div>
+</header>
+<!-- MAIN CANVAS -->
+<main class="pt-20 px-space-md max-w-md mx-auto flex flex-col gap-space-md">
+<!-- Comic Burst Status Ribbon -->
+<div class="relative overflow-hidden bg-primary-container text-on-primary-container p-2.5 rounded-lg border-[3px] border-surface-container-lowest shadow-[0_4px_0_0_#6b4c00] flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="text-xl">📢</span>
+<div>
+<span class="font-label-badge text-label-badge uppercase tracking-wider block text-on-primary-container/80">المود الحالي</span>
+<h1 class="font-headline-sm text-headline-sm font-black leading-none text-on-primary-container">مين يزوّد؟ (Blind Auction)</h1>
+</div>
+</div>
+<div class="bg-surface-container-lowest text-primary text-xs font-bold px-2.5 py-1 rounded-md border border-primary/30 flex items-center gap-1">
+<span class="material-symbols-outlined text-xs text-primary" data-icon="storefront">storefront</span>
+<span>سوق المنيا</span>
+</div>
+</div>
+<!-- RETRO 16-BIT RETRO BANNER / CAFE VIBE -->
+<div class="relative rounded-lg border-[3.5px] border-surface-container-lowest bg-surface-container-high overflow-hidden shadow-[0_6px_0_0_#090614]">
+<!-- Scenic Pixel Art Header Reference from Image -->
+<div class="relative h-44 w-full bg-cover bg-center overflow-hidden flex items-end p-3" data-alt="Authentic 16-bit retro pixel art horizontal panoramic banner capturing an Egyptian street cafe in Minya during golden hour sunset with pixelated palm trees, vintage cars parked on asphalt, glowing neon Arabic signs for ice cream and coffee, and warm Egyptian street atmosphere in rich ochre and deep indigo tones." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCrDCsQhP4tYwQtRCYeFh_UxpZk3pnfiel0F6bIl5gYR_m8Ln6iOuJwjzlhRfk1te6pM9ChaHXXzl_LwRgzcByvtEJz-GJaZM_z4YGJfrQgAj5tjMTV6c3FrEl1R2DfGvjPkHO9u7taIW0-_CHVGgFv6L8FB7624KXlfDzhPgNXis-ZDVAx_Ivd9NgG_O7nFwdKzvZW-1jYYW7V7pQWh-Bnm-GHklbKMkX-55YuCoTMc_kVkdP3gX680A')">
+<!-- Retro Pixel overlay gradient -->
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest via-surface-container-lowest/40 to-transparent"></div>
+<!-- Retro Sign Badges -->
+<div class="relative z-10 flex items-center justify-between w-full">
+<div class="bg-surface-container-lowest/90 backdrop-blur-xs px-2.5 py-1 rounded-md border border-outline-variant flex items-center gap-1.5 shadow-md">
+<span class="text-sm">☕</span>
+<span class="font-headline-sm text-xs font-bold text-primary">قهوة الفراعنة • مزادات</span>
+</div>
+<div class="bg-surface-container-lowest/95 px-2 py-0.5 rounded border border-primary/50 text-[11px] font-bold text-primary-fixed-dim">
+            32-BIT ARCADE
+          </div>
+</div>
+</div>
+<!-- Wooden Tablet / Question Card -->
+<div class="p-space-md bg-surface-container-low border-t-[3px] border-surface-container-lowest">
+<div class="flex items-center justify-between mb-2">
+<span class="bg-surface-container-highest px-2.5 py-0.5 rounded-full text-xs font-bold text-secondary border border-secondary/30">
+            تحدي معلومات رياضية
+          </span>
+<span class="bg-primary-container text-on-primary-container text-xs font-black px-2 py-0.5 rounded border border-surface-container-lowest shadow-[0_2px_0_0_#6b4c00]">
+            تحدي خارج التخصص (+2) ⚡
+          </span>
+</div>
+<div class="bg-surface-container border-[2.5px] border-surface-container-lowest rounded-lg p-3.5 shadow-[inset_0_3px_0_rgba(255,255,255,0.08)]">
+<p class="font-label-badge text-label-badge text-on-surface-variant mb-1">المطلوب في المزاد:</p>
+<h2 class="font-headline-md text-headline-md text-on-surface font-extrabold flex items-center gap-2">
+<span>فرق كسبت دوري أبطال أوروبا</span>
+<span class="text-primary-container text-2xl">🏆</span>
+</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1 text-xs">
+            كل فريق بتذكره لازم يكون صح 100%.. المزايد الأعلى بيشيل الليلة كلها!
+          </p>
+</div>
+</div>
+</div>
+<!-- AUCTION LEADERBOARD PODIUM / CURRENT BID -->
+<div class="bg-surface-container border-[3px] border-surface-container-lowest rounded-lg p-3.5 shadow-[0_5px_0_0_#090614] relative">
+<div class="flex items-center justify-between pb-2 border-b-2 border-surface-container-lowest">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 rounded-md bg-primary-container text-on-primary-container flex items-center justify-center font-black text-sm border-[2px] border-surface-container-lowest">
+            1
+          </div>
+<div>
+<div class="font-headline-sm text-sm font-bold text-on-surface">صاحب أعلى مزاد الآن:</div>
+<div class="text-xs text-primary font-bold flex items-center gap-1">
+<span>فريق الفراعنة (الأهلي)</span>
+<span>👑</span>
+</div>
+</div>
+</div>
+<div class="text-right">
+<span class="font-label-badge text-[11px] text-on-surface-variant block">المزايدة الحالية</span>
+<div class="text-2xl font-black text-primary-fixed-dim drop-shadow-[0_2px_0_#090614] flex items-center justify-end gap-1">
+<span id="current-bid-num">15</span>
+<span class="text-xs font-bold text-on-surface">إجابة صريحة</span>
+<span class="text-sm">📢</span>
+</div>
+</div>
+</div>
+<!-- Live Auction Feed ticker -->
+<div class="mt-2.5 pt-1 flex items-center justify-between text-xs text-on-surface-variant">
+<span class="flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed-dim animate-pulse"></span>
+<span>آخر مزايدة: +2 من «المعلّم سيد»</span>
+</span>
+<span class="font-mono text-outline">منذ ٤ ثوان</span>
+</div>
+</div>
+<!-- BID INCREMENT CONTROLS (CARVED WOODEN ARCADE BUTTONS) -->
+<div>
+<div class="flex items-center justify-between mb-1.5 px-1">
+<span class="font-label-badge text-label-badge text-on-surface-variant">زوّد المزاد (أصناف ومستويات):</span>
+<span class="text-xs text-primary font-bold">كل دوسة بترفّع التحدي</span>
+</div>
+<div class="grid grid-cols-3 gap-2.5">
+<!-- +1 نفس -->
+<button class="group flex flex-col items-center justify-center p-3 rounded-lg bg-surface-container-high border-[2.5px] border-surface-container-lowest shadow-[0_4px_0_0_#090614] active:translate-y-1 active:shadow-none hover:brightness-110 transition-all" onclick="increaseBid(1)">
+<span class="font-display-hero-mobile text-headline-lg font-black text-secondary leading-none group-hover:scale-110 transition-transform">+1</span>
+<span class="font-label-badge text-label-badge text-on-surface mt-1">نَفَس بلدي</span>
+<span class="text-[10px] text-outline mt-0.5">مزايدة خفيفة</span>
+</button>
+<!-- +2 تحدي -->
+<button class="group flex flex-col items-center justify-center p-3 rounded-lg bg-surface-container-high border-[2.5px] border-surface-container-lowest shadow-[0_4px_0_0_#090614] active:translate-y-1 active:shadow-none hover:brightness-110 transition-all ring-1 ring-primary-container/30" onclick="increaseBid(2)">
+<span class="font-display-hero-mobile text-headline-lg font-black text-primary-container leading-none group-hover:scale-110 transition-transform">+2</span>
+<span class="font-label-badge text-label-badge text-primary mt-1">تحدّي سخن</span>
+<span class="text-[10px] text-primary-container/80 mt-0.5">الأكثر طلباً ⭐</span>
+</button>
+<!-- +5 معلّم -->
+<button class="group flex flex-col items-center justify-center p-3 rounded-lg bg-surface-container-high border-[2.5px] border-surface-container-lowest shadow-[0_4px_0_0_#090614] active:translate-y-1 active:shadow-none hover:brightness-110 transition-all" onclick="increaseBid(5)">
+<span class="font-display-hero-mobile text-headline-lg font-black text-tertiary-container leading-none group-hover:scale-110 transition-transform">+5</span>
+<span class="font-label-badge text-label-badge text-tertiary mt-1">قعدة معلّم!</span>
+<span class="text-[10px] text-outline mt-0.5">ضربة حاسمة 🔥</span>
+</button>
+</div>
+</div>
+<!-- PRIMARY ACTION STAMP BUTTONS -->
+<div class="grid grid-cols-2 gap-3 mt-1">
+<!-- Green / Golden Accept Challenge: أنا قدها! -->
+<button class="relative overflow-hidden py-3.5 px-3 rounded-lg bg-gradient-to-b from-[#25a244] to-[#1a7431] border-[3px] border-surface-container-lowest shadow-[0_5px_0_0_#090614] text-white flex flex-col items-center justify-center active:translate-y-1 active:shadow-none transition-all">
+<div class="absolute inset-x-0 top-0 h-1/2 bg-white/15 pointer-events-none rounded-t-sm"></div>
+<div class="flex items-center gap-1.5 font-headline-sm text-headline-sm font-black drop-shadow-[0_2px_0_#090614]">
+<span>أنا قدها!</span>
+<span class="text-xl">⚡</span>
+</div>
+<span class="text-[11px] font-bold text-emerald-100 tracking-wide mt-0.5">Take the Bet &amp; Answer</span>
+</button>
+<!-- Red / Fold Button: انسحب وريّح -->
+<button class="relative overflow-hidden py-3.5 px-3 rounded-lg bg-gradient-to-b from-[#b3261e] to-[#801310] border-[3px] border-surface-container-lowest shadow-[0_5px_0_0_#090614] text-white flex flex-col items-center justify-center active:translate-y-1 active:shadow-none transition-all">
+<div class="absolute inset-x-0 top-0 h-1/2 bg-white/15 pointer-events-none rounded-t-sm"></div>
+<div class="flex items-center gap-1.5 font-headline-sm text-headline-sm font-black drop-shadow-[0_2px_0_#090614]">
+<span>انسحب وريّح</span>
+<span class="text-xl">✋</span>
+</div>
+<span class="text-[11px] font-bold text-red-200 tracking-wide mt-0.5">Fold / Pass the Turn</span>
+</button>
+</div>
+<!-- POWER-UPS PANEL (شايات القهوة ومساعدات المزاد) -->
+<div class="bg-surface-container-low border-[2.5px] border-surface-container-lowest rounded-lg p-3 shadow-[0_4px_0_0_#090614]">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-1.5">
+<span class="text-base">☕</span>
+<span class="font-headline-sm text-xs font-bold text-primary">شايات القهوة (وسائل المساعدة)</span>
+</div>
+<span class="font-label-badge text-[11px] bg-surface-container-highest px-2 py-0.5 rounded text-on-surface-variant">متبقي 2 من 3</span>
+</div>
+<div class="grid grid-cols-3 gap-2">
+<!-- Powerup 1: اتصل بصديق -->
+<button class="p-2 rounded-lg bg-surface-container border-2 border-surface-container-lowest shadow-[0_3px_0_0_#090614] flex flex-col items-center justify-center text-center active:translate-y-0.5 active:shadow-none hover:bg-surface-container-high transition-all">
+<div class="w-8 h-8 rounded-full bg-secondary-container/20 text-secondary border border-secondary/40 flex items-center justify-center mb-1">
+<span class="material-symbols-outlined text-sm" data-icon="call">call</span>
+</div>
+<span class="font-label-badge text-[11px] text-on-surface leading-tight">اتصل بصديق</span>
+<span class="text-[9px] text-outline mt-0.5 font-bold">1x مجاناً</span>
+</button>
+<!-- Powerup 2: هينت الخصم -->
+<button class="p-2 rounded-lg bg-surface-container border-2 border-surface-container-lowest shadow-[0_3px_0_0_#090614] flex flex-col items-center justify-center text-center active:translate-y-0.5 active:shadow-none hover:bg-surface-container-high transition-all">
+<div class="w-8 h-8 rounded-full bg-primary-container/20 text-primary-container border border-primary-container/40 flex items-center justify-center mb-1">
+<span class="material-symbols-outlined text-sm" data-icon="lightbulb">lightbulb</span>
+</div>
+<span class="font-label-badge text-[11px] text-on-surface leading-tight">هينت الخصم</span>
+<span class="text-[9px] text-outline mt-0.5 font-bold">يكشف إجابة</span>
+</button>
+<!-- Powerup 3: استعين بالخصم -->
+<button class="p-2 rounded-lg bg-surface-container border-2 border-surface-container-lowest shadow-[0_3px_0_0_#090614] opacity-50 cursor-not-allowed flex flex-col items-center justify-center text-center">
+<div class="w-8 h-8 rounded-full bg-surface-variant text-outline border border-outline/40 flex items-center justify-center mb-1">
+<span class="material-symbols-outlined text-sm" data-icon="swap_horiz">swap_horiz</span>
+</div>
+<span class="font-label-badge text-[11px] text-outline leading-tight">استعين بخصم</span>
+<span class="text-[9px] text-outline mt-0.5 font-bold">مُستخدم 🔒</span>
+</button>
+</div>
+</div>
+<!-- MINYA PIXEL SLOGAN FOOTER EMBED (From Reference Style) -->
+<div class="border-[2.5px] border-surface-container-lowest rounded-lg p-2.5 bg-surface-container-high shadow-[0_3px_0_0_#090614] flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="text-xl">⛵</span>
+<div>
+<p class="font-headline-sm text-xs font-black text-primary leading-tight">منيا .. أصل الحكاية</p>
+<p class="font-body-md text-[11px] text-on-surface-variant">أهلها أهل الجدعنة والمسابقات</p>
+</div>
+</div>
+<div class="text-[11px] font-bold text-outline-variant bg-surface-container-lowest px-2.5 py-1 rounded border border-outline-variant/40">
+        قرية الإخصاص
+      </div>
+</div>
+</main>
+<!-- BOTTOM NAVIGATION BAR (Shared Components JSON Executed) -->
+<!-- Contextual Active: 'Arena' (current screen is Quiz Arena game mode) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-space-md py-space-xs bg-surface-container-low dark:bg-surface-container-low rounded-t-lg border-t-[3px] border-surface-container-lowest shadow-[0_-4px_0_0_#090614]">
+<!-- Item 1: Battle (Inactive) -->
+<button class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary dark:hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none">
+<span class="material-symbols-outlined text-2xl" data-icon="sports_esports">sports_esports</span>
+<span class="font-label-badge text-label-badge mt-0.5">Battle</span>
+</button>
+<!-- Item 2: Arena (ACTIVE MATCH FOR QUIZ ARENA GAMEPLAY) -->
+<button class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-lg px-space-md py-space-xs border-[2.5px] border-surface-container-lowest shadow-[0_3px_0_0_#6b4c00] active:translate-y-0.5 active:shadow-none">
+<span class="material-symbols-outlined text-2xl font-black" data-icon="swords" style="font-variation-settings: 'FILL' 1;">swords</span>
+<span class="font-label-badge text-label-badge mt-0.5">Arena</span>
+</button>
+<!-- Item 3: Rankings (Inactive) -->
+<button class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary dark:hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none">
+<span class="material-symbols-outlined text-2xl" data-icon="leaderboard">leaderboard</span>
+<span class="font-label-badge text-label-badge mt-0.5">Rankings</span>
+</button>
+<!-- Item 4: Shop (Inactive) -->
+<button class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant px-space-sm py-space-xs transition-colors hover:text-primary dark:hover:text-primary hover:scale-105 active:translate-y-1 active:shadow-none">
+<span class="material-symbols-outlined text-2xl" data-icon="storefront">storefront</span>
+<span class="font-label-badge text-label-badge mt-0.5">Shop</span>
+</button>
+</nav>
+<script>
+    // Inline micro-interaction for Bid Increment
+    let currentBid = 15;
+    const bidDisplay = document.getElementById('current-bid-num');
+    
+    function increaseBid(amount) {
+      currentBid += amount;
+      if (bidDisplay) {
+        bidDisplay.textContent = currentBid;
+        bidDisplay.classList.add('text-secondary');
+        setTimeout(() => {
+          bidDisplay.classList.remove('text-secondary');
+        }, 300);
+      }
+    }
+
+    // Arcade countdown timer simulator
+    let timeLeft = 45;
+    const timerElem = document.getElementById('countdown');
+    setInterval(() => {
+      if (timeLeft > 0) {
+        timeLeft--;
+        const formatted = timeLeft < 10 ? '0' + timeLeft : timeLeft;
+        if (timerElem) {
+          timerElem.textContent = '00:' + formatted;
+        }
+      }
+    }, 1000);
+  </script>
+</body></html>

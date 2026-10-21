@@ -106,11 +106,31 @@ export default function AuctionBiddingView({ isMobile = false }) {
   return (
     <div className={`space-y-5 ${isMobile ? 'text-right' : ''}`}>
       
-      {/* Header Info */}
-      <div className="bg-arena-card rounded-2xl p-4 border border-white/10 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+      {/* Comic Burst Status Ribbon (Stitch Screen 1) */}
+      <div className="relative overflow-hidden bg-primary-container text-on-primary-container p-3 rounded-2xl border-[3px] border-[#090614] shadow-[0_4px_0_0_#6b4c00] flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span className="text-2xl">📢</span>
+          <div>
+            <span className="font-pixel text-[8px] uppercase tracking-wider block text-on-primary-container/80">المود الحالي</span>
+            <h1 className="font-headline-sm text-sm md:text-base font-black leading-none text-on-primary-container">
+              مين يزوّد؟ (Blind Auction) — مزاد بلدي مباشر
+            </h1>
+          </div>
+        </div>
+
+        {/* Live Auction Countdown HUD */}
         <div className="flex items-center gap-2">
-          <span className="bg-arena-yellow/20 text-arena-yellow text-xs font-black px-2.5 py-1 rounded-lg border border-arena-yellow/30">
-            موضوع {((r4.currentTopicIndex || 0) + 1)} من 4
+          <div className="bg-surface-container-lowest px-3 py-1 rounded-lg border-2 border-outline-variant flex items-center gap-1.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]">
+            <span className="font-pixel text-xs text-arena-yellow animate-pulse">00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Header Info */}
+      <div className="bg-arena-card rounded-2xl p-3.5 border-2 border-[#090614] shadow-[0_4px_0_0_#090614] flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="bg-arena-yellow/20 text-arena-yellow text-xs font-black px-2.5 py-1 rounded-lg border border-arena-yellow/30 font-pixel text-[9px]">
+            موضوع {((r4.currentTopicIndex || 0) + 1)}/4
           </span>
           <span className="text-xs text-gray-300 font-bold">
             المرحلة: <span className="text-arena-cyan font-black">{phase === 'challenge' ? 'تنفيذ التحدي' : 'المزاد العلني'}</span>
@@ -127,17 +147,17 @@ export default function AuctionBiddingView({ isMobile = false }) {
       </div>
 
       {/* Main Topic Card */}
-      <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-2 border-arena-yellow/40 shadow-2xl space-y-3">
+      <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-arena-yellow bg-arena-yellow/10 px-3 py-1 rounded-full border border-arena-yellow/30">
             {activeQuestion.categoryName || 'تحدي المزاد'}
           </span>
-          <span className="text-xs font-mono font-bold text-gray-400">
+          <span className="font-pixel text-[10px] text-arena-yellow">
             قيمة المزاد: {highestBid * 400} نقطة
           </span>
         </div>
 
-        <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed text-right">
+        <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed text-right drop-shadow-[0_2px_0_#090614]">
           {activeQuestion.question_text || activeQuestion.question}
         </h3>
 

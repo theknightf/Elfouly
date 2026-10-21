@@ -139,12 +139,13 @@ export default function Landing() {
 
         <div className="relative z-10 space-y-7">
           <div className="text-center space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-arena-yellow/15 border border-arena-yellow/50 text-arena-yellow text-[11px] md:text-xs font-black">
-              <Sparkles className="w-4 h-4" />
-              <span>سهرة الكويز المصرية.. روش ومصري 🎮</span>
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/60 border-2 border-arena-yellow/70 text-arena-yellow text-xs font-black shadow-lg backdrop-blur-sm">
+              <span className="inline-block w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
+              <Sparkles className="w-4 h-4 text-arena-yellow" />
+              <span>عروس الصعيد - ساحة المنيا للكويز.. روش ومصري 🎮</span>
             </div>
 
-            <h1 className="text-4xl md:text-6xl font-black tracking-tight text-white leading-tight">
+            <h1 className="text-4xl md:text-6xl font-black tracking-tight text-white leading-tight font-rubik drop-shadow-[0_4px_0_#090614]">
               ساحة <span className="text-arena-cyan">الكويز</span>
             </h1>
 

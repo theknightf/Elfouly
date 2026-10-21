@@ -73,26 +73,29 @@ export default function PenaltyDuelView({ isMobile = false }) {
   };
 
   return (
-    <div className={`space-y-5 ${isMobile ? 'text-right' : ''}`}>
+    <div className={`space-y-5 sandstone-pattern ${isMobile ? 'text-right' : ''}`}>
       
-      {/* Top Match Banner */}
-      <div className="bg-arena-card rounded-2xl p-4 border border-white/10 flex flex-wrap items-center justify-between gap-3 shadow-lg">
-        <div className="flex items-center gap-2">
-          <span className="bg-arena-cyan/20 text-arena-cyan text-xs font-black px-2.5 py-1 rounded-lg border border-arena-cyan/30">
-            ركلة {((r3.turnIndex || 0) + 1)} من 10
-          </span>
-          <span className="text-xs text-gray-300 font-bold">
-            التسديد لـ: <span className="text-arena-yellow font-black">{kickerTeam.name.split('(')[0]}</span>
-          </span>
+      {/* Top Match Banner (Stitch Screen 3 Style) */}
+      <div className="bg-surface-container rounded-2xl p-3.5 border-[3px] border-[#090614] shadow-[0_4px_0_0_#090614] flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-xl bg-primary-container border-2 border-[#090614] shadow-[0_2px_0_0_#090614] flex items-center justify-center text-xl">
+            ⚽
+          </div>
+          <div>
+            <div className="font-pixel text-[9px] text-arena-cyan tracking-wider">المنيا لايف — ضربات الجزاء</div>
+            <h2 className="font-headline-sm text-sm md:text-base text-arena-yellow font-black leading-tight">
+              في المقص (Penalty Duel)
+            </h2>
+          </div>
         </div>
 
-        {/* Duelists Badge */}
+        {/* Duelists Spotlight */}
         <div className="flex items-center gap-2 text-xs">
-          <div className="bg-arena-cyan/10 border border-arena-cyan/40 px-2.5 py-1 rounded-xl text-arena-cyan font-bold flex items-center gap-1">
+          <div className="bg-arena-cyan/15 border-2 border-[#090614] px-2.5 py-1 rounded-xl text-arena-cyan font-bold flex items-center gap-1 shadow-[0_2px_0_#090614]">
             <span>⚽ المسدد:</span>
             <span className="font-black text-white">{currentKicker.name}</span>
           </div>
-          <div className="bg-arena-yellow/10 border border-arena-yellow/40 px-2.5 py-1 rounded-xl text-arena-yellow font-bold flex items-center gap-1">
+          <div className="bg-arena-yellow/15 border-2 border-[#090614] px-2.5 py-1 rounded-xl text-arena-yellow font-bold flex items-center gap-1 shadow-[0_2px_0_#090614]">
             <span>🧤 الحارس:</span>
             <span className="font-black text-white">{currentGoalie.name}</span>
           </div>
@@ -100,17 +103,17 @@ export default function PenaltyDuelView({ isMobile = false }) {
       </div>
 
       {/* Main Question Card (Visible to all) */}
-      <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-2 border-arena-cyan/40 shadow-2xl relative overflow-hidden">
+      <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] relative overflow-hidden">
         <div className="flex items-center justify-between mb-4">
           <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/30">
             {activeQuestion.categoryName || 'كرة قدم بعد 2010'}
           </span>
-          <span className="text-xs font-bold text-arena-yellow">
-            قيمة الهدف: +1000 نقطة ⚽
+          <span className="font-pixel text-[10px] text-arena-yellow">
+            ركلة {((r3.turnIndex || 0) + 1)}/10 (+1000 نقطة)
           </span>
         </div>
 
-        <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed text-right min-h-[60px]">
+        <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed text-right min-h-[60px] drop-shadow-[0_2px_0_#090614]">
           {activeQuestion.question_text || activeQuestion.question}
         </h3>
 
