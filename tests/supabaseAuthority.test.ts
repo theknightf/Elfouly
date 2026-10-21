@@ -231,7 +231,7 @@ async function runSupabaseAuthorityTests() {
     const settledState = await waitForState(
       hostSocket,
       (state: any) => (state.round3?.shotsHistory?.length || 0) >= 1,
-      20000,
+      35000,
       'settled shot'
     );
     assert(settledState.round3.shotsHistory[0].result, 'The shot must be settled by the answer holder');

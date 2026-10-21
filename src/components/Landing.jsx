@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { CHARACTERS } from '../data/characters';
+import { sounds } from '../utils/soundEffects';
 import {
   ClipboardPaste,
   Crown,
@@ -11,10 +12,16 @@ import {
   Users,
   WifiOff,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Volume2,
+  VolumeX,
+  Trophy,
+  Settings as SettingsIcon,
+  X
 } from 'lucide-react';
 
 const ROOM_BODY_LENGTH = 6;
+const PIXEL_ART_BG = "https://lh3.googleusercontent.com/aida-public/AB6AXuAcaQl_g0dkRzM5iLmCvCWVZwoMUSS--Mogk7_MIAwTSfG329zGrLNqE1icHdfA_wfTm2avdfIXHh9VGGUFVn0XILo-_FtM92pGnBj1csJ3sKjh-_pWYwWv1LhK80cqIQGdP7DKfz7AO6-Q31QwR88SiRD4CkHU89iw_W3Z_CoJejfZ_VRTuvGGb4nmTu2AMUjTw4vCTsyAUOlCLjK0lelBue4iFDnE5INCS5lTfI7fhWKD_LKRJG3uyzM3gjZzMuIufvY";
 
 function toRoomBody(value, { stripPrefix = true } = {}) {
   let raw = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -39,6 +46,9 @@ export default function Landing() {
   const [playerName, setPlayerName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [formError, setFormError] = useState(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [activeModal, setActiveModal] = useState(null); // 'create' | 'join' | 'info' | null
+
   const nameInputRef = useRef(null);
   const joinButtonRef = useRef(null);
   const codeInputRef = useRef(null);
@@ -48,6 +58,7 @@ export default function Landing() {
       const roomParam = new URLSearchParams(window.location.search).get('room');
       if (roomParam) {
         setJoinCode(toRoomBody(roomParam));
+        setActiveModal('join');
         setTimeout(() => joinButtonRef.current?.focus(), 150);
       }
     } catch (e) {
@@ -80,6 +91,7 @@ export default function Landing() {
     if (!cleanName) return;
     setFormError(null);
     clearActionError();
+    sounds.playTap();
     createRoom(cleanName);
   };
 
@@ -95,6 +107,7 @@ export default function Landing() {
 
     setFormError(null);
     clearActionError();
+    sounds.playTap();
     joinRoom(`QZ-${joinCode}`, cleanName);
   };
 
@@ -131,60 +144,105 @@ export default function Landing() {
     clearActionError();
   };
 
+  const toggleSound = () => {
+    setSoundEnabled(prev => !prev);
+    sounds.playTap();
+  };
+
   return (
-    <div className="max-w-6xl mx-auto px-3 py-6 md:py-10 animate-fadeIn">
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-arena-darker via-arena-card to-arena-darker border-2 border-arena-cyan/40 p-5 md:p-10 shadow-2xl">
-        <div className="absolute -top-24 -right-24 w-72 h-72 bg-arena-cyan/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-arena-red/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="relative min-h-[90vh] flex items-center justify-center p-2 sm:p-4 font-arabic animate-fadeIn">
+      
+      {/* ========================================================================= */}
+      {/* 16-BIT RETRO EGYPTIAN ARCADE FRAME (STITCH SCREEN 4: MINYA LOTUS SCENE)   */}
+      {/* ========================================================================= */}
+      <div className="relative w-full max-w-4xl min-h-[720px] rounded-[28px] overflow-hidden border-[4px] border-[#090614] shadow-[0_12px_32px_rgba(0,0,0,0.8)] bg-slate-950 flex flex-col justify-between">
+        
+        {/* Authentic Pixel Art Recreation Scene */}
+        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+          <img
+            alt="Minya Lotus University and El Ekhsas Roundabout pixel art scene"
+            className="w-full h-full object-cover object-center pixelated-bg opacity-75 md:opacity-85"
+            src={PIXEL_ART_BG}
+          />
+          {/* Subtle scanline and atmospheric vignette overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/70" />
+          <div className="absolute inset-0 pixel-grid-pattern opacity-40 pointer-events-none" />
+        </div>
 
-        <div className="relative z-10 space-y-7">
-          <div className="text-center space-y-3">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/60 border-2 border-arena-yellow/70 text-arena-yellow text-xs font-black shadow-lg backdrop-blur-sm">
-              <span className="inline-block w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
-              <Sparkles className="w-4 h-4 text-arena-yellow" />
-              <span>عروس الصعيد - ساحة المنيا للكويز.. روش ومصري 🎮</span>
+        {/* Top Header Bar */}
+        <header className="relative z-10 w-full pt-4 px-4 sm:px-6 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleSound}
+              aria-label="تبديل الصوت"
+              className="w-10 h-10 rounded-xl bg-black/75 border-2 border-amber-500/80 text-amber-300 flex items-center justify-center backdrop-blur-md active:scale-95 shadow-md transition-transform cursor-pointer"
+            >
+              {soundEnabled ? <Volume2 className="w-5 h-5 text-amber-300" /> : <VolumeX className="w-5 h-5 text-gray-400" />}
+            </button>
+            <div className="hidden sm:flex flex-col text-right">
+              <span className="font-pixel text-[9px] text-arena-cyan">QUIZ ARENA</span>
+              <span className="text-[11px] font-bold text-amber-200">سهرة الكويز المصرية</span>
             </div>
-
-            <h1 className="text-4xl md:text-6xl font-black tracking-tight text-white leading-tight font-rubik drop-shadow-[0_4px_0_#090614]">
-              ساحة <span className="text-arena-cyan">الكويز</span>
-            </h1>
-
-            <p className="text-sm md:text-lg text-gray-300 max-w-2xl mx-auto leading-relaxed">
-              اعمل غرفة أو ادخل بكود من أصحابك، واختار شخصيتك وفريقك جوه صالة الانتظار. لازم 4 لاعبين
-              بتوزيع 2 ضد 2 عشان الماتش يبدأ!
-            </p>
           </div>
 
+          <div className="bg-black/80 border-2 border-amber-400/80 px-3.5 py-1.5 rounded-full text-xs font-bold text-amber-200 tracking-wider flex items-center gap-2 shadow-lg backdrop-blur-md">
+            <span className="inline-block w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="font-rubik font-black">عروس الصعيد - ساحة المنيا</span>
+          </div>
+        </header>
+
+        {/* Hero Title & Arcade Central Hub */}
+        <div className="relative z-10 px-4 sm:px-8 py-6 text-center space-y-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/60 border border-arena-yellow/50 text-arena-yellow text-[11px] font-black backdrop-blur-sm">
+            <Sparkles className="w-3.5 h-3.5 text-arena-yellow" />
+            <span>بكسل آرت مصري أصيل 🕹️ دوري المحافظات</span>
+          </div>
+
+          <h1 className="text-4xl sm:text-6xl font-black tracking-tight text-white drop-shadow-[0_4px_0_#090614] font-rubik">
+            ساحة <span className="text-arena-cyan">الكويز</span>
+          </h1>
+
+          <p className="text-xs sm:text-sm text-amber-100/90 font-bold max-w-lg mx-auto drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]">
+            حلبة المنيا للأذكياء والصيع: 4 جولات ملحمية بين فريقين (2 ضد 2).
+          </p>
+
+          {/* Connection Status Ribbon */}
           {!isConnected && (
-            <div className={`flex flex-col sm:flex-row items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold text-center ${
+            <div className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold mt-2 ${
               connectionStatus === 'failed' || connectionStatus === 'misconfigured'
-                ? 'border-arena-red/50 bg-arena-red/10 text-arena-red'
-                : 'border-arena-yellow/40 bg-arena-yellow/10 text-arena-yellow'
+                ? 'border-arena-red bg-arena-red/20 text-arena-red'
+                : 'border-arena-yellow bg-arena-yellow/20 text-arena-yellow'
             }`}>
-              <div className="flex items-center gap-2">
-                {connectionStatus === 'connecting' && <Loader2 className="w-4 h-4 animate-spin shrink-0" />}
-                {connectionStatus === 'waking_up' && <Clock className="w-4 h-4 animate-pulse shrink-0" />}
-                {connectionStatus === 'failed' && <WifiOff className="w-4 h-4 shrink-0" />}
-                {connectionStatus === 'misconfigured' && <AlertTriangle className="w-4 h-4 shrink-0" />}
-                <span>{connectionStatusMessage}</span>
-              </div>
+              {connectionStatus === 'connecting' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {connectionStatus === 'waking_up' && <Clock className="w-3.5 h-3.5 animate-pulse" />}
+              {connectionStatus === 'failed' && <WifiOff className="w-3.5 h-3.5" />}
+              {connectionStatus === 'misconfigured' && <AlertTriangle className="w-3.5 h-3.5" />}
+              <span>{connectionStatusMessage}</span>
               {connectionStatus === 'failed' && (
                 <button
                   type="button"
                   onClick={reconnect}
-                  className="mt-1 sm:mt-0 px-3 py-1 rounded-xl bg-arena-red/20 hover:bg-arena-red/40 text-white text-xs font-black border border-arena-red/50 transition-colors cursor-pointer"
+                  className="px-2 py-0.5 rounded bg-arena-red text-white text-[10px] font-black"
                 >
                   حاول تاني
                 </button>
               )}
             </div>
           )}
+        </div>
 
-          <div className="max-w-xl mx-auto">
-            <label htmlFor="player-name" className="block text-xs font-black text-arena-yellow mb-2">
-              اسمك في الساحة (مطلوب)
-            </label>
-            <div className="relative">
+        {/* ========================================================================= */}
+        {/* INTERACTIVE ARCADE MENU BUTTON STACK (STITCH SCREEN 4 VERTICAL PALETTE)   */}
+        {/* ========================================================================= */}
+        <div className="relative z-10 px-4 sm:px-8 pb-8 flex flex-col md:flex-row items-center justify-between gap-6">
+          
+          {/* Quick Start Card / Nickname Form */}
+          <div className="w-full md:max-w-md bg-black/75 backdrop-blur-md border-[3px] border-[#090614] rounded-2xl p-4 sm:p-5 shadow-[0_6px_0_0_#090614] space-y-3">
+            <div>
+              <label htmlFor="player-name" className="block text-xs font-black text-arena-yellow mb-1.5 flex items-center justify-between">
+                <span>اسمك في الساحة (مطلوب)</span>
+                <span className="font-mono text-[10px] text-gray-400">{playerName.length}/20</span>
+              </label>
               <input
                 id="player-name"
                 ref={nameInputRef}
@@ -194,84 +252,146 @@ export default function Landing() {
                 maxLength={20}
                 required
                 autoComplete="nickname"
-                placeholder="مثال: كابتن فولي"
-                className={`w-full rounded-2xl bg-arena-darker border-2 px-4 py-3.5 text-base font-bold text-white placeholder-gray-500 outline-none transition-colors ${
-                  fieldError('playerName') ? 'border-arena-red' : 'border-white/15 focus:border-arena-cyan'
+                placeholder="مثال: كابتن فولي 🦁"
+                className={`w-full rounded-xl bg-slate-900/90 border-2 px-3.5 py-2.5 text-sm font-bold text-white placeholder-gray-500 outline-none transition-colors ${
+                  fieldError('playerName') ? 'border-arena-red' : 'border-amber-500/40 focus:border-arena-cyan'
                 }`}
               />
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-mono text-gray-500">
-                {playerName.length}/20
-              </span>
+              {fieldError('playerName') && (
+                <p className="mt-1 text-xs font-bold text-arena-red">{fieldError('playerName')}</p>
+              )}
             </div>
-            {fieldError('playerName') && (
-              <p className="mt-2 text-xs font-bold text-arena-red">{fieldError('playerName')}</p>
-            )}
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="rounded-3xl border-2 border-arena-cyan/40 bg-arena-darker/80 p-4 md:p-5 flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-arena-cyan/15 border border-arena-cyan/40 flex items-center justify-center">
-                  <PlusCircle className="w-6 h-6 text-arena-cyan" />
-                </div>
-                <div className="text-right">
-                  <h2 className="text-lg font-black text-white">اعمل غرفة جديدة</h2>
-                  <p className="text-[11px] text-gray-400">هتكون كابتن الساحة والهوست 👑</p>
-                </div>
-              </div>
-
+            {/* Quick Action Grid inside Card */}
+            <div className="grid grid-cols-2 gap-2.5 pt-1">
               <button
                 type="button"
                 onClick={handleCreate}
                 disabled={!isConnected}
-                className="btn-arcade-cyan w-full py-4 rounded-2xl text-base font-black flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
+                className="menu-btn btn-green h-12"
               >
-                <Crown className="w-5 h-5" />
-                <span>إنشاء غرفة</span>
+                <span className="font-rubik font-black text-sm text-amber-100">عمل غرفة</span>
+                <Crown className="w-5 h-5 text-amber-300" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveModal('join')}
+                className="menu-btn btn-blue h-12"
+              >
+                <span className="font-rubik font-black text-sm text-amber-100">دخول بكود</span>
+                <LogIn className="w-5 h-5 text-amber-200" />
               </button>
             </div>
+          </div>
 
-            <div className="rounded-3xl border-2 border-arena-yellow/40 bg-arena-darker/80 p-4 md:p-5 flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-arena-yellow/15 border border-arena-yellow/40 flex items-center justify-center">
-                  <LogIn className="w-6 h-6 text-arena-yellow" />
-                </div>
-                <div className="text-right">
-                  <h2 className="text-lg font-black text-white">ادخل بكود الغرفة</h2>
-                  <p className="text-[11px] text-gray-400">6 خانات، تقدر تلصق الكود كامل بـ QZ-</p>
-                </div>
+          {/* Right-Hand Arcade Action Column (Stitch Screen 4 Matching Palette) */}
+          <div className="w-full md:w-56 flex flex-col gap-2.5" data-purpose="arcade-buttons-stack">
+            {/* Button 1: Play */}
+            <button
+              onClick={handleCreate}
+              disabled={!isConnected}
+              aria-label="العب"
+              className="menu-btn btn-green"
+            >
+              <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">العب (هوست)</span>
+              <span className="text-xl">🏆</span>
+            </button>
+
+            {/* Button 2: Room (Join) */}
+            <button
+              onClick={() => setActiveModal('join')}
+              aria-label="غرفة"
+              className="menu-btn btn-blue"
+            >
+              <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">انضم لغرفة</span>
+              <span className="text-xl">👥</span>
+            </button>
+
+            {/* Button 3: Leaderboard */}
+            <button
+              onClick={() => setActiveModal('info')}
+              aria-label="الترتيب"
+              className="menu-btn btn-purple"
+            >
+              <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">قوانين الساحة</span>
+              <span className="text-xl">📜</span>
+            </button>
+
+            {/* Button 4: Settings / Characters */}
+            <button
+              onClick={() => setActiveModal('characters')}
+              aria-label="الشخصيات"
+              className="menu-btn btn-brown"
+            >
+              <span className="font-rubik font-black text-base text-[#ede2c9] drop-shadow-[0_2px_0_#111]">أبطال الصعيد</span>
+              <span className="text-xl">🛡️</span>
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* ========================================================================= */}
+      {/* MODAL 1: JOIN ROOM DIALOG (RETRO ARCADE STYLE)                            */}
+      {/* ========================================================================= */}
+      {activeModal === 'join' && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="w-full max-w-sm bg-slate-900 border-[3.5px] border-[#090614] rounded-2xl p-5 shadow-[0_8px_0_0_#090614] relative space-y-4">
+            <button
+              onClick={() => setActiveModal(null)}
+              className="absolute top-3 left-3 text-gray-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center space-y-1">
+              <span className="text-2xl">🔑</span>
+              <h2 className="font-rubik font-black text-lg text-arena-yellow">ادخل بكود الغرفة</h2>
+              <p className="text-xs text-gray-300">الكود مكون من 6 خانات بعد QZ-</p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-gray-300 mb-1">اسمك</label>
+                <input
+                  type="text"
+                  value={playerName}
+                  onChange={handleNameChange}
+                  placeholder="اكتب اسمك..."
+                  className="w-full rounded-xl bg-black/60 border border-white/20 px-3 py-2 text-sm text-white font-bold"
+                />
               </div>
 
               <div>
-                <div
-                  dir="ltr"
-                  className={`flex items-center gap-1 rounded-2xl bg-black/40 border-2 px-3 py-2 ${
-                    fieldError('roomCode') ? 'border-arena-red' : 'border-arena-yellow/40 focus-within:border-arena-yellow'
-                  }`}
-                >
-                  <span className="text-sm font-black font-mono text-arena-yellow select-none">QZ-</span>
-                  <input
-                    ref={codeInputRef}
-                    type="text"
-                    inputMode="text"
-                    value={joinCode}
-                    onChange={handleCodeChange}
-                    maxLength={9}
-                    placeholder="ABC234"
-                    aria-label="كود الغرفة"
-                    className="flex-1 min-w-0 bg-transparent text-center text-xl font-black font-mono tracking-[0.25em] text-white uppercase placeholder-gray-600 outline-none"
-                  />
+                <label className="block text-[11px] font-bold text-gray-300 mb-1">كود الغرفة</label>
+                <div className="flex items-center gap-1.5">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-arena-cyan">
+                      QZ-
+                    </span>
+                    <input
+                      ref={codeInputRef}
+                      type="text"
+                      value={joinCode}
+                      onChange={handleCodeChange}
+                      maxLength={ROOM_BODY_LENGTH}
+                      placeholder="XXXXXX"
+                      className="w-full rounded-xl bg-black/60 border border-white/20 pl-11 pr-3 py-2 text-sm text-white font-mono font-bold uppercase tracking-widest text-center"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={handlePasteCode}
-                    title="لصق الكود من الكليبورد"
-                    className="p-2 rounded-xl bg-arena-yellow/10 hover:bg-arena-yellow/20 border border-arena-yellow/30 text-arena-yellow transition-colors"
+                    className="p-2.5 rounded-xl bg-slate-800 border border-white/20 text-gray-300 hover:text-white"
+                    title="لصق من الحافظة"
                   >
                     <ClipboardPaste className="w-4 h-4" />
                   </button>
                 </div>
                 {fieldError('roomCode') && (
-                  <p className="mt-2 text-xs font-bold text-arena-red">{fieldError('roomCode')}</p>
+                  <p className="mt-1 text-xs font-bold text-arena-red">{fieldError('roomCode')}</p>
                 )}
               </div>
 
@@ -280,41 +400,106 @@ export default function Landing() {
                 type="button"
                 onClick={handleJoin}
                 disabled={!isConnected}
-                className="btn-arcade-yellow w-full py-4 rounded-2xl text-base font-black flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
+                className="menu-btn btn-blue h-12 w-full justify-center gap-2 mt-2"
               >
-                <Users className="w-5 h-5" />
-                <span>دخول بالكود</span>
+                <LogIn className="w-5 h-5 text-amber-200" />
+                <span className="font-rubik font-black text-sm text-amber-100">انضمام للساحة</span>
               </button>
             </div>
           </div>
+        </div>
+      )}
 
-          {generalError && (
-            <div className="max-w-xl mx-auto rounded-2xl border border-arena-red/50 bg-arena-red/10 px-4 py-3 text-center text-sm font-bold text-arena-red">
-              {generalError}
+      {/* ========================================================================= */}
+      {/* MODAL 2: GAMEPLAY RULES INFO                                              */}
+      {/* ========================================================================= */}
+      {activeModal === 'info' && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="w-full max-w-md bg-slate-900 border-[3.5px] border-[#090614] rounded-2xl p-5 shadow-[0_8px_0_0_#090614] relative space-y-3 max-h-[85vh] overflow-y-auto">
+            <button
+              onClick={() => setActiveModal(null)}
+              className="absolute top-3 left-3 text-gray-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center space-y-1">
+              <span className="text-2xl">📜</span>
+              <h2 className="font-rubik font-black text-lg text-arena-yellow">جولات ساحة الكويز</h2>
+              <p className="text-xs text-gray-300">4 جولات ملحمية لحسم اللقب بين الفريقين</p>
             </div>
-          )}
 
-          <div className="pt-2 border-t border-white/10 space-y-3">
-            <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-gray-400">
-              <WifiOff className="w-3.5 h-3.5 text-arena-cyan" />
-              <span>الشخصية والفريق بيتحددوا جوه اللوبي بعد الدخول</span>
+            <div className="space-y-2 text-xs">
+              <div className="bg-black/50 p-3 rounded-xl border border-white/10">
+                <span className="font-bold text-arena-yellow block">1️⃣ جولة "1 تو" (Bank Mode):</span>
+                <span>12 سؤال لكل فريق، اللاعبين بيتبادلوا الإجابة سؤال بسؤال. أمّن النقاط في الخزنة قبل ما تغلط وتصفر!</span>
+              </div>
+              <div className="bg-black/50 p-3 rounded-xl border border-white/10">
+                <span className="font-bold text-arena-cyan block">2️⃣ جولة "اديني في سري" (Password):</span>
+                <span>5 كلمات سر لكل فريق، ملقيين التلميحات بيشوفوا الكلمة والـ 4 كلمات الممنوعة مع تحكيم متبادل ضد الغش.</span>
+              </div>
+              <div className="bg-black/50 p-3 rounded-xl border border-white/10">
+                <span className="font-bold text-emerald-400 block">3️⃣ جولة "في المقص" (Penalty Shootout):</span>
+                <span>10 ركلات جزاء كرة قدم بعد 2010. مواجهة 1 ضد 1 بين المسدد وحارس المرمى مع زر الصد المتوهج!</span>
+              </div>
+              <div className="bg-black/50 p-3 rounded-xl border border-white/10">
+                <span className="font-bold text-purple-400 block">4️⃣ جولة "مين يزوّد؟" (Blind Auction):</span>
+                <span>مزاد علني بين الكباتن على موضوعات تافهة وعامة. أعلى مزايدة بينزل ينفذ التحدي أمام الخصم!</span>
+              </div>
             </div>
 
-            <div className="flex items-center justify-center gap-2 flex-wrap">
-              {CHARACTERS.map(character => (
-                <div
-                  key={character.id}
-                  title={character.name}
-                  className="w-10 h-10 rounded-xl border flex items-center justify-center text-xl shadow-md"
-                  style={{ backgroundColor: `${character.color}20`, borderColor: character.color }}
-                >
-                  {character.avatar}
+            <button
+              onClick={() => setActiveModal(null)}
+              className="w-full py-2.5 rounded-xl bg-arena-yellow font-rubik font-black text-sm text-black"
+            >
+              فهمت يا كابتن 👍
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 3: CHARACTERS ROSTER PREVIEW                                        */}
+      {/* ========================================================================= */}
+      {activeModal === 'characters' && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="w-full max-w-lg bg-slate-900 border-[3.5px] border-[#090614] rounded-2xl p-5 shadow-[0_8px_0_0_#090614] relative space-y-3 max-h-[85vh] overflow-y-auto">
+            <button
+              onClick={() => setActiveModal(null)}
+              className="absolute top-3 left-3 text-gray-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center space-y-1">
+              <span className="text-2xl">🛡️</span>
+              <h2 className="font-rubik font-black text-lg text-arena-yellow">أبطال الصعيد (7 شخصيات)</h2>
+              <p className="text-xs text-gray-300">لكل بطل تخصصه وقفشته الخاصة</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              {CHARACTERS.map(char => (
+                <div key={char.id} className="bg-black/60 p-2.5 rounded-xl border border-white/10 flex items-center gap-2.5">
+                  <span className="text-2xl">{char.avatar}</span>
+                  <div>
+                    <div className="font-bold text-white">{char.name}</div>
+                    <div className="text-[10px] text-arena-cyan font-bold">{char.badge}</div>
+                    <div className="text-[10px] text-gray-400 italic">"{char.catchphrase}"</div>
+                  </div>
                 </div>
               ))}
             </div>
+
+            <button
+              onClick={() => setActiveModal(null)}
+              className="w-full py-2.5 rounded-xl bg-arena-cyan font-rubik font-black text-sm text-black"
+            >
+              تمام يا ريس
+            </button>
           </div>
         </div>
-      </div>
+      )}
+
     </div>
   );
 }
