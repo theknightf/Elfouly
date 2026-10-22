@@ -682,6 +682,94 @@ export function GameProvider({ children }) {
 
   const clearActionError = () => setActionError(null);
 
+  // Host Team Management: update team names freely before match start
+  const updateTeamNames = (names) => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('update_team_names', { roomCode, names });
+    }
+    setRoomState(prev => ({
+      ...prev,
+      teams: {
+        ...prev.teams,
+        team_a: { ...prev.teams.team_a, name: names?.team_a || prev.teams.team_a.name },
+        team_b: { ...prev.teams.team_b, name: names?.team_b || prev.teams.team_b.name }
+      }
+    }));
+    showToast('تم تحديث أسماء الفرق! 🏷️', 'تم حفظ التعديلات بنجاح.');
+  };
+
+  // Host Team Management: reassign player across teams
+  const reassignPlayerTeam = (playerId, targetTeam) => {
+    if (!['team_a', 'team_b'].includes(targetTeam)) return;
+    if (socket && isConnected && roomCode) {
+      socket.emit('reassign_player_team', { roomCode, playerId, team: targetTeam });
+    }
+    setRoomState(prev => {
+      const currentTeamCount = prev.players.filter(p => p.team === targetTeam).length;
+      const targetPlayer = prev.players.find(p => p.id === playerId);
+      if (targetPlayer?.team !== targetTeam && currentTeamCount >= 2) {
+        showToast('الفريق المقابل مكتمل!', 'كل فريق بحد أقصى لاعبين (2/2).');
+        return prev;
+      }
+      return {
+        ...prev,
+        players: prev.players.map(p => p.id === playerId ? { ...p, team: targetTeam } : p)
+      };
+    });
+  };
+
+  // Host Team Management: reorder players within team (changes who answers first)
+  const reorderTeamPlayers = (team, fromIndex, toIndex) => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('reorder_team_players', { roomCode, team, fromIndex, toIndex });
+    }
+    setRoomState(prev => {
+      const teamIndices = [];
+      prev.players.forEach((p, idx) => {
+        if (p.team === team) teamIndices.push(idx);
+      });
+      if (fromIndex < 0 || fromIndex >= teamIndices.length || toIndex < 0 || toIndex >= teamIndices.length) {
+        return prev;
+      }
+      const updatedPlayers = [...prev.players];
+      const idxA = teamIndices[fromIndex];
+      const idxB = teamIndices[toIndex];
+      const temp = updatedPlayers[idxA];
+      updatedPlayers[idxA] = updatedPlayers[idxB];
+      updatedPlayers[idxB] = temp;
+      return { ...prev, players: updatedPlayers };
+    });
+  };
+
+  // Host Team Management: swap teams
+  const swapTeams = () => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('swap_teams', { roomCode });
+    }
+    setRoomState(prev => ({
+      ...prev,
+      players: prev.players.map(p => ({
+        ...p,
+        team: p.team === 'team_a' ? 'team_b' : 'team_a'
+      }))
+    }));
+    showToast('تم تبديل الفرق! 🔄', 'تم تبديل توزيع اللاعبين بين الفريقين.');
+  };
+
+  // Single Judge assignment
+  const setMatchJudge = (judgeId) => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('set_match_judge', { roomCode, judgeId });
+    }
+    setRoomState(prev => ({
+      ...prev,
+      singleJudgeId: judgeId,
+      matchJudgeId: judgeId
+    }));
+    const judgeName = roomState.players.find(p => p.id === judgeId)?.name || 'اللاعب';
+    showToast('تعيين الحكم الوحيد 🛡️', `${judgeName} هو الحكم المكلّف لهذه المباراة.`);
+  };
+
   // Socket or local fallback dispatchers
   const changeRound = (targetRound) => {
     if (socket && isConnected && roomCode) {
@@ -820,7 +908,7 @@ export function GameProvider({ children }) {
     return true;
   };
 
-  // Round 1 Handlers
+  // Round 1 Handlers (Manual Progression Control: NO auto-advancement)
   const r1Score = () => {
     if (socket && isConnected && roomCode) {
       socket.emit('r1_action_score', { roomCode, actionToken: roomState?.round1?.actionToken });
@@ -832,8 +920,15 @@ export function GameProvider({ children }) {
         const nextStreak = Math.min(r1.streak + 1, 10);
         r1.streak = nextStreak;
         r1.pendingPoints = r1.streakLadder[nextStreak];
-        advanceR1LocalQuota(r1, prev.players, teams);
-        dispatchLocalR1Question(r1, prev.players);
+        r1.questionState = 'resolved';
+        r1.lastResult = {
+          correct: true,
+          pointsEarned: r1.pendingPoints,
+          streak: nextStreak,
+          question: r1.currentQuestion,
+          answererId: r1.answeringPlayerId,
+          resolvedAt: Date.now()
+        };
         sounds.playStreakUp(nextStreak);
         return { ...prev, teams, round1: r1 };
       });
@@ -858,12 +953,43 @@ export function GameProvider({ children }) {
           r1.streak = 0;
           r1.pendingPoints = 0;
         }
-        advanceR1LocalQuota(r1, prev.players, teams);
-        dispatchLocalR1Question(r1, prev.players);
+        r1.questionState = 'resolved';
+        r1.lastResult = {
+          correct: false,
+          pointsEarned: 0,
+          streak: r1.streak,
+          question: r1.currentQuestion,
+          answererId: r1.answeringPlayerId,
+          resolvedAt: Date.now()
+        };
         return { ...prev, teams, round1: r1 };
       });
     }
   };
+
+  // Dedicated manual progression trigger for Round 1
+  const r1NextQuestion = () => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('r1_next_question', { roomCode });
+    }
+    setRoomState(prev => {
+      if (!prev.round1) return prev;
+      const r1 = { ...prev.round1 };
+      const teams = { ...prev.teams };
+      advanceR1LocalQuota(r1, prev.players, teams);
+      if (r1.totalQuestionsAnswered >= 48) {
+        r1.isComplete = true;
+        r1.currentQuestion = null;
+        r1.questionState = 'complete';
+        return { ...prev, teams, round1: r1 };
+      }
+      dispatchLocalR1Question(r1, prev.players);
+      r1.questionState = 'active';
+      r1.lastResult = null;
+      return { ...prev, teams, round1: r1 };
+    });
+  };
+
 
   const r1Bank = () => {
     if (socket && isConnected && roomCode) {
@@ -1246,6 +1372,42 @@ export function GameProvider({ children }) {
     }
   };
 
+  // Dedicated manual progression trigger for Round 3 (Penalty Shootout)
+  const r3NextShot = () => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('r3_next_shot', { roomCode });
+    }
+    setRoomState(prev => {
+      if (!prev.round3) return prev;
+      const r3 = { ...prev.round3 };
+      r3.shotState = 'selection';
+      r3.lastShotResult = null;
+      r3.phase = 'duelist_selection';
+      r3.pendingAnswer = null;
+      r3.interceptBuzzedBy = null;
+      r3.currentCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
+      return { ...prev, round3: r3 };
+    });
+  };
+
+  // Unified manual progression triggers for Host / Admin Controls
+  const nextQuestion = () => {
+    if (roomState?.status === 'round1') {
+      r1NextQuestion();
+    } else if (roomState?.status === 'round3') {
+      r3NextShot();
+    }
+  };
+
+  const nextRound = () => {
+    const current = roomState?.status;
+    if (current === 'lobby') changeRound('round1');
+    else if (current === 'round1') changeRound('round2');
+    else if (current === 'round2') changeRound('round3');
+    else if (current === 'round3') changeRound('round4');
+    else if (current === 'round4') changeRound('game_over');
+  };
+
   // Round 4 Handlers
   const r4Bid = (increment) => {
     sounds.playBid();
@@ -1445,6 +1607,17 @@ export function GameProvider({ children }) {
         joinRoom,
         updatePlayerProfile,
         addDemoPlayer,
+        // Host Team Management
+        updateTeamNames,
+        reassignPlayerTeam,
+        reorderTeamPlayers,
+        swapTeams,
+        setMatchJudge,
+        // Manual Progression Controls
+        nextQuestion,
+        nextRound,
+        r1NextQuestion,
+        r3NextShot,
         // Round actions
         r1Score,
         r1Break,

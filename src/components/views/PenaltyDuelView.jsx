@@ -2,29 +2,32 @@ import React, { useEffect, useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import { useTriviaRoom } from '../../hooks/useTriviaRoom';
 import { sounds } from '../../utils/soundEffects';
-import { CheckCircle, XCircle, Radio, ShieldCheck, Target } from 'lucide-react';
+import { CheckCircle, XCircle, Radio, ShieldCheck, Target, ChevronRight, Trophy, Sparkles } from 'lucide-react';
 import { calculateBonus, isGeneralCategory } from '../../utils/penaltyRules';
 
 /**
  * PenaltyDuelView
  *
  * Round 3 ("حط في قريبي" / Penalty Shootout):
- * - The active team's representative selects the shooter from the team roster.
- * - The shooter answers the multiple-choice question (no answer key shown).
- * - ONE judge from the opposing team sees the answer key and decides Goal / Miss.
- * - Out-of-specialty goals earn the bonus point; general questions never do.
- * - 5 kicks each + sudden death on a tie.
- *
- * There is no goalkeeper/intercept mechanic: the judge owns the result.
+ * - Turn-based shootout alternating Team A -> Team B up to 5 kicks per team (10 total, sudden death if tied).
+ * - Step 1: System selects random category.
+ * - Step 2: Active team captain chooses shooter.
+ * - Step 3: Chosen shooter receives on-screen alert.
+ * - Step 4: Question displayed, single judge evaluates Goal / Miss.
+ * - Attribute Bonus Point: Correct answer outside native attributes earns +1 Bonus Point!
+ * - No Auto-Advancement: Manual progression trigger ("Next Question" / "Next Shot") once resolved.
  */
 export default function PenaltyDuelView({ isMobile = false }) {
   const {
     roomState,
     currentPlayer,
+    isHost,
     r3RecordShot,
     r3SubmitAnswer,
     r3SelectDuelists,
-    r3StartShootout
+    r3StartShootout,
+    r3NextShot,
+    nextRound
   } = useGame();
 
   const triviaRoom = useTriviaRoom();
@@ -127,10 +130,20 @@ export default function PenaltyDuelView({ isMobile = false }) {
       {/* Duelist selection: representative picks the shooter */}
       {isDuelistSelection ? (
         <div className="bg-arena-card rounded-3xl p-6 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] space-y-4">
+          {/* Step 1: System selected category */}
+          <div className="bg-arena-darker/80 rounded-2xl p-3 border border-arena-cyan/30 flex items-center justify-between">
+            <span className="text-xs text-gray-400 font-bold">الخطوة 1: التصنيف المختار عشوائياً 🎲</span>
+            <span className="text-xs font-black text-arena-cyan bg-arena-cyan/15 px-3 py-1 rounded-full border border-arena-cyan/40">
+              {r3.currentCategory?.name || 'كرة قدم بعد 2010'}
+            </span>
+          </div>
+
           <div className="text-center">
-            <h3 className="text-lg font-black text-arena-yellow">اختار المسدد — {kickerTeam.name}</h3>
+            <h3 className="text-lg font-black text-arena-yellow">
+              الخطوة 2: كابتن {kickerTeam.name} يختار المسدد 🎯
+            </h3>
             <p className="text-xs text-gray-400 font-bold mt-1">
-              ممثل الفريق ({teamRepresentative?.name || '—'}) هو الوحيد اللي يختار مين يسدد.
+              ممثل الفريق ({teamRepresentative?.name || 'كابتن الفريق'}) يحدد من سيسدد هذه الركلة.
             </p>
           </div>
 
@@ -208,6 +221,49 @@ export default function PenaltyDuelView({ isMobile = false }) {
                 🔒 تم تسجيل إجابة المسدد — في انتظار قرار الحكم (Goal / Miss).
               </div>
             )}
+
+            {/* Resolution Outcome Banner (No Auto-Advancement) */}
+            {(r3.shotState === 'resolved' || r3.lastShotResult) && (
+              <div className={`mt-5 p-5 rounded-2xl border-2 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fadeIn ${
+                (r3.lastShotResult?.result === 'goal' || r3.shotsHistory?.slice(-1)[0]?.result === 'goal')
+                  ? 'bg-emerald-950/80 border-arena-green shadow-[0_0_25px_rgba(16,185,129,0.35)]'
+                  : 'bg-rose-950/80 border-arena-red shadow-[0_0_25px_rgba(239,68,68,0.35)]'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className="text-4xl">
+                    {(r3.lastShotResult?.result === 'goal' || r3.shotsHistory?.slice(-1)[0]?.result === 'goal') ? '⚽' : '❌'}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-black text-white flex items-center gap-2">
+                      <span>
+                        {(r3.lastShotResult?.result === 'goal' || r3.shotsHistory?.slice(-1)[0]?.result === 'goal')
+                          ? 'هدف رسمي! Goal! ⚽'
+                          : 'ضربة ضائعة! Miss ❌'}
+                      </span>
+                      {(r3.lastShotResult?.bonusAwarded || r3.shotsHistory?.slice(-1)[0]?.bonusAwarded) && (
+                        <span className="text-xs bg-amber-400 text-arena-darker px-2 py-0.5 rounded-full font-black animate-bounce">
+                          🎯 بونص خارج التخصص (+1)
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-300 font-bold mt-0.5">
+                      حكم المباراة اعتمد النتيجة. في انتظار صافرة الركلة التالية.
+                    </div>
+                  </div>
+                </div>
+
+                {(isHost || isPenaltyReferee) && (
+                  <button
+                    type="button"
+                    onClick={r3NextShot}
+                    className="btn-arcade-yellow px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 cursor-pointer shadow-xl hover:scale-[1.02] animate-pulse whitespace-nowrap"
+                  >
+                    <span>الركلة التالية (Next Question)</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Shooter view */}
@@ -264,22 +320,37 @@ export default function PenaltyDuelView({ isMobile = false }) {
                 <span className="text-[10px] text-gray-400">مفتاح رسمي 🔒</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => handleJudgeDecision('goal')}
-                  className="btn-arcade-green py-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer shadow hover:scale-[1.02]"
-                >
-                  <CheckCircle className="w-5 h-5" />
-                  <span>[هدف] Goal! ⚽ {kickerBonusApplies ? '(+1 🎯)' : ''}</span>
-                </button>
-                <button
-                  onClick={() => handleJudgeDecision('missed')}
-                  className="btn-arcade-red py-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer shadow hover:scale-[1.02]"
-                >
-                  <XCircle className="w-5 h-5" />
-                  <span>[ضاعت] Miss ❌</span>
-                </button>
-              </div>
+              {r3.shotState === 'resolved' ? (
+                <div className="p-3 bg-arena-darker/80 border border-white/10 rounded-xl text-center space-y-2">
+                  <div className="text-xs font-bold text-gray-300">
+                    تم حسم هذه الركلة بنجاح. اضغط على زر "الركلة التالية" لتحميل الركلة القادمة.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={r3NextShot}
+                    className="btn-arcade-yellow px-6 py-2.5 rounded-xl font-black text-xs md:text-sm inline-flex items-center gap-2 cursor-pointer shadow-lg hover:scale-[1.02]"
+                  >
+                    <span>الركلة التالية (Next Shot) ➡️</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => handleJudgeDecision('goal')}
+                    className="btn-arcade-green py-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer shadow hover:scale-[1.02]"
+                  >
+                    <CheckCircle className="w-5 h-5" />
+                    <span>[هدف] Goal! ⚽ {kickerBonusApplies ? '(+1 🎯)' : ''}</span>
+                  </button>
+                  <button
+                    onClick={() => handleJudgeDecision('missed')}
+                    className="btn-arcade-red py-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer shadow hover:scale-[1.02]"
+                  >
+                    <XCircle className="w-5 h-5" />
+                    <span>[ضاعت] Miss ❌</span>
+                  </button>
+                </div>
+              )}
 
               <p className="text-[11px] text-gray-400 text-center">
                 أنت الحكم الوحيد — قرارك هو النتيجة النهائية للركلة.

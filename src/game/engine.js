@@ -231,6 +231,61 @@ function lobbySelectTeam(state, { playerId, team }) {
   return { state: next, events: [{ type: 'team_selected', playerId, team }] };
 }
 
+function lobbyUpdateTeamNames(state, { names }) {
+  if (!names || typeof names !== 'object') return { error: 'invalid_names' };
+  const next = clone(state);
+  if (names[TEAM_A]) next.teams[TEAM_A].name = String(names[TEAM_A]).slice(0, 30);
+  if (names[TEAM_B]) next.teams[TEAM_B].name = String(names[TEAM_B]).slice(0, 30);
+  return { state: next, events: [{ type: 'team_names_updated', names }] };
+}
+
+function lobbyReassignPlayerTeam(state, { playerId, team }) {
+  if (!TEAMS.includes(team)) return { error: 'invalid_team' };
+  const player = findPlayer(state, playerId);
+  if (!player) return { error: 'player_not_found' };
+  if (player.team === team) return { state };
+  const targetTeamCount = playersOf(state, team).length;
+  if (targetTeamCount >= MAX_TEAM_PLAYERS) return { error: 'team_full' };
+  const next = clone(state);
+  findPlayer(next, playerId).team = team;
+  return { state: next, events: [{ type: 'player_reassigned', playerId, team }] };
+}
+
+function lobbyReorderTeamPlayers(state, { team, fromIndex, toIndex }) {
+  if (!TEAMS.includes(team)) return { error: 'invalid_team' };
+  const next = clone(state);
+  const teamPlayerIndices = [];
+  next.players.forEach((p, idx) => {
+    if (p.team === team) teamPlayerIndices.push(idx);
+  });
+  if (fromIndex < 0 || fromIndex >= teamPlayerIndices.length || toIndex < 0 || toIndex >= teamPlayerIndices.length) {
+    return { error: 'invalid_indices' };
+  }
+  const idxA = teamPlayerIndices[fromIndex];
+  const idxB = teamPlayerIndices[toIndex];
+  const temp = next.players[idxA];
+  next.players[idxA] = next.players[idxB];
+  next.players[idxB] = temp;
+  return { state: next, events: [{ type: 'team_reordered', team }] };
+}
+
+function lobbySwapTeams(state) {
+  const next = clone(state);
+  next.players.forEach(p => {
+    p.team = otherTeam(p.team);
+  });
+  return { state: next, events: [{ type: 'teams_swapped' }] };
+}
+
+function lobbySetJudge(state, { judgeId }) {
+  const player = findPlayer(state, judgeId);
+  if (!player && judgeId !== null) return { error: 'player_not_found' };
+  const next = clone(state);
+  next.judgeId = judgeId;
+  return { state: next, events: [{ type: 'judge_set', judgeId }] };
+}
+
+
 /* ------------------------------------------------------------------ */
 /* Bank round transitions                                              */
 /* ------------------------------------------------------------------ */
@@ -734,6 +789,21 @@ export function reduce(state, action = {}) {
       break;
     case 'LOBBY_SELECT_TEAM':
       result = lobbySelectTeam(state, action);
+      break;
+    case 'LOBBY_UPDATE_TEAM_NAMES':
+      result = lobbyUpdateTeamNames(state, action);
+      break;
+    case 'LOBBY_REASSIGN_PLAYER_TEAM':
+      result = lobbyReassignPlayerTeam(state, action);
+      break;
+    case 'LOBBY_REORDER_TEAM_PLAYERS':
+      result = lobbyReorderTeamPlayers(state, action);
+      break;
+    case 'LOBBY_SWAP_TEAMS':
+      result = lobbySwapTeams(state);
+      break;
+    case 'LOBBY_SET_JUDGE':
+      result = lobbySetJudge(state, action);
       break;
     case 'START_BANK':
       result = startBank(state);

@@ -970,6 +970,95 @@ io.on('connection', (socket) => {
     respond({ ok: true, player });
   });
 
+  // Host Team Management: update team names
+  socket.on('update_team_names', ({ roomCode, names }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+    if (names && typeof names === 'object') {
+      if (names.team_a) room.teams.team_a.name = String(names.team_a).slice(0, 30);
+      if (names.team_b) room.teams.team_b.name = String(names.team_b).slice(0, 30);
+      emitRoomState(room);
+    }
+  });
+
+  // Host Team Management: reassign player team
+  socket.on('reassign_player_team', ({ roomCode, playerId, team }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+    const targetPlayer = room.players.find(p => p.id === playerId);
+    if (!targetPlayer || !['team_a', 'team_b'].includes(team)) return;
+    const targetCount = room.players.filter(p => p.team === team).length;
+    if (targetPlayer.team !== team && targetCount >= 2) {
+      socket.emit('error_message', 'الفريق المقابل مكتمل (2/2)!');
+      return;
+    }
+    targetPlayer.team = team;
+    emitRoomState(room);
+  });
+
+  // Host Team Management: reorder team players
+  socket.on('reorder_team_players', ({ roomCode, team, fromIndex, toIndex }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+    const teamIndices = [];
+    room.players.forEach((p, idx) => {
+      if (p.team === team) teamIndices.push(idx);
+    });
+    if (fromIndex >= 0 && fromIndex < teamIndices.length && toIndex >= 0 && toIndex < teamIndices.length) {
+      const idxA = teamIndices[fromIndex];
+      const idxB = teamIndices[toIndex];
+      const temp = room.players[idxA];
+      room.players[idxA] = room.players[idxB];
+      room.players[idxB] = temp;
+      emitRoomState(room);
+    }
+  });
+
+  // Host Team Management: swap teams
+  socket.on('swap_teams', ({ roomCode }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+    room.players.forEach(p => {
+      p.team = p.team === 'team_a' ? 'team_b' : 'team_a';
+    });
+    emitRoomState(room);
+  });
+
+  // Host / Room Authority: set single match judge
+  socket.on('set_match_judge', ({ roomCode, judgeId }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+    room.singleJudgeId = judgeId;
+    emitRoomState(room);
+  });
+
+  // Manual Progression: Next Question trigger for Round 1
+  socket.on('r1_next_question', ({ roomCode }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+    if (room.status !== 'round1') return;
+    room.round1.questionState = 'active';
+    room.round1.lastResult = null;
+    emitRoomState(room);
+  });
+
+  // Manual Progression: Next Shot trigger for Round 3
+  socket.on('r3_next_shot', ({ roomCode }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+    if (room.status !== 'round3') return;
+    room.round3.shotState = 'selection';
+    room.round3.lastShotResult = null;
+    emitRoomState(room);
+  });
+
   function getR1TurnKey(room) {
     const r1 = room.round1;
     return `${r1.segmentIndex}:${r1.subBatchIndex}:${r1.answeringPlayerId}`;

@@ -38,26 +38,29 @@ export default function RoleAlertModal() {
   const alert = useMemo(() => {
     if (!roomState || !currentPlayer) return null;
     const playerId = currentPlayer.id;
+    const isSingleJudge = roomState.singleJudgeId === playerId;
 
     if (roomState.status === 'round1' && roomState.round1?.currentQuestion) {
       const r1 = roomState.round1;
       const key = `r1:${roomState.code || 'room'}:${r1.actionToken || r1.currentQuestionIndex || 'q'}:${r1.totalQuestionsAnswered || 0}`;
-      if (playerId === r1.answeringPlayerId) {
+      if (playerId === r1.answeringPlayerId && !isSingleJudge) {
         return {
           key,
           title: "It's your turn to answer!",
-          body: 'أجب بصوت عالٍ الآن — الحكم الخصم هو من سيقيّم إجابتك.',
+          body: 'أجب بصوت عالٍ الآن — جميع أدوات الإجابة مقفولة لباقي اللاعبين.',
           tone: 'cyan',
-          icon: Megaphone
+          icon: Megaphone,
+          role: 'answerer'
         };
       }
-      if (playerId === r1.refereePlayerId) {
+      if (playerId === (roomState.singleJudgeId || r1.refereePlayerId)) {
         return {
           key,
           title: 'You are the judge for this round.',
-          body: 'أنت الحكم الوحيد لهذه الفقرة. استمع للإجابة واعتمد صح أو غلط.',
+          body: 'أنت الحكم الوحيد لهذه الفقرة وممنوع من الإجابة. أزرار الحكم مفعلة لك الآن: [صح / Correct]، [غلط / Incorrect]، والتحكم بالتايمر.',
           tone: 'red',
-          icon: ShieldCheck
+          icon: ShieldCheck,
+          role: 'judge'
         };
       }
     }
@@ -65,22 +68,24 @@ export default function RoleAlertModal() {
     if (roomState.status === 'round3' && roomState.round3?.currentQuestion) {
       const r3 = roomState.round3;
       const key = `r3:${roomState.code || 'room'}:${r3.turnIndex}:${r3.currentKickerId || ''}`;
-      if (playerId === r3.currentKickerId) {
+      if (playerId === r3.currentKickerId && !isSingleJudge) {
         return {
           key,
-          title: 'You are shooting!',
-          body: 'جاوب على السؤال — الحكم هو من يعتمد النتيجة (Goal أو Miss).',
+          title: "It's your turn to answer!",
+          body: 'أنت المسدد المختار لهذه الركلة! جاوب على السؤال — أزرار الاختيار مفعلة لك فقط.',
           tone: 'cyan',
-          icon: Target
+          icon: Target,
+          role: 'answerer'
         };
       }
-      if (playerId === r3.refereePlayerId) {
+      if (playerId === (roomState.singleJudgeId || r3.refereePlayerId)) {
         return {
           key,
           title: 'You are the judge for this round.',
-          body: 'أنت الحكم الوحيد للركلة. اعتمد النتيجة: Goal أو Miss.',
+          body: 'أنت الحكم الوحيد لهذه الركلة وممنوع من الإجابة. أزرار القرار مفعلة لك: [هدف / Goal] أو [ضاعت / Miss]، والبونص يُحسب تلقائياً.',
           tone: 'red',
-          icon: ShieldCheck
+          icon: ShieldCheck,
+          role: 'judge'
         };
       }
     }

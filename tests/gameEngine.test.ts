@@ -76,6 +76,55 @@ test('character selection is non-exclusive', () => {
   assert.equal(p1.characterId, p2.characterId);
 });
 
+test('host can edit team names freely before starting', () => {
+  let state = createGameState({ players: players() });
+  state = reduce(state, {
+    type: 'LOBBY_UPDATE_TEAM_NAMES',
+    names: {
+      team_a: 'أساطير الفراعنة',
+      team_b: 'صقور القاهرة'
+    }
+  }).state;
+  assert.equal(state.teams[TEAM_A].name, 'أساطير الفراعنة');
+  assert.equal(state.teams[TEAM_B].name, 'صقور القاهرة');
+});
+
+test('host can reassign and reorder players across teams', () => {
+  let state = createGameState({
+    players: [
+      { id: 'p1', name: 'P1', team: TEAM_A },
+      { id: 'p2', name: 'P2', team: TEAM_A },
+      { id: 'p3', name: 'P3', team: TEAM_B }
+    ]
+  });
+  // Move p2 to team_b
+  state = reduce(state, {
+    type: 'LOBBY_REASSIGN_PLAYER_TEAM',
+    playerId: 'p2',
+    team: TEAM_B
+  }).state;
+  assert.equal(state.players.find((p: any) => p.id === 'p2').team, TEAM_B);
+
+  // Swap teams
+  state = reduce(state, { type: 'LOBBY_SWAP_TEAMS' }).state;
+  assert.equal(state.players.find((p: any) => p.id === 'p1').team, TEAM_B);
+  assert.equal(state.players.find((p: any) => p.id === 'p2').team, TEAM_A);
+});
+
+test('single judge rule: exactly one judge per session, strictly excluded from answering', () => {
+  let state = createGameState({ players: players() });
+  state = reduce(state, { type: 'LOBBY_SET_JUDGE', judgeId: 'a1' }).state;
+  assert.equal(state.judgeId, 'a1');
+
+  const bankState = startedBank();
+  // Ensure exactly one judge exists in bank
+  assert.equal(bankState.players.filter((p: any) => p.id === bankState.bank.judgeId).length, 1);
+  const judgeRoles = getRoles(bankState, bankState.bank.judgeId);
+  assert.equal(judgeRoles.isJudge, true);
+  assert.equal(judgeRoles.isAnswerer, false);
+  assert.equal(judgeRoles.canAnswer, false);
+});
+
 test('bank starts with exactly one judge from the defending team', () => {
   const state = startedBank();
   assert.equal(state.phase, PHASES.BANK);

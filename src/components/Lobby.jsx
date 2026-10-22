@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { CHARACTERS } from '../data/characters';
+import HostTeamManager from './HostTeamManager';
 import {
   CheckCircle,
   Clock,
@@ -281,6 +282,9 @@ export default function Lobby() {
         })}
       </div>
 
+      {/* Host Team Management Panel (Host Only) */}
+      <HostTeamManager />
+
       {/* Character + team selection */}
       <div className="rounded-3xl bg-arena-card border-2 border-arena-cyan/30 p-4 md:p-6 shadow-2xl space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -372,7 +376,7 @@ export default function Lobby() {
                     : 'bg-arena-darker text-arena-cyan border-arena-cyan/30 hover:border-arena-cyan'
               }`}
             >
-              فريق الحيتان (A) 🐬
+              {roomState?.teams?.team_a?.name || 'فريق الحيتان (A) 🐬'}
               <span className="block text-[10px] mt-0.5 opacity-80">
                 {teamACount}/2 {isTeamFull('team_a') ? '— مكتمل' : ''}
               </span>
@@ -390,7 +394,7 @@ export default function Lobby() {
                     : 'bg-arena-darker text-arena-red border-arena-red/30 hover:border-arena-red'
               }`}
             >
-              فريق الوحوش (B) 🦁
+              {roomState?.teams?.team_b?.name || 'فريق الوحوش (B) 🦁'}
               <span className="block text-[10px] mt-0.5 opacity-80">
                 {teamBCount}/2 {isTeamFull('team_b') ? '— مكتمل' : ''}
               </span>

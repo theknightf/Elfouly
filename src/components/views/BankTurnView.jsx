@@ -1,26 +1,28 @@
 import React from 'react';
 import { useGame } from '../../context/GameContext';
 import { useTriviaRoom } from '../../hooks/useTriviaRoom';
-import { Vault, Flame, CheckCircle, XCircle, ShieldCheck } from 'lucide-react';
+import { Vault, Flame, CheckCircle, XCircle, ShieldCheck, ChevronRight, Trophy, Sparkles } from 'lucide-react';
 
 /**
  * BankTurnView
  *
  * Strict Role & View Partitioning for Round 1 ("1 تو" / Bank Mode):
+ * - 2 Bank Rounds total (24 questions each = 48 questions total across both rounds).
  * - 12 questions per team turn.
- * - Alternates strictly question by question between the 2 active team players.
- * - Answering side: Question text ONLY (NO answer key, NO evaluation buttons, NO bank controls).
- * - Defending side: Question text + Correct answer + Grading buttons [صح / (+Points)] + [غلط / Break Streak]
- *   and the ONLY Bank / Continue decision controls.
- * - Bank controls are strictly hidden from the answering team and answerer.
+ * - Alternates strictly question by question between the 2 active team players (P1 -> P2 -> P1 -> P2 ...).
+ * - Opponent Bank Action: Bank controls are strictly hidden from the answering team and answerer.
+ * - No Auto-Advancement: Manual progression trigger ("Next Question" / "Next Round") once resolved.
  */
 export default function BankTurnView({ isMobile = false }) {
   const {
     roomState,
+    isHost,
     r1Score,
     r1Break,
     r1Bank,
-    r1Continue
+    r1Continue,
+    r1NextQuestion,
+    nextRound
   } = useGame();
 
   const triviaRoom = useTriviaRoom();
@@ -153,6 +155,45 @@ export default function BankTurnView({ isMobile = false }) {
             🔒 الإجابة مخفية ومتاحة لحكم الخصم فقط — أجب بصوت عالٍ!
           </div>
         )}
+
+        {/* Question Resolution Outcome (No Auto-Advancement) */}
+        {r1.questionState === 'resolved' && (
+          <div className={`mt-5 p-4 rounded-2xl border-2 flex flex-col md:flex-row items-center justify-between gap-3 animate-fadeIn ${
+            r1.lastResult?.correct
+              ? 'bg-emerald-950/70 border-arena-green shadow-[0_0_20px_rgba(16,185,129,0.3)]'
+              : 'bg-rose-950/70 border-arena-red shadow-[0_0_20px_rgba(239,68,68,0.3)]'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className="text-3xl">
+                {r1.lastResult?.correct ? '🎯' : '💥'}
+              </div>
+              <div className="text-right">
+                <div className={`text-base font-black ${r1.lastResult?.correct ? 'text-arena-green' : 'text-arena-red'}`}>
+                  {r1.lastResult?.correct
+                    ? `إجابة صحيحة! (+${(r1.lastResult?.pointsEarned || 0).toLocaleString()} نقطة)`
+                    : 'إجابة خاطئة! تم تصفير الستريك'}
+                </div>
+                <div className="text-xs text-gray-300 font-bold">
+                  {r1.lastResult?.correct
+                    ? `وصلت السلسلة إلى ×${r1.lastResult?.streak || 0} في بنك النقاط`
+                    : 'يمكن للفريق الخصم التأمين أو الاستمرار في الأدوار القادمة'}
+                </div>
+              </div>
+            </div>
+
+            {/* Host / Referee Manual Progression Trigger */}
+            {(isHost || isR1Referee) && (
+              <button
+                type="button"
+                onClick={r1NextQuestion}
+                className="btn-arcade-yellow px-5 py-2.5 rounded-xl font-black text-xs md:text-sm flex items-center gap-2 cursor-pointer shadow-xl hover:scale-[1.02] animate-pulse"
+              >
+                <span>السؤال التالي (Next Question)</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* POT & Vault Status Display (Stitch Screen 5 Style) */}
@@ -204,25 +245,40 @@ export default function BankTurnView({ isMobile = false }) {
               <span className="bg-arena-red/20 px-2 py-0.5 rounded text-[10px]">الحكم الخصم 🛡️</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              {/* [صح / (+Points)] Button */}
-              <button
-                onClick={handleScore}
-                className="btn-arcade-green py-4 rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2 cursor-pointer shadow-xl hover:scale-[1.02]"
-              >
-                <CheckCircle className="w-5 h-5" />
-                <span>[صح / (+Points)] 🎯</span>
-              </button>
+            {r1.questionState === 'resolved' ? (
+              <div className="p-3 bg-arena-darker/80 border border-white/10 rounded-xl text-center space-y-2">
+                <div className="text-xs font-bold text-gray-300">
+                  تم حسم هذا السؤال بنجاح. اضغط على زر "السؤال التالي" لتحميل السؤال القادم.
+                </div>
+                <button
+                  type="button"
+                  onClick={r1NextQuestion}
+                  className="btn-arcade-yellow px-6 py-2.5 rounded-xl font-black text-xs md:text-sm inline-flex items-center gap-2 cursor-pointer shadow-lg hover:scale-[1.02]"
+                >
+                  <span>السؤال التالي (Next Question) ➡️</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {/* [صح / (+Points)] Button */}
+                <button
+                  onClick={handleScore}
+                  className="btn-arcade-green py-4 rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2 cursor-pointer shadow-xl hover:scale-[1.02]"
+                >
+                  <CheckCircle className="w-5 h-5" />
+                  <span>[صح / (+Points)] 🎯</span>
+                </button>
 
-              {/* [غلط / Break Streak] Button */}
-              <button
-                onClick={handleBreak}
-                className="btn-arcade-red py-4 rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2 cursor-pointer shadow-xl hover:scale-[1.02]"
-              >
-                <XCircle className="w-5 h-5" />
-                <span>[غلط / Break Streak] 💥</span>
-              </button>
-            </div>
+                {/* [غلط / Break Streak] Button */}
+                <button
+                  onClick={handleBreak}
+                  className="btn-arcade-red py-4 rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2 cursor-pointer shadow-xl hover:scale-[1.02]"
+                >
+                  <XCircle className="w-5 h-5" />
+                  <span>[غلط / Break Streak] 💥</span>
+                </button>
+              </div>
+            )}
 
             <p className="text-[11px] text-gray-400 text-center">
               تحقق من نطق الخصم للإجابة بدقة قبل الضغط على القرار.
