@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useGame } from '../../context/GameContext';
 import { useTriviaRoom } from '../../hooks/useTriviaRoom';
-import { Vault, Flame, CheckCircle, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Vault, Flame, CheckCircle, XCircle, ShieldCheck } from 'lucide-react';
 
 /**
  * BankTurnView
@@ -9,19 +9,18 @@ import { Vault, Flame, CheckCircle, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck
  * Strict Role & View Partitioning for Round 1 ("1 تو" / Bank Mode):
  * - 12 questions per team turn.
  * - Alternates strictly question by question between the 2 active team players.
- * - Answering side: Question text ONLY (NO answer key, NO evaluation buttons) + [BANK! / أمّن] + [دبّل / كمل].
- * - Defending side: Question text + Correct answer + Grading buttons [صح / (+Points)] + [غلط / Break Streak].
- * - Defending team cannot see or trigger bank buttons.
+ * - Answering side: Question text ONLY (NO answer key, NO evaluation buttons, NO bank controls).
+ * - Defending side: Question text + Correct answer + Grading buttons [صح / (+Points)] + [غلط / Break Streak]
+ *   and the ONLY Bank / Continue decision controls.
+ * - Bank controls are strictly hidden from the answering team and answerer.
  */
 export default function BankTurnView({ isMobile = false }) {
   const {
     roomState,
-    currentPlayer,
     r1Score,
     r1Break,
     r1Bank,
-    r1PassTurn,
-    showToast
+    r1Continue
   } = useGame();
 
   const triviaRoom = useTriviaRoom();
@@ -34,11 +33,8 @@ export default function BankTurnView({ isMobile = false }) {
     isAnsweringTeam,
     isDefendingTeam,
     isR1Referee,
-    activeTeam,
-    defendingTeam
+    activeTeam
   } = triviaRoom;
-
-  const [revealSecret, setRevealSecret] = useState(false);
 
   const r1 = roomState?.round1 || {};
   const currentStreak = r1.streak || 0;
@@ -48,12 +44,10 @@ export default function BankTurnView({ isMobile = false }) {
   const nextValue = streakLadder[nextStreak];
 
   const handleScore = () => {
-    setRevealSecret(false);
     r1Score();
   };
 
   const handleBreak = () => {
-    setRevealSecret(false);
     r1Break();
   };
 
@@ -61,9 +55,11 @@ export default function BankTurnView({ isMobile = false }) {
     r1Bank();
   };
 
-  const handleDouble = () => {
-    showToast('دبّل وكمل! 🔥', 'واصل صعود سلم النقاط واكسب الضعف!');
+  const handleContinue = () => {
+    r1Continue?.();
   };
+
+  const hasLiveQuestion = !!r1.currentQuestion;
 
   return (
     <div className={`space-y-4 pixel-grid-pattern ${isMobile ? 'text-right' : ''}`}>
@@ -187,40 +183,16 @@ export default function BankTurnView({ isMobile = false }) {
         {/* VIEW 1: ACTIVE ANSWERING TEAM (Answering Player or Teammate) */}
         {isAnsweringTeam && (
           <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* [BANK! / أمّن] Button */}
-              <button
-                onClick={handleBank}
-                disabled={pendingPoints === 0}
-                className={`py-4 rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2 transition-all ${
-                  pendingPoints === 0
-                    ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-white/5'
-                    : 'btn-arcade-yellow cursor-pointer shadow-xl hover:scale-[1.02]'
-                }`}
-              >
-                <Vault className="w-5 h-5 fill-current" />
-                <span>[BANK! / أمّن في الخزنة] 🔒</span>
-              </button>
-
-              {/* [دبّل / كمل] Button */}
-              <button
-                onClick={handleDouble}
-                className="btn-arcade-cyan py-4 rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2 cursor-pointer shadow-xl hover:scale-[1.02]"
-              >
-                <Flame className="w-5 h-5 fill-current" />
-                <span>[دبّل / كمل للمضاعف] 🔥</span>
-              </button>
+            <div className="bg-arena-card p-3 rounded-2xl border-2 border-[#090614] text-center">
+              <p className="text-xs font-bold text-gray-300">
+                {isAnswering
+                  ? `⚡ أنت اللاعب المجيب الآن (${designatedAnsweringPlayer?.name}) — أجب بصوت عالٍ قبل الحكم!`
+                  : '📢 دور زميلك في الإجابة الآن — استعد للدور القادم!'}
+              </p>
+              <p className="text-[11px] text-gray-500 mt-1 font-bold">
+                🔒 قرار الخزنة (Bank / Continue) من حق الفريق الخصم فقط.
+              </p>
             </div>
-
-            {isAnswering ? (
-              <div className="bg-arena-cyan/10 border border-arena-cyan/30 p-2.5 rounded-xl text-center text-xs font-bold text-arena-cyan">
-                ⚡ أنت اللاعب المجيب لهذا السؤال ({designatedAnsweringPlayer?.name}) — جاوب قبل الحكم!
-              </div>
-            ) : (
-              <div className="bg-arena-card p-2.5 rounded-xl text-center text-xs text-gray-300">
-                📢 دور زميلك في الإجابة الآن — يمكنك تذكيره بتأمين النقاط إذا كان الرصيد كافياً!
-              </div>
-            )}
           </div>
         )}
 
@@ -254,6 +226,48 @@ export default function BankTurnView({ isMobile = false }) {
 
             <p className="text-[11px] text-gray-400 text-center">
               تحقق من نطق الخصم للإجابة بدقة قبل الضغط على القرار.
+            </p>
+          </div>
+        )}
+
+        {/* VIEW 3: OPPONENT BANK DECISION (never shown to the answering team) */}
+        {isDefendingTeam && (
+          <div className="space-y-3 bg-arena-card p-4 rounded-2xl border-2 border-arena-yellow/50 shadow-xl">
+            <div className="flex items-center justify-between text-xs font-bold text-arena-yellow">
+              <span>قرار الخزنة — للفريق الخصم فقط:</span>
+              <span className="bg-arena-yellow/20 px-2 py-0.5 rounded text-[10px]">POT: +{pendingPoints.toLocaleString()}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={handleBank}
+                disabled={!hasLiveQuestion || pendingPoints === 0}
+                className={`py-4 rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2 transition-all ${
+                  !hasLiveQuestion || pendingPoints === 0
+                    ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-white/5'
+                    : 'btn-arcade-yellow cursor-pointer shadow-xl hover:scale-[1.02]'
+                }`}
+              >
+                <Vault className="w-5 h-5 fill-current" />
+                <span>[BANK! / أمّن] 🔒</span>
+              </button>
+
+              <button
+                onClick={handleContinue}
+                disabled={!hasLiveQuestion || isAnswering}
+                className={`py-4 rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2 transition-all ${
+                  !hasLiveQuestion || isAnswering
+                    ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-white/5'
+                    : 'btn-arcade-cyan cursor-pointer shadow-xl hover:scale-[1.02]'
+                }`}
+              >
+                <Flame className="w-5 h-5 fill-current" />
+                <span>[CONTINUE / كمل] 🔥</span>
+              </button>
+            </div>
+
+            <p className="text-[11px] text-gray-400 text-center">
+              أنتم الفريق الخصم — قرروا: تأمين النقاط أو استكمال السلسلة.
             </p>
           </div>
         )}

@@ -10,6 +10,7 @@ import BonusAuction from './components/BonusAuction';
 import GameOver from './components/GameOver';
 import MobileController from './components/MobileController';
 import TauntChat from './components/TauntChat';
+import RoleAlertModal from './components/RoleAlertModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import { PlayCircle, Lock, Shield, Gavel, Trophy, Sparkles } from 'lucide-react';
 
@@ -131,6 +132,9 @@ function GameScreen() {
 
       {/* Floating Street Taunt Drawer */}
       <TauntChat />
+
+      {/* Blocking role alerts (answerer / judge / penalty shooter) */}
+      <RoleAlertModal />
     </div>
   );
 }

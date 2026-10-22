@@ -180,9 +180,17 @@ async function runSupabaseTests() {
     assert(r1State?.pendingPoints === 100, `Expected pending points 100, got ${r1State?.pendingPoints}`);
     console.log('   ✅ Scoring verified: Streak = 1, Pending Vault = 100 pts');
 
-    // Bank points
-    const bankedPromise = waitForState(hostSocket, (state: any) => state.teams?.team_a?.score === 100, 20000);
+    // Bank points: only the OPPOSING team may press Bank.
+    const forbiddenBankError = waitForEvent(hostSocket, 'error_message', 5000);
     hostSocket.emit('r1_action_bank', { roomCode: testRoomCode });
+    const forbidden = await forbiddenBankError;
+    assert(
+      /الخصم|ممنوع/.test(forbidden.message || forbidden),
+      `Answering team must not be allowed to bank: ${JSON.stringify(forbidden)}`
+    );
+
+    const bankedPromise = waitForState(hostSocket, (state: any) => state.teams?.team_a?.score === 100, 20000);
+    clientB.emit('r1_action_bank', { roomCode: testRoomCode });
     await bankedPromise;
 
     const { data: bankedRow } = await supabase

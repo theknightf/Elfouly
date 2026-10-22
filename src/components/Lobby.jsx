@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { CHARACTERS } from '../data/characters';
 import {
@@ -50,16 +50,6 @@ export default function Lobby() {
     if (me?.team) setSelectedTeam(me.team);
   }, [me?.team]);
 
-  const takenByOthers = useMemo(() => {
-    const map = new Map();
-    players.forEach(player => {
-      if (player.id !== me?.id && player.character?.id) {
-        map.set(player.character.id, player.name);
-      }
-    });
-    return map;
-  }, [players, me?.id]);
-
   const teamACount = players.filter(player => player.team === 'team_a').length;
   const teamBCount = players.filter(player => player.team === 'team_b').length;
   const isUserHost = Boolean(isHost || me?.isHost);
@@ -79,7 +69,6 @@ export default function Lobby() {
   const canStart = isConnected && players.length === 4 && teamACount === 2 && teamBCount === 2 && allHumansConnected;
 
   const handleSelectCharacter = (character) => {
-    if (takenByOthers.has(character.id)) return;
     setSelectedCharId(character.id);
   };
 
@@ -301,7 +290,7 @@ export default function Lobby() {
               <span>اختار شخصيتك وفريقك</span>
             </h2>
             <p className="text-xs text-gray-400 mt-1">
-              كل شخصية لصاحب واحد فقط. كل فريق حد أقصى لاعبين (2/2).
+              يمكن أكتر من لاعب يختاروا نفس الشخصية. كل فريق حد أقصى لاعبين (2/2).
             </p>
           </div>
 
@@ -316,23 +305,18 @@ export default function Lobby() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {CHARACTERS.map((char) => {
             const isSelected = selectedCharId === char.id;
-            const takenBy = takenByOthers.get(char.id);
-            const isTaken = Boolean(takenBy);
 
             return (
               <button
                 key={char.id}
                 type="button"
                 onClick={() => handleSelectCharacter(char)}
-                disabled={isTaken}
                 className={`relative text-right rounded-2xl p-3 border-2 transition-all duration-200 ${
-                  isTaken
-                    ? 'bg-arena-darker/40 border-white/5 opacity-55 cursor-not-allowed'
-                    : isSelected
-                      ? 'bg-arena-card shadow-xl scale-[1.01] cursor-pointer'
-                      : 'bg-arena-card/60 border-white/10 hover:border-white/30 cursor-pointer'
+                  isSelected
+                    ? 'bg-arena-card shadow-xl scale-[1.01] cursor-pointer'
+                    : 'bg-arena-card/60 border-white/10 hover:border-white/30 cursor-pointer'
                 }`}
-                style={{ borderColor: isSelected && !isTaken ? char.color : undefined }}
+                style={{ borderColor: isSelected ? char.color : undefined }}
               >
                 <div className="flex items-center gap-2">
                   <div
@@ -345,7 +329,7 @@ export default function Lobby() {
                     <div className="text-xs font-black text-white truncate">{char.name}</div>
                     <div className="text-[10px] text-arena-yellow font-bold truncate">{char.badge}</div>
                   </div>
-                  {isSelected && !isTaken && (
+                  {isSelected && (
                     <CheckCircle className="w-4 h-4 shrink-0" style={{ color: char.color }} />
                   )}
                 </div>
@@ -365,11 +349,6 @@ export default function Lobby() {
                   ))}
                 </div>
 
-                {isTaken && (
-                  <div className="mt-2 text-[10px] font-black text-arena-red bg-arena-red/10 border border-arena-red/30 rounded-lg px-2 py-1 truncate">
-                    محجوز لـ {takenBy}
-                  </div>
-                )}
               </button>
             );
           })}

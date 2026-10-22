@@ -258,28 +258,22 @@ async function run() {
       }, /Match already started|بدأ/i);
     });
 
-    await test('Duplicate characters are rejected on join and profile update', async () => {
+    await test('Duplicate characters are allowed on join and profile update', async () => {
       const host = await opened();
       const guest = await opened();
       const created = await createRoom(host, 'Dup Host', CHARACTERS[0].id);
 
-      await expectErrorMessage(guest, () => {
-        guest.emit('join_room', {
-          roomCode: created.roomCode,
-          playerName: 'Dup Guest',
-          characterId: CHARACTERS[0].id
-        });
-      }, /already taken|محجوزة/i);
-
-      const joined = await joinRoom(guest, created.roomCode, 'Dup Guest', CHARACTERS[1].id, 'team_b');
-      assert(joined.player.character.id === CHARACTERS[1].id, 'Guest did not receive the requested character');
+      const joined = await joinRoom(guest, created.roomCode, 'Dup Guest', CHARACTERS[0].id, 'team_b');
+      assert(
+        joined.player.character.id === CHARACTERS[0].id,
+        'Guest should be able to share the host character'
+      );
 
       const ack = await emitAck<any>(guest, 'update_player_profile', {
         roomCode: created.roomCode,
         characterId: CHARACTERS[0].id
       });
-      assert(ack.ok === false, 'Duplicate character profile update should be rejected');
-      assert(/already taken|محجوزة/i.test(ack.error), `Unexpected profile error: ${ack.error}`);
+      assert(ack.ok !== false, `Duplicate character profile update should succeed: ${ack.error || ''}`);
     });
 
     await test('Full team is capped and the server moves the player to the other team', async () => {

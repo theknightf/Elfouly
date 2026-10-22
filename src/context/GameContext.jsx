@@ -758,7 +758,9 @@ export function GameProvider({ children }) {
     }
   };
 
-  // Local helper to advance Round 1 quota offline
+  // Local helper to advance Round 1 quota offline.
+  // Strict per-question alternation inside a 12-question team turn; the judge
+  // seat stays fixed for the whole turn.
   const advanceR1LocalQuota = (r1, players, teams) => {
     if ((r1.totalQuestionsAnswered || 0) >= 48) return false;
     r1.subBatchQuestionsAnswered = (r1.subBatchQuestionsAnswered || 0) + 1;
@@ -769,42 +771,53 @@ export function GameProvider({ children }) {
     const teamBPlayers = players.filter(p => p.team === 'team_b');
 
     if (r1.totalQuestionsAnswered >= 48) {
+      if (r1.pendingPoints > 0) {
+        teams[r1.activeTeam].bank += r1.pendingPoints;
+        teams[r1.activeTeam].score += r1.pendingPoints;
+        r1.pendingPoints = 0;
+      }
       sounds.playWhistle();
       showToast('🏁 اكتملت جولة "1 تو"!', 'تم إنجاز حصة الـ 48 سؤالاً بالتساوي (24 لكل فريق)!');
       return false;
     }
 
-    if (r1.subBatchQuestionsAnswered >= 6) {
-      if (r1.segmentQuestionsAnswered < 12) {
-        r1.subBatchIndex = 1;
-        r1.subBatchQuestionsAnswered = 0;
-        const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
-        if (activePlayers.length > 1) {
-          const currentIdx = activePlayers.findIndex(p => p.id === r1.answeringPlayerId);
-          r1.answeringPlayerId = activePlayers[(currentIdx + 1) % activePlayers.length].id;
-        }
-        showToast('الفقرة الفرعية الثانية (6 أسئلة أخرى)', 'انتقل الدور للزميل التالي في نفس الفريق!');
-      } else {
-        r1.segmentIndex = (r1.segmentIndex || 0) + 1;
-        r1.segmentQuestionsAnswered = 0;
-        r1.subBatchIndex = 0;
-        r1.subBatchQuestionsAnswered = 0;
-        r1.pendingPoints = 0;
-        r1.streak = 0;
-        const targetTurns = ['team_a', 'team_b', 'team_a', 'team_b'];
-        r1.activeTeam = targetTurns[r1.segmentIndex % 4];
-        const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
-        const opposingPlayers = r1.activeTeam === 'team_a' ? teamBPlayers : teamAPlayers;
-        if (activePlayers.length > 0) {
-          r1.answeringPlayerId = activePlayers[r1.segmentIndex % activePlayers.length].id;
-        }
-        if (opposingPlayers.length > 0) {
-          r1.readerPlayerId = opposingPlayers[r1.segmentIndex % opposingPlayers.length].id;
-        }
-        sounds.playWhistle();
-        showToast(`تحويل الفقرة (${r1.segmentIndex + 1} من 4)`, `الدور الآن على ${teams[r1.activeTeam]?.name}`);
+    if (r1.segmentQuestionsAnswered >= 12) {
+      if (r1.pendingPoints > 0) {
+        teams[r1.activeTeam].bank += r1.pendingPoints;
+        teams[r1.activeTeam].score += r1.pendingPoints;
       }
+      r1.segmentIndex = (r1.segmentIndex || 0) + 1;
+      r1.segmentQuestionsAnswered = 0;
+      r1.subBatchIndex = 0;
+      r1.subBatchQuestionsAnswered = 0;
+      r1.pendingPoints = 0;
+      r1.streak = 0;
+      const targetTurns = ['team_a', 'team_b', 'team_a', 'team_b'];
+      r1.activeTeam = targetTurns[r1.segmentIndex % 4];
+      const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
+      const opposingPlayers = r1.activeTeam === 'team_a' ? teamBPlayers : teamAPlayers;
+      if (opposingPlayers.length > 0) {
+        r1.readerPlayerId = opposingPlayers[r1.segmentIndex % opposingPlayers.length].id;
+      }
+      if (activePlayers.length > 0) {
+        const nonJudge = activePlayers.find(p => p.id !== r1.readerPlayerId);
+        r1.answeringPlayerId = nonJudge?.id || activePlayers[0].id;
+      }
+      sounds.playWhistle();
+      showToast(`تحويل الفقرة (${r1.segmentIndex + 1} من 4)`, `الدور الآن على ${teams[r1.activeTeam]?.name}`);
+      return true;
     }
+
+    const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
+    if (activePlayers.length > 1) {
+      const currentIdx = activePlayers.findIndex(p => p.id === r1.answeringPlayerId);
+      r1.answeringPlayerId = activePlayers[(currentIdx + 1) % activePlayers.length].id;
+    }
+    if (r1.subBatchQuestionsAnswered >= 6) {
+      r1.subBatchIndex = 1;
+      r1.subBatchQuestionsAnswered = 0;
+    }
+    return true;
   };
 
   // Round 1 Handlers
@@ -815,13 +828,14 @@ export function GameProvider({ children }) {
       setRoomState(prev => {
         if ((prev.round1?.totalQuestionsAnswered || 0) >= 48 || !prev.round1?.currentQuestion) return prev;
         const r1 = { ...prev.round1 };
+        const teams = { ...prev.teams };
         const nextStreak = Math.min(r1.streak + 1, 10);
         r1.streak = nextStreak;
         r1.pendingPoints = r1.streakLadder[nextStreak];
-        advanceR1LocalQuota(r1, prev.players, prev.teams);
+        advanceR1LocalQuota(r1, prev.players, teams);
         dispatchLocalR1Question(r1, prev.players);
         sounds.playStreakUp(nextStreak);
-        return { ...prev, round1: r1 };
+        return { ...prev, teams, round1: r1 };
       });
     }
   };
@@ -834,6 +848,7 @@ export function GameProvider({ children }) {
       setRoomState(prev => {
         if ((prev.round1?.totalQuestionsAnswered || 0) >= 48 || !prev.round1?.currentQuestion) return prev;
         const r1 = { ...prev.round1 };
+        const teams = { ...prev.teams };
         const answeringPlayer = prev.players.find(p => p.id === r1.answeringPlayerId);
         if (answeringPlayer?.character?.id === 'abdelrahman_eltouny' && r1.streak > 1) {
           showToast('درع التوني بيلافيتا! 🍦', 'تم حماية الستريك وإنقاذ النقاط!');
@@ -843,9 +858,9 @@ export function GameProvider({ children }) {
           r1.streak = 0;
           r1.pendingPoints = 0;
         }
-        advanceR1LocalQuota(r1, prev.players, prev.teams);
+        advanceR1LocalQuota(r1, prev.players, teams);
         dispatchLocalR1Question(r1, prev.players);
-        return { ...prev, round1: r1 };
+        return { ...prev, teams, round1: r1 };
       });
     }
   };
@@ -858,6 +873,7 @@ export function GameProvider({ children }) {
         const r1 = { ...prev.round1 };
         const teamKey = r1.activeTeam;
         const amount = r1.pendingPoints;
+        r1.lastDecision = 'bank';
         if (amount > 0) {
           sounds.playBankSafe();
           fireConfetti();
@@ -871,8 +887,19 @@ export function GameProvider({ children }) {
           r1.streak = 0;
           return { ...prev, teams, round1: r1 };
         }
-        return prev;
+        return { ...prev, round1: r1 };
       });
+    }
+  };
+
+  const r1Continue = () => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('r1_action_continue', { roomCode });
+    } else {
+      setRoomState(prev => ({
+        ...prev,
+        round1: { ...prev.round1, lastDecision: 'continue' }
+      }));
     }
   };
 
@@ -1054,6 +1081,7 @@ export function GameProvider({ children }) {
         r3.turnIndex += 1;
         r3.kickerTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
         r3.interceptBuzzedBy = null;
+        r3.pendingAnswer = null;
 
         const teamAPlayers = prev.players.filter(p => p.team === 'team_a');
         const teamBPlayers = prev.players.filter(p => p.team === 'team_b');
@@ -1151,8 +1179,23 @@ export function GameProvider({ children }) {
     const submitted = norm(option);
     const expected = norm(currentQuestion?.answer);
     const isCorrect = !!submitted && !!expected && submitted === expected;
-    const intercepted = !!roomState?.round3?.interceptBuzzedBy;
-    r3RecordShot(intercepted ? 'saved' : isCorrect ? 'goal' : 'missed');
+    // Lock the shooter's answer; the single judge records Goal / Miss.
+    setRoomState(prev => {
+      if (prev.round3?.pendingAnswer) return prev;
+      return {
+        ...prev,
+        round3: {
+          ...prev.round3,
+          pendingAnswer: {
+            option,
+            isCorrect,
+            answerAt: Date.now(),
+            answerMs: Math.max(0, Date.now() - (prev.round3.shotStartedAt || Date.now())),
+            kickerId: prev.round3.currentKickerId
+          }
+        }
+      };
+    });
   };
 
   const r3SelectDuelists = (kickerId, goalieId) => {
@@ -1194,6 +1237,7 @@ export function GameProvider({ children }) {
             interceptBuzzedBy: null,
             interceptAt: null,
             shotStartedAt: Date.now(),
+            pendingAnswer: null,
             tieBreakActive: false,
             tieBreakData: null
           }
@@ -1405,6 +1449,7 @@ export function GameProvider({ children }) {
         r1Score,
         r1Break,
         r1Bank,
+        r1Continue,
         r1PassTurn,
         r2AwardPoint,
         r2SkipCard,

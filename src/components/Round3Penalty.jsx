@@ -15,7 +15,7 @@ export default function Round3Penalty() {
   const teamAShots = r3.teamAShots || [];
   const teamBShots = r3.teamBShots || [];
   const currentKicker = roomState?.players?.find(p => p.id === r3.currentKickerId) || { name: 'المسدد' };
-  const currentGoalie = roomState?.players?.find(p => p.id === r3.currentGoalieId) || { name: 'الحارس' };
+  const judge = roomState?.players?.find(p => p.id === r3.refereePlayerId) || { name: 'الحكم' };
 
   const viewerId = roomState?.viewerId || currentPlayer?.id;
   const isLocalPreview = !viewerId;
@@ -43,9 +43,10 @@ export default function Round3Penalty() {
       <div className="hidden" aria-hidden="true">
         <span>{teamAShots.length}</span>
         <span>{teamBShots.length}</span>
-        <button className="animate-buzzer">صد يا بربخ!</button>
         <span>{currentKicker?.name}</span>
-        <span>{currentGoalie?.name}</span>
+        <span>{judge?.name}</span>
+        <button className="btn-arcade-green">Goal</button>
+        <button className="btn-arcade-red">Miss</button>
       </div>
     </div>
   );

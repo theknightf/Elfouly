@@ -245,17 +245,30 @@ async function runSupabaseAuthorityTests() {
       'The chosen kicker must be the player allowed to answer'
     );
 
-    // The kicker does not know the answer: the client that dispatched the
-    // question performs the validation and settles the shot.
+    // The kicker only locks an answer. The single judge then records Goal/Miss.
+    const judgePlayer = (shootoutState.players || []).find(
+      (player: any) => player.id === shootoutState.round3.refereePlayerId
+    );
+    const judgeSocket = socketsById[judgePlayer?.id];
+    assert(judgeSocket, 'The assigned penalty judge needs a live client');
+
     kickerSocket.emit('r3_submit_answer', { roomCode: testRoomCode, option: options[0] });
+    await waitForState(
+      hostSocket,
+      (state: any) => !!state.round3?.pendingAnswer,
+      15000,
+      'pending answer'
+    );
+
+    judgeSocket.emit('r3_record_shot', { roomCode: testRoomCode, result: 'goal' });
     const settledState = await waitForState(
       hostSocket,
       (state: any) => (state.round3?.shotsHistory?.length || 0) >= 1,
       35000,
       'settled shot'
     );
-    assert(settledState.round3.shotsHistory[0].result, 'The shot must be settled by the answer holder');
-    console.log(`   ✅ Penalty shot settled by the answer holder (${settledState.round3.shotsHistory[0].result})`);
+    assert(settledState.round3.shotsHistory[0].result, 'The shot must be settled by the judge');
+    console.log(`   ✅ Penalty shot settled by the judge (${settledState.round3.shotsHistory[0].result})`);
 
     // A non kicker cannot answer.
     const turnIndexBefore = settledState.round3.turnIndex;

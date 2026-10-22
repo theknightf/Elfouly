@@ -156,6 +156,12 @@ function occurrences(haystack: string, needle: string) {
   return haystack.split(needle).length - 1;
 }
 
+function containsWholeWord(haystack: string, needle: string) {
+  if (!needle) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}(?=$|[^\\p{L}\\p{N}])`, 'u').test(haystack);
+}
+
 function folderByTeam(room: any, team: string) {
   return room.players.filter((player: any) => player.team === team);
 }
@@ -184,23 +190,23 @@ function assertNoSecretLeak(states: any[], viewerIds: string[], secretCard: any,
 
     assert(state.round2.currentWord?.redacted === true, `${label}: guesser ${viewerId} received a visible secret`);
 
-    // Public data may legitimately contain a word like "وحش" inside a team name.
-    // Remove the secret card from the state and prove the viewer received no
+    // The redacted placeholder itself uses public Arabic prose (which can contain
+    // a short secret as a substring, e.g. "طاقة" inside "البطاقة"). Check the
+    // placeholder fields directly, then prove the rest of the payload has no
     // additional occurrences of the target or any forbidden word.
-    const baselineState = JSON.parse(serialized);
-    baselineState.round2.currentWord = {
-      target: '__REDACTED__',
-      forbidden: ['__REDACTED__', '__REDACTED__', '__REDACTED__', '__REDACTED__'],
-      category: '__REDACTED__',
-      clueIdea: '__REDACTED__',
-      redacted: true
-    };
-    const baseline = JSON.stringify(baselineState);
+    const redactedWord = JSON.stringify(state.round2.currentWord || {});
+    const withoutWord = JSON.parse(serialized);
+    delete withoutWord.round2.currentWord;
+    const publicPayload = JSON.stringify(withoutWord);
 
     for (const word of secret) {
       assert(
-        occurrences(serialized, word) === occurrences(baseline, word),
-        `${label}: guesser ${viewerId} received secret word "${word}"`
+        !containsWholeWord(redactedWord, word),
+        `${label}: guesser ${viewerId} received secret word "${word}" in the redacted card`
+      );
+      assert(
+        !containsWholeWord(publicPayload, word),
+        `${label}: guesser ${viewerId} received secret word "${word}" outside the card`
       );
     }
   }

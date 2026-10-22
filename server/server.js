@@ -109,27 +109,18 @@ function pickTeamForNewPlayer(room, teamPreference) {
   return null;
 }
 
-function resolveCharacterForPlayer(room, characterId, socketId = null) {
-  const takenByAnother = (charId) => room.players.some(
-    p => p.character?.id === charId && p.id !== socketId
-  );
-
+// Character selection is NON-EXCLUSIVE: multiple players may use the exact
+// same character. Only the character id itself is validated here.
+function resolveCharacterForPlayer(room, characterId) {
   if (characterId) {
     const character = CHARACTERS.find(c => c.id === characterId);
     if (!character) {
       return { error: 'الشخصية دي مش موجودة في الساحة! اختار شخصية تانية — Character not found.' };
     }
-    if (takenByAnother(character.id)) {
-      return { error: 'الشخصية دي محجوزة بالفعل! اختار شخصية تانية — Character already taken.' };
-    }
     return { character };
   }
 
-  const available = CHARACTERS.find(c => !takenByAnother(c.id));
-  if (!available) {
-    return { error: 'كل الشخصيات محجوزة بالفعل! — All characters are taken.' };
-  }
-  return { character: available };
+  return { character: CHARACTERS[room.players.length % CHARACTERS.length] || CHARACTERS[0] };
 }
 
 function getStartReadiness(room) {
@@ -613,6 +604,7 @@ function createInitialRoomState(roomCode, hostId) {
       currentQuestionIndex: 0,
       streak: 0, // 0 to 10
       pendingPoints: 0,
+      lastDecision: null,
       streakLadder: [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000],
       currentQuestion: null,
       actionToken: null,
@@ -652,6 +644,7 @@ function createInitialRoomState(roomCode, hostId) {
       interceptBuzzedBy: null,
       interceptAt: null,
       shotStartedAt: null,
+      pendingAnswer: null,
       tieBreakActive: false,
       tieBreakData: null,
       isComplete: false,
@@ -884,8 +877,8 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const availableChars = CHARACTERS.filter(c => !room.players.some(p => p.character?.id === c.id));
-    const nextChar = availableChars[0] || CHARACTERS[room.players.length % CHARACTERS.length];
+    // Demo bots may reuse a character too: character ownership is not exclusive.
+    const nextChar = CHARACTERS[room.players.length % CHARACTERS.length] || CHARACTERS[0];
     const team = pickTeamForNewPlayer(room);
 
     if (!team) return;
@@ -944,16 +937,7 @@ io.on('connection', (socket) => {
         respond({ ok: false, error: message });
         return;
       }
-
-      const takenByAnother = room.players.some(
-        p => p.id !== player.id && p.character?.id === character.id
-      );
-      if (takenByAnother) {
-        const message = 'الشخصية دي محجوزة بالفعل! اختار شخصية تانية — Character already taken.';
-        emitActionError(socket, message, 'character', 'update_player_profile');
-        respond({ ok: false, error: message });
-        return;
-      }
+      // Characters are intentionally shareable between players.
     }
 
     if (team && team !== player.team) {
@@ -1334,7 +1318,17 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('notification', { title: 'انتقال الجولة', message: `بدأت الآن: ${targetRound}` });
   });
 
-  // Helper to advance Round 1 question quota according to TOURNAMENT_STRUCTURE
+  // Helper to advance Round 1 question quota.
+  //
+  // Bank structure (2 rounds x 12 questions per team = 48):
+  //   segment 0: Team A answers 12
+  //   segment 1: Team B answers 12
+  //   segment 2: Team A answers 12
+  //   segment 3: Team B answers 12
+  //
+  // Within a team's 12-question turn the answering player alternates on EVERY
+  // question (P1 -> P2 -> P1 -> P2 ...), and the judge seat is fixed for the
+  // whole turn (one judge per active session).
   function advanceR1Question(room, roomCode) {
     const r1 = room.round1;
     r1.subBatchQuestionsAnswered += 1;
@@ -1344,8 +1338,13 @@ io.on('connection', (socket) => {
     const teamAPlayers = room.players.filter(p => p.team === 'team_a');
     const teamBPlayers = room.players.filter(p => p.team === 'team_b');
 
-    // Check if 48 questions reached (End of Round 1 quota)
     if (r1.totalQuestionsAnswered >= 48) {
+      // Lock in the last pot before closing the round.
+      if (r1.pendingPoints > 0) {
+        room.teams[r1.activeTeam].bank += r1.pendingPoints;
+        room.teams[r1.activeTeam].score += r1.pendingPoints;
+        r1.pendingPoints = 0;
+      }
       r1.currentQuestion = null;
       r1.actionToken = null;
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
@@ -1356,61 +1355,51 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Check if current sub-batch (6 questions) is complete
-    if (r1.subBatchQuestionsAnswered >= 6) {
-      if (r1.segmentQuestionsAnswered < 12) {
-        // Move to sub-batch 2 within the same segment (same team)
-        r1.subBatchIndex = 1;
-        r1.subBatchQuestionsAnswered = 0;
+    if (r1.segmentQuestionsAnswered >= 12) {
+      // Full 12-question turn complete: switch to the other team's segment.
+      r1.segmentIndex += 1;
+      r1.segmentQuestionsAnswered = 0;
+      r1.subBatchIndex = 0;
+      r1.subBatchQuestionsAnswered = 0;
 
-        const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
-        if (activePlayers.length > 1) {
-          const currentIdx = activePlayers.findIndex(p => p.id === r1.answeringPlayerId);
-          const nextIdx = (currentIdx + 1) % activePlayers.length;
-          r1.answeringPlayerId = activePlayers[nextIdx].id;
-        }
-
-        // Round-robin refereeing: the next opposing player takes the judge seat.
-        assignReferee(room, 'round1', { rotate: true, reason: 'sub_batch_rotation' });
-
-        const newPlayer = room.players.find(p => p.id === r1.answeringPlayerId);
-        const newRef = room.players.find(p => p.id === r1.refereePlayerId);
-        io.to(roomCode).emit('notification', {
-          title: '🔄 الفقرة الفرعية الثانية (6 أسئلة أخرى)',
-          message: `الدور الآن على الكابتن ${newPlayer?.name || 'اللاعب الجديد'} من نفس الفريق! الحكم الجديد: ${newRef?.name || 'لاعب الخصم'}.`
-        });
-      } else {
-        // Full segment (12 questions) complete! Switch to opposite team segment
-        r1.segmentIndex += 1;
-        r1.segmentQuestionsAnswered = 0;
-        r1.subBatchIndex = 0;
-        r1.subBatchQuestionsAnswered = 0;
-
-        // Reset streak for the incoming team
-        r1.pendingPoints = 0;
-        r1.streak = 0;
-
-        // Sequence: Team A (Seg 0) -> Team B (Seg 1) -> Team A (Seg 2) -> Team B (Seg 3)
-        const targetTurns = ['team_a', 'team_b', 'team_a', 'team_b'];
-        r1.activeTeam = targetTurns[r1.segmentIndex % 4];
-
-        const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
-
-        if (activePlayers.length > 0) {
-          const nextAnsIdx = r1.segmentIndex % activePlayers.length;
-          r1.answeringPlayerId = activePlayers[nextAnsIdx].id;
-        }
-
-        // A new answering team => a new opposing referee (and reader).
-        assignReferee(room, 'round1', { reason: 'segment_change' });
-
-        const activeTeamObj = room.teams[r1.activeTeam];
-        io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
-        io.to(roomCode).emit('notification', {
-          title: `🔄 تحويل الفقرة (${r1.segmentIndex + 1} من 4)`,
-          message: `انتهت فقرة الـ 12 سؤالاً! الدور الآن على ${activeTeamObj?.name}`
-        });
+      if (r1.pendingPoints > 0) {
+        room.teams[r1.activeTeam].bank += r1.pendingPoints;
+        room.teams[r1.activeTeam].score += r1.pendingPoints;
       }
+      r1.pendingPoints = 0;
+      r1.streak = 0;
+
+      const targetTurns = ['team_a', 'team_b', 'team_a', 'team_b'];
+      r1.activeTeam = targetTurns[r1.segmentIndex % 4];
+
+      const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
+
+      // A new answering team => a new opposing judge (exactly one judge).
+      assignReferee(room, 'round1', { reason: 'segment_change' });
+      r1.answeringPlayerId = activePlayers.find(p => p.id !== r1.refereePlayerId)?.id
+        || activePlayers[0]?.id
+        || null;
+
+      const activeTeamObj = room.teams[r1.activeTeam];
+      io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
+      io.to(roomCode).emit('notification', {
+        title: `🔄 تحويل الفقرة (${r1.segmentIndex + 1} من 4)`,
+        message: `انتهت فقرة الـ 12 سؤالاً! الدور الآن على ${activeTeamObj?.name}`
+      });
+      return;
+    }
+
+    // Strict question-by-question alternation inside the same team turn.
+    const activePlayers = r1.activeTeam === 'team_a' ? teamAPlayers : teamBPlayers;
+    if (activePlayers.length > 1) {
+      const currentIdx = activePlayers.findIndex(p => p.id === r1.answeringPlayerId);
+      r1.answeringPlayerId = activePlayers[(currentIdx + 1) % activePlayers.length].id;
+    }
+
+    // Keep the legacy 6+6 UI counters coherent without changing the judge.
+    if (r1.subBatchQuestionsAnswered >= 6) {
+      r1.subBatchIndex = 1;
+      r1.subBatchQuestionsAnswered = 0;
     }
   }
 
@@ -1503,10 +1492,10 @@ io.on('connection', (socket) => {
 
     if (!requireRoundStatus(room, 'round1', socket, 'حفظ النقاط')) return;
 
-    // Only active answering team can bank their points. The referee is from
-    // the opposing team and must never be able to bank on their behalf.
-    if (caller.team !== room.round1.activeTeam) {
-      socket.emit('error_message', '🚫 لا يمكنك حفظ النقاط في الخزنة لفريق الخصم!');
+    // The Bank decision belongs ONLY to the opposing team. The active
+    // answering team (and the answerer in particular) can never trigger it.
+    if (caller.team === room.round1.activeTeam || caller.id === room.round1.answeringPlayerId) {
+      socket.emit('error_message', '🚫 قرار الخزنة للفريق الخصم فقط — فريق الإجابة ممنوع من البنك!');
       return;
     }
 
@@ -1531,11 +1520,39 @@ io.on('connection', (socket) => {
 
       r1.pendingPoints = 0;
       r1.streak = 0;
+      r1.lastDecision = 'bank';
 
       io.to(roomCode).emit('sound_trigger', { sound: 'bank_safe' });
       io.to(roomCode).emit('confetti_trigger');
       emitRoomState(room);
     }
+  });
+
+  // Continue: the opponent deliberately declines to bank the current pot.
+  socket.on('r1_action_continue', ({ roomCode }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room, player: caller } = context;
+
+    if (!requireRoundStatus(room, 'round1', socket, 'استكمال الجولة')) return;
+
+    if (caller.team === room.round1.activeTeam || caller.id === room.round1.answeringPlayerId) {
+      socket.emit('error_message', '🚫 قرار الاستكمال للفريق الخصم فقط — فريق الإجابة ممنوع من البنك!');
+      return;
+    }
+
+    const r1 = room.round1;
+    if (!r1.currentQuestion) {
+      socket.emit('error_message', '🚫 لا يوجد سؤال نشط لاتخاذ قرار الاستكمال.');
+      return;
+    }
+
+    r1.lastDecision = 'continue';
+    io.to(roomCode).emit('notification', {
+      title: 'كمل يا بطل! 🔥',
+      message: `${caller.name} قرر الاستكمال — النقاط على المحك (${r1.pendingPoints || 0}).`
+    });
+    emitRoomState(room);
   });
 
   // Pass Round 1 turn to next player / opposite team (host control only)
@@ -1763,7 +1780,7 @@ io.on('connection', (socket) => {
     if (kickerId) {
       const candidate = room.players.find(p => p.id === kickerId);
       if (caller.team !== r3.kickerTeam || candidate?.team !== r3.kickerTeam) {
-        socket.emit('error_message', '🚫 اختيار المسدد من صلاحيات فريق المسدد فقط.');
+        socket.emit('error_message', '🚫 اختيار المسدد من صلاحيات الفريق الضارب فقط.');
         return;
       }
       r3.currentKickerId = kickerId;
@@ -1805,8 +1822,10 @@ io.on('connection', (socket) => {
       socket.emit('error_message', '🚫 انتهت ركلات الجزاء بالفعل.');
       return;
     }
-    if (socket.id !== room.hostId && !isReferee(room, 'round3', socket.id)) {
-      socket.emit('error_message', '🚫 بدء الركلة يتم من جهاز الهوست أو الحكم المحايد فقط.');
+    const kickingRepresentative = room.players.find(p => p.team === r3.kickerTeam);
+    const isKickingRepresentative = kickingRepresentative?.id === socket.id;
+    if (socket.id !== room.hostId && !isReferee(room, 'round3', socket.id) && !isKickingRepresentative) {
+      socket.emit('error_message', '🚫 بدء الركلة يتم من ممثل الفريق الضارب أو الحكم فقط.');
       return;
     }
 
@@ -1935,6 +1954,7 @@ io.on('connection', (socket) => {
     r3.interceptCompensatedAt = null;
     r3.goalieCompensation = 0;
     r3.shotStartedAt = null;
+    r3.pendingAnswer = null;
     r3.tieBreakActive = false;
     r3.tieBreakData = null;
 
@@ -2047,6 +2067,10 @@ io.on('connection', (socket) => {
       return;
     }
     if (r3.tieBreakActive) return;
+    if (r3.pendingAnswer) {
+      socket.emit('error_message', '🚫 تم تسجيل إجابتك بالفعل، بانتظار قرار الحكم.');
+      return;
+    }
 
     const options = r3.currentQuestion?.options || [];
     if (typeof option !== 'string' || !options.includes(option)) {
@@ -2055,60 +2079,25 @@ io.on('connection', (socket) => {
     }
 
     const answerAt = Date.now();
-    const kickerCompensation = getPlayerCompensation(socket.id);
-    const goalieCompensation = r3.goalieCompensation ?? getPlayerCompensation(r3.currentGoalieId);
-
     const norm = (value) => String(value || '').trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, ' ');
     const submitted = norm(option);
     const expected = norm(r3.currentQuestion.answer);
     const isCorrect = !!submitted && !!expected && submitted === expected;
 
-    const {
-      provisional,
-      nearlySimultaneous,
-      answerCompensatedAt,
-      interceptCompensatedAt
-    } = resolveShootoutTimings({
-      answerAt,
-      interceptAt: r3.interceptAt,
-      kickerCompensation,
-      goalieCompensation,
+    // The shooter locks an answer. The single judge then records Goal / Miss
+    // through `r3_record_shot`; the server does not auto-award the kick.
+    r3.pendingAnswer = {
+      option,
       isCorrect,
-      tieWindowMs: R3_TIE_WINDOW_MS
-    });
-
-    const answerMs = answerAt - r3.shotStartedAt;
-    const interceptMs = r3.interceptAt ? r3.interceptAt - r3.shotStartedAt : null;
-
-    if (nearlySimultaneous) {
-      r3.tieBreakActive = true;
-      r3.tieBreakData = {
-        provisionalResult: provisional,
-        answerMs,
-        interceptMs,
-        answerCompensatedAt,
-        interceptCompensatedAt,
-        kickerCompensation,
-        goalieCompensation,
-        isCorrect,
-        kickerId: r3.currentKickerId,
-        goalieId: r3.currentGoalieId
-      };
-      io.to(roomCode).emit('notification', {
-        title: '⏱️ تعادل لحظي في أجزاء الثانية!',
-        message: 'الضغطتان متزامنتان بعد تعويض سرعة الاتصال. الحكم المحايد سيفصل النتيجة نهائياً من جهازه.'
-      });
-      emitRoomState(room);
-      return;
-    }
-
-    const resultLabel = provisional === 'goal' ? 'هدف ⚽' : provisional === 'saved' ? 'تصدي 🧤' : 'ضاعت ❌';
+      answerAt,
+      answerMs: answerAt - r3.shotStartedAt,
+      kickerId: r3.currentKickerId
+    };
     io.to(roomCode).emit('notification', {
-      title: `نتيجة الركلة: ${resultLabel}`,
-      message: `حسمها السيرفر بالتوقيت: ${provisional === 'goal' ? 'المسدد أسرع' : provisional === 'saved' ? 'الحارس أسرع بالصد' : 'بدون إصابة'}.`
+      title: '🔒 تم تسجيل إجابة المسدد',
+      message: 'الحكم الوحيد هو من يعتمد النتيجة الآن: Goal أو Miss.'
     });
-
-    settlePenaltyShot(room, roomCode, provisional, { answerMs, interceptMs });
+    emitRoomState(room);
   });
 
   // Neutral referee final confirmation / tie-break only.
@@ -2145,12 +2134,16 @@ io.on('connection', (socket) => {
 
     if (!requireRoundStatus(room, 'round3', socket, 'اعتماد نتيجة الركلة')) return;
     if (!requireReferee(room, 'round3', socket, 'اعتماد نتيجة الركلة')) return;
-    if (!room.round3.tieBreakActive) {
-      socket.emit('error_message', '🚫 النتيجة تُحسب تلقائياً بتوقيت السيرفر. يدوي فقط عند التعادل اللحظي.');
+
+    // The single judge owns the Goal / Miss decision for every penalty kick,
+    // not just tie-breaks. `saved` is kept as a backwards-compatible alias for
+    // transports that still send the legacy three-way result.
+    if (!['goal', 'saved', 'missed'].includes(result)) return;
+    if (room.round3.phase !== 'shootout') {
+      socket.emit('error_message', '🚫 لا توجد ركلة نشطة ليحكم عليها الآن.');
       return;
     }
-    if (!['goal', 'saved', 'missed'].includes(result)) return;
-    settlePenaltyShot(room, roomCode, result, { tieBreak: true });
+    settlePenaltyShot(room, roomCode, result, { tieBreak: !!room.round3.tieBreakActive });
   });
 
   // =================== ROUND 4 ACTIONS (Blind Auction) ===================

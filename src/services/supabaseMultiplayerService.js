@@ -362,6 +362,7 @@ function createInitialState(roomCode, hostId) {
       currentQuestionIndex: 0,
       streak: 0,
       pendingPoints: 0,
+      lastDecision: null,
       streakLadder: R1_STREAK_LADDER,
       currentQuestion: null,
       actionToken: null,
@@ -399,6 +400,7 @@ function createInitialState(roomCode, hostId) {
       interceptBuzzedBy: null,
       interceptAt: null,
       shotStartedAt: null,
+      pendingAnswer: null,
       tieBreakActive: false,
       tieBreakData: null,
       isComplete: false,
@@ -691,18 +693,6 @@ export function createSupabaseSocket(customClient = null) {
         if (event === 'room_state_updated') {
           cachedRoomState = payload;
           emitLocalState();
-        } else if (event === 'r3_answer_submitted') {
-          // The kicker submitted an answer; the client that dispatched the
-          // question (and therefore holds the answer) settles the shot.
-          // Reload from PostgreSQL: the broadcast can arrive before this
-          // client's cached snapshot has switched to the shootout phase.
-          const room = await currentRoom();
-          if (!room || !payload) return;
-          const r3 = room.round3;
-          if (r3.phase !== 'shootout' || payload.turnIndex !== r3.turnIndex) return;
-          const heldSecret = localSecrets.round3;
-          if (!heldSecret || heldSecret.questionId !== `r3-${r3.turnIndex}`) return;
-          await resolveR3Submission(room, payload.option, payload.answerAt || Date.now());
         } else if (event === 'judge_secret_request') {
           // Another client is the authorised viewer and needs the secret.
           const room = cachedRoomState || {};
@@ -906,87 +896,51 @@ export function createSupabaseSocket(customClient = null) {
     r1.totalQuestionsAnswered += 1;
 
     if (r1.totalQuestionsAnswered >= R1_TOTAL_QUESTIONS) {
+      if (r1.pendingPoints > 0) {
+        room.teams[r1.activeTeam].bank += r1.pendingPoints;
+        room.teams[r1.activeTeam].score += r1.pendingPoints;
+        r1.pendingPoints = 0;
+      }
       r1.currentQuestion = null;
       r1.actionToken = null;
       r1.isTimerRunning = false;
       return;
     }
 
-    if (r1.subBatchQuestionsAnswered >= R1_SUB_BATCH_SIZE) {
-      if (r1.segmentQuestionsAnswered < R1_SEGMENT_SIZE) {
-        // Next sub batch inside the same segment: rotate the answering player.
-        r1.subBatchIndex = 1;
-        r1.subBatchQuestionsAnswered = 0;
-        const activePlayers = room.players.filter(player => player.team === r1.activeTeam);
-        if (activePlayers.length > 1) {
-          const index = activePlayers.findIndex(player => player.id === r1.answeringPlayerId);
-          r1.answeringPlayerId = activePlayers[(index + 1) % activePlayers.length].id;
-        }
-        assignReferee(room, 'round1', { rotate: true });
-      } else {
-        // Segment complete: the other team answers the next segment.
-        r1.segmentIndex += 1;
-        r1.segmentQuestionsAnswered = 0;
-        r1.subBatchIndex = 0;
-        r1.subBatchQuestionsAnswered = 0;
-        r1.pendingPoints = 0;
-        r1.streak = 0;
-        r1.activeTeam = r1.activeTeam === 'team_a' ? 'team_b' : 'team_a';
-        const activePlayers = room.players.filter(player => player.team === r1.activeTeam);
-        if (activePlayers.length) {
-          r1.answeringPlayerId = activePlayers[r1.segmentIndex % activePlayers.length].id;
-        }
-        assignReferee(room, 'round1');
+    if (r1.segmentQuestionsAnswered >= R1_SEGMENT_SIZE) {
+      // Segment complete: settle the pot and give the turn to the other team.
+      if (r1.pendingPoints > 0) {
+        room.teams[r1.activeTeam].bank += r1.pendingPoints;
+        room.teams[r1.activeTeam].score += r1.pendingPoints;
       }
-    }
-  }
+      r1.segmentIndex += 1;
+      r1.segmentQuestionsAnswered = 0;
+      r1.subBatchIndex = 0;
+      r1.subBatchQuestionsAnswered = 0;
+      r1.pendingPoints = 0;
+      r1.streak = 0;
+      r1.activeTeam = r1.activeTeam === 'team_a' ? 'team_b' : 'team_a';
 
-  // The answer of the current penalty question is only known to the client
-  // that dispatched it. The kicker therefore just submits the chosen option
-  // and the client holding the answer performs the validation and settles
-  // the shot (exactly like the server does, but distributed over the clients).
-  async function resolveR3Submission(room, option, answerAt, tieBreak = false) {
-    const r3 = room.round3;
-    const secret = localSecrets.round3;
-    const expected = r3.currentQuestion?.answer || secret?.answer;
-    if (!expected) {
-      emitError('مفيش إجابة معتمدة للسؤال ده.', 'r3_submit_answer');
-      return;
-    }
-    const isCorrect = option === expected;
-    const answerMs = answerAt - (r3.shotStartedAt || answerAt);
-    const interceptMs = r3.interceptAt ? r3.interceptAt - (r3.shotStartedAt || r3.interceptAt) : null;
-    const goalieWon = !!r3.interceptAt && r3.interceptAt <= answerAt;
-
-    let result = 'goal';
-    if (goalieWon) result = 'saved';
-    else if (!isCorrect) result = 'missed';
-
-    if (!tieBreak && goalieWon && isCorrect && Math.abs(answerMs - (interceptMs ?? 0)) < 300) {
-      r3.tieBreakActive = true;
-      r3.tieBreakData = {
-        provisionalResult: 'goal',
-        answerMs,
-        interceptMs,
-        isCorrect,
-        kickerId: r3.currentKickerId,
-        goalieId: r3.currentGoalieId
-      };
-      broadcastToRoom('notification', {
-        title: '🤞 تعادل لحظي!',
-        message: 'الحكم المحايد هو اللي هيحسم الركلة.'
-      });
-      await persistAndBroadcast(room);
+      const activePlayers = room.players.filter(player => player.team === r1.activeTeam);
+      assignReferee(room, 'round1');
+      r1.answeringPlayerId = activePlayers.find(player => player.id !== r1.refereePlayerId)?.id
+        || activePlayers[0]?.id
+        || null;
       return;
     }
 
-    const labels = { goal: '⚽ هدف!', saved: '🧤 اتصدت!', missed: '❌ ضاعت!' };
-    broadcastToRoom('notification', {
-      title: `نتيجة الركلة: ${labels[result]}`,
-      message: 'حكم الساحة هو اللي بيحسم النتيجة.'
-    });
-    settleR3Shot(room, result, { answerMs, interceptMs });
-    await persistAndBroadcast(room);
+    // Strict per-question alternation inside the same team's 12-question turn.
+    const activePlayers = room.players.filter(player => player.team === r1.activeTeam);
+    if (activePlayers.length > 1) {
+      const index = activePlayers.findIndex(player => player.id === r1.answeringPlayerId);
+      r1.answeringPlayerId = activePlayers[(index + 1) % activePlayers.length].id;
+    }
+
+    // Keep the legacy 6+6 counters coherent; the judge does not rotate mid-segment.
+    if (r1.subBatchQuestionsAnswered >= R1_SUB_BATCH_SIZE) {
+      r1.subBatchIndex = 1;
+      r1.subBatchQuestionsAnswered = 0;
+    }
   }
 
   function settleR3Shot(room, result, meta = {}) {
@@ -1052,6 +1006,7 @@ export function createSupabaseSocket(customClient = null) {
     r3.interceptBuzzedBy = null;
     r3.interceptAt = null;
     r3.shotStartedAt = null;
+    r3.pendingAnswer = null;
     r3.tieBreakActive = false;
     r3.tieBreakData = null;
     r3.currentQuestion = null;
@@ -1259,9 +1214,10 @@ export function createSupabaseSocket(customClient = null) {
           return;
         }
 
-        const takenCharacters = room.players.map(player => player.character?.id);
-        const available = CHARACTERS.find(char => !takenCharacters.includes(char.id)) || CHARACTERS[0];
-        const character = takenCharacters.includes(characterId) ? available : (CHARACTERS.find(char => char.id === characterId) || available);
+        // Character ownership is NOT exclusive: players may share a character.
+        const character = CHARACTERS.find(char => char.id === characterId)
+          || CHARACTERS[room.players.length % CHARACTERS.length]
+          || CHARACTERS[0];
 
         const teamACount = room.players.filter(player => player.team === 'team_a').length;
         const teamBCount = room.players.filter(player => player.team === 'team_b').length;
@@ -1355,8 +1311,8 @@ export function createSupabaseSocket(customClient = null) {
 
         if (characterId) {
           const character = CHARACTERS.find(char => char.id === characterId);
-          const taken = room.players.some(other => other.id !== player.id && other.character?.id === characterId);
-          if (character && !taken) player.character = character;
+          // Character ownership is NOT exclusive.
+          if (character) player.character = character;
         }
         if (team && team !== player.team) {
           const count = room.players.filter(other => other.team === team).length;
@@ -1378,8 +1334,8 @@ export function createSupabaseSocket(customClient = null) {
         if (!room) return;
         if (room.players.length >= MAX_PLAYERS) return;
 
-        const taken = room.players.map(player => player.character?.id);
-        const nextChar = CHARACTERS.find(char => !taken.includes(char.id)) || CHARACTERS[0];
+        // Demo bots may also reuse an existing character.
+        const nextChar = CHARACTERS[room.players.length % CHARACTERS.length] || CHARACTERS[0];
         const teamACount = room.players.filter(player => player.team === 'team_a').length;
         const teamBCount = room.players.filter(player => player.team === 'team_b').length;
         const assignedTeam = teamACount <= teamBCount ? 'team_a' : 'team_b';
@@ -1594,11 +1550,13 @@ export function createSupabaseSocket(customClient = null) {
         const r1 = room.round1;
         const player = findPlayer(room);
         if (!player) return;
-        if (player.team !== r1.activeTeam) {
-          emitError('أمان الخزنة متاح للفريق المجيب فقط.', 'r1_action_bank');
+        // The Bank decision belongs ONLY to the opposing team.
+        if (player.team === r1.activeTeam || player.id === r1.answeringPlayerId) {
+          emitError('قرار الخزنة للفريق الخصم فقط — فريق الإجابة ممنوع من البنك.', 'r1_action_bank');
           return;
         }
         const banked = r1.pendingPoints || 0;
+        r1.lastDecision = 'bank';
         if (banked > 0) {
           room.teams[r1.activeTeam].bank += banked;
           room.teams[r1.activeTeam].score += banked;
@@ -1610,6 +1568,30 @@ export function createSupabaseSocket(customClient = null) {
           broadcastToRoom('sound_trigger', { sound: 'bank_safe' });
           broadcastToRoom('confetti_trigger', {});
         }
+        await persistAndBroadcast(room);
+        break;
+      }
+
+      case 'r1_action_continue': {
+        const room = await currentRoom();
+        if (!room) return;
+        if (!isCurrentRoom(payload.roomCode)) return;
+        const r1 = room.round1;
+        const player = findPlayer(room);
+        if (!player) return;
+        if (player.team === r1.activeTeam || player.id === r1.answeringPlayerId) {
+          emitError('قرار الاستكمال للفريق الخصم فقط — فريق الإجابة ممنوع من البنك.', 'r1_action_continue');
+          return;
+        }
+        if (!r1.currentQuestion) {
+          emitError('مفيش سؤال نشط لاتخاذ قرار الاستكمال.', 'r1_action_continue');
+          return;
+        }
+        r1.lastDecision = 'continue';
+        broadcastToRoom('notification', {
+          title: 'كمل يا بطل! 🔥',
+          message: `${player.name} قرر الاستكمال — النقاط على المحك (${r1.pendingPoints || 0}).`
+        });
         await persistAndBroadcast(room);
         break;
       }
@@ -1804,7 +1786,7 @@ export function createSupabaseSocket(customClient = null) {
         if (payload.kickerId) {
           const candidate = room.players.find(candidatePlayer => candidatePlayer.id === payload.kickerId);
           if (player.team !== r3.kickerTeam || candidate?.team !== r3.kickerTeam) {
-            emitError('المسدد لازم يكون من الفريق الضارب.', 'r3_select_duelists');
+            emitError('اختيار المسدد من صلاحيات الفريق الضارب فقط.', 'r3_select_duelists');
             return;
           }
           r3.currentKickerId = payload.kickerId;
@@ -1840,8 +1822,9 @@ export function createSupabaseSocket(customClient = null) {
         const r3 = room.round3;
         const player = findPlayer(room);
         if (!player) return;
-        if (!isHost(room) && player.id !== getRoundRefereeId(room, 'round3')) {
-          emitError('بدء التسديد محصور بالمضيف أو الحكم المكلّف.', 'r3_start_shootout');
+        const kickingRepresentative = room.players.find(candidatePlayer => candidatePlayer.team === r3.kickerTeam);
+        if (!isHost(room) && player.id !== getRoundRefereeId(room, 'round3') && player.id !== kickingRepresentative?.id) {
+          emitError('بدء التسديد محصور بممثل الفريق الضارب أو الحكم المكلّف.', 'r3_start_shootout');
           return;
         }
         if (r3.isComplete || r3.turnIndex >= R3_TOTAL_SHOTS) return;
@@ -1908,6 +1891,10 @@ export function createSupabaseSocket(customClient = null) {
           return;
         }
         if (r3.tieBreakActive) return;
+        if (r3.pendingAnswer) {
+          emitError('تم تسجيل إجابتك بالفعل، بانتظار قرار الحكم.', 'r3_submit_answer');
+          return;
+        }
 
         const options = r3.currentQuestion?.options || [];
         if (typeof payload.option !== 'string' || !options.includes(payload.option)) {
@@ -1916,41 +1903,19 @@ export function createSupabaseSocket(customClient = null) {
         }
 
         const answerAt = Date.now();
-        const heldSecret = localSecrets.round3;
-        const holdsAnswer = !!heldSecret && heldSecret.questionId === `r3-${r3.turnIndex}`;
-
-        if (holdsAnswer) {
-          await resolveR3Submission(room, payload.option, answerAt);
-          break;
-        }
-
-        // This client does not know the answer: ask the client that dispatched
-        // the question to validate and settle the shot.
-        const submission = {
-          turnIndex: r3.turnIndex,
+        // The shooter locks an answer. The single judge decides Goal / Miss;
+        // this service never awards the kick automatically.
+        r3.pendingAnswer = {
           option: payload.option,
-          answerAt
+          answerAt,
+          answerMs: answerAt - r3.shotStartedAt,
+          kickerId: r3.currentKickerId
         };
-        if (channel) {
-          channel.send({
-            type: 'broadcast',
-            event: 'r3_answer_submitted',
-            payload: submission
-          });
-          // Realtime deliveries can be dropped (for example while the answer
-          // holder is still switching channels): ask once more if the shot is
-          // still pending after a short grace period.
-          setTimeout(() => {
-            const pending = cachedRoomState?.round3;
-            if (!channel || !pending) return;
-            if (pending.phase !== 'shootout' || pending.turnIndex !== submission.turnIndex) return;
-            channel.send({
-              type: 'broadcast',
-              event: 'r3_answer_submitted',
-              payload: submission
-            });
-          }, 2500);
-        }
+        broadcastToRoom('notification', {
+          title: '🔒 تم تسجيل إجابة المسدد',
+          message: 'الحكم الوحيد هو من يعتمد النتيجة الآن: Goal أو Miss.'
+        });
+        await persistAndBroadcast(room);
         break;
       }
 
@@ -1987,12 +1952,15 @@ export function createSupabaseSocket(customClient = null) {
           emitError('تسجيل الركلة محصور بالحكم المحايد.', 'r3_record_shot');
           return;
         }
-        if (!r3.tieBreakActive) {
-          emitError('التسجيل اليدوي متاح في حالة التعادل فقط.', 'r3_record_shot');
+        if (r3.phase !== 'shootout') {
+          emitError('مفيش ركلة نشطة ليحكم عليها الآن.', 'r3_record_shot');
           return;
         }
         if (!['goal', 'saved', 'missed'].includes(payload.result)) return;
-        settleR3Shot(room, payload.result, { tieBreak: true });
+        settleR3Shot(room, payload.result, {
+          tieBreak: !!r3.tieBreakActive,
+          answerMs: r3.pendingAnswer?.answerMs ?? null
+        });
         await persistAndBroadcast(room);
         break;
       }
