@@ -127,8 +127,42 @@ export default function PenaltyDuelView({ isMobile = false }) {
         </div>
       </div>
 
-      {/* Duelist selection: representative picks the shooter */}
-      {isDuelistSelection ? (
+      {/* Shootout Completed Screen */}
+      {r3.isComplete ? (
+        <div className="bg-arena-card rounded-3xl p-8 border-2 border-arena-yellow text-center space-y-5 shadow-2xl animate-fadeIn">
+          <div className="w-16 h-16 rounded-2xl bg-arena-yellow/20 border-2 border-arena-yellow mx-auto flex items-center justify-center text-3xl">
+            🏆
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-2xl font-black text-arena-yellow">
+              اكتملت ركلات الجزاء الترجيحية! 🏁
+            </h3>
+            <p className="text-sm text-gray-300 max-w-md mx-auto">
+              تم حسم الركلات بالكامل. جاهزون للانتقال للجولة الرابعة (المزاد الفاصل).
+            </p>
+            <div className="flex justify-center gap-6 pt-2">
+              <span className="text-base font-black text-arena-cyan">
+                {roomState?.teams?.team_a?.name || 'فريق A'}: {roomState?.teams?.team_a?.penaltyScore || 0} ركلة
+              </span>
+              <span className="text-base font-black text-arena-red">
+                {roomState?.teams?.team_b?.name || 'فريق B'}: {roomState?.teams?.team_b?.penaltyScore || 0} ركلة
+              </span>
+            </div>
+          </div>
+          {(isHost || isPenaltyReferee) && (
+            <div className="pt-3">
+              <button
+                type="button"
+                onClick={nextRound}
+                className="btn-arcade-green px-8 py-3.5 rounded-2xl font-black text-base inline-flex items-center gap-2 cursor-pointer shadow-xl hover:scale-[1.02] animate-bounce-short"
+              >
+                <span>الانتقال للجولة 4: "مين يزوّد؟" (Next Round) 🏷️</span>
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+        </div>
+      ) : isDuelistSelection ? (
         <div className="bg-arena-card rounded-3xl p-6 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] space-y-4">
           {/* Step 1: System selected category */}
           <div className="bg-arena-darker/80 rounded-2xl p-3 border border-arena-cyan/30 flex items-center justify-between">

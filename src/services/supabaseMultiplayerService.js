@@ -1040,7 +1040,9 @@ export function createSupabaseSocket(customClient = null) {
 
           if (roundPtsA !== roundPtsB) {
             r3.isComplete = true;
-            const winner = roundPtsA > roundPtsB ? 'فريق الحيتان' : 'فريق الوحوش';
+            const teamAName = room.teams?.team_a?.name || 'فريق A';
+            const teamBName = room.teams?.team_b?.name || 'فريق B';
+            const winner = roundPtsA > roundPtsB ? teamAName : teamBName;
             broadcastToRoom('notification', {
               title: '🏆 حُسمت في الموت المفاجئ!',
               message: `فاز ${winner} بعد شوط الموت المفاجئ!`
@@ -1355,9 +1357,10 @@ export function createSupabaseSocket(customClient = null) {
         room.players.push(botPlayer);
         cachedRoomState = room;
         await persistAndBroadcast(room);
+        const botTeamName = assignedTeam === 'team_a' ? (room.teams?.team_a?.name || 'فريق A') : (room.teams?.team_b?.name || 'فريق B');
         broadcastToRoom('notification', {
           title: 'انضمام لاعب 🎮',
-          message: `انضم ${botPlayer.name} إلى الساحة في ${assignedTeam === 'team_a' ? 'فريق الحيتان' : 'فريق الوحوش'}`
+          message: `انضم ${botPlayer.name} إلى الساحة في ${botTeamName}`
         });
         break;
       }

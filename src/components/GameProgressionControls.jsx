@@ -29,6 +29,7 @@ export default function GameProgressionControls() {
     nextQuestion,
     nextRound,
     r1NextQuestion,
+    r2NextCard,
     r3NextShot
   } = useGame();
 
@@ -37,31 +38,36 @@ export default function GameProgressionControls() {
 
   // Determine round-specific state
   const r1 = roomState?.round1 || {};
+  const r2 = roomState?.round2 || {};
   const r3 = roomState?.round3 || {};
 
   const isR1 = status === 'round1';
+  const isR2 = status === 'round2';
   const isR3 = status === 'round3';
 
   // Check if question/shot is currently resolved
   const isR1Resolved = isR1 && r1.questionState === 'resolved';
+  const isR2Resolved = isR2 && (r2.cardState === 'resolved' || r2.isResolved || !!r2.lastCardResult);
   const isR3Resolved = isR3 && (r3.shotState === 'resolved' || r3.phase === 'shot_resolved');
-  const isResolved = isR1 ? isR1Resolved : (isR3 ? isR3Resolved : false);
+  const isResolved = isR1 ? isR1Resolved : (isR2 ? isR2Resolved : (isR3 ? isR3Resolved : false));
 
   // Check if round questions are exhausted
   const isR1Exhausted = isR1 && (r1.totalQuestionsAnswered >= 48 || r1.isComplete);
-  const isR3Exhausted = isR3 && (r3.isComplete || (r3.turnIndex >= 10 && !r3.isSuddenDeath && r3.phase === 'complete'));
-  const isExhausted = isR1 ? isR1Exhausted : (isR3 ? isR3Exhausted : false);
+  const isR2Exhausted = isR2 && (r2.isComplete || (r2.currentWordIndex >= 5));
+  const isR3Exhausted = isR3 && (r3.isComplete || (r3.turnIndex >= 10 && !r3.isSuddenDeath && (r3.phase === 'complete' || r3.shotState === 'complete')));
+  const isExhausted = isR1 ? isR1Exhausted : (isR2 ? isR2Exhausted : (isR3 ? isR3Exhausted : false));
 
   // Role permissions: Host or designated Judge can manually advance
-  const judgeId = roomState?.singleJudgeId || (isR1 ? r1.refereePlayerId : (isR3 ? r3.refereePlayerId : null));
+  const judgeId = roomState?.singleJudgeId || (isR1 ? r1.refereePlayerId : (isR2 ? r2.refereePlayerId : (isR3 ? r3.refereePlayerId : null)));
   const isJudge = !!currentPlayer && currentPlayer.id === judgeId;
   const canControl = isHost || isJudge;
 
   // Get single judge name
-  const judgePlayer = roomState?.players?.find(p => p.id === judgeId) || { name: 'حكم الخصم' };
+  const judgePlayer = roomState?.players?.find(p => p.id === judgeId) || { name: 'حكم الجولة' };
 
   const handleNextQuestion = () => {
     if (isR1) r1NextQuestion();
+    else if (isR2) r2NextCard();
     else if (isR3) r3NextShot();
     else nextQuestion();
   };
@@ -70,7 +76,13 @@ export default function GameProgressionControls() {
     nextRound();
   };
 
-  const roundName = isR1 ? 'جولة 1 تو (Bank Mode)' : (isR3 ? 'جولة ركلات الجزاء (Shootout)' : 'الجولة الحالية');
+  const roundName = isR1
+    ? 'جولة 1 تو (Bank Mode)'
+    : isR2
+      ? 'جولة اديني في سري (Password)'
+      : isR3
+        ? 'جولة ركلات الجزاء (Shootout)'
+        : 'الجولة الحالية';
 
   return (
     <aside aria-label="شريط التحكم والتقدم اليدوي" className="bg-arena-card/95 border-2 border-white/10 rounded-2xl p-3 md:p-4 shadow-xl backdrop-blur-md">

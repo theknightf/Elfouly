@@ -13,6 +13,8 @@ import {
   ChevronDown,
   Sparkles
 } from 'lucide-react';
+import { TEAM_PRESETS } from '../data/characters';
+
 
 /**
  * HostTeamManager
@@ -46,6 +48,15 @@ export default function HostTeamManager() {
   const [nameB, setNameB] = useState(teamB.name);
 
   if (!isHost) return null;
+
+  const handleSelectPreset = (preset) => {
+    setNameA(preset.nameA);
+    setNameB(preset.nameB);
+    updateTeamNames({
+      team_a: preset.nameA,
+      team_b: preset.nameB
+    });
+  };
 
   const handleSaveNames = (e) => {
     e?.preventDefault();
@@ -109,9 +120,26 @@ export default function HostTeamManager() {
       {/* Team Names Editing Form */}
       {isEditingNames && (
         <form onSubmit={handleSaveNames} className="bg-arena-darker/90 rounded-2xl p-4 border border-arena-yellow/40 space-y-4 animate-fadeIn">
-          <div className="text-xs font-bold text-arena-yellow flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4" />
-            <span>تعديل مسميات الفرق للمباراة:</span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs font-bold text-arena-yellow flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4" />
+              <span>تعديل مسميات الفرق للمباراة أو اختيار ثنائي جاهز:</span>
+            </div>
+            <span className="text-[10px] text-gray-400">انقر على أي ثنائي للتطبيق الفوري ⚡</span>
+          </div>
+
+          {/* Quick Presets Bar */}
+          <div className="flex flex-wrap gap-1.5">
+            {TEAM_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => handleSelectPreset(preset)}
+                className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-surface-container border border-white/10 hover:border-arena-yellow hover:text-arena-yellow transition-all cursor-pointer text-gray-200"
+              >
+                {preset.label}: {preset.nameA} vs {preset.nameB}
+              </button>
+            ))}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -123,7 +151,7 @@ export default function HostTeamManager() {
                 onChange={(e) => setNameA(e.target.value)}
                 maxLength={28}
                 className="w-full bg-arena-card border-2 border-arena-cyan/50 focus:border-arena-cyan rounded-xl px-3 py-2 text-sm text-white font-black outline-none transition-all text-right"
-                placeholder="فريق الحيتان..."
+                placeholder="اسم الفريق الأول..."
               />
             </div>
 
@@ -135,7 +163,7 @@ export default function HostTeamManager() {
                 onChange={(e) => setNameB(e.target.value)}
                 maxLength={28}
                 className="w-full bg-arena-card border-2 border-arena-red/50 focus:border-arena-red rounded-xl px-3 py-2 text-sm text-white font-black outline-none transition-all text-right"
-                placeholder="فريق الوحوش..."
+                placeholder="اسم الفريق الثاني..."
               />
             </div>
           </div>

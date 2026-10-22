@@ -1045,6 +1045,28 @@ export function GameProvider({ children }) {
   };
 
   // Round 2 Handlers
+  const r2NextCard = () => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('r2_next_card', { roomCode });
+    }
+    setRoomState(prev => {
+      if (!prev.round2) return prev;
+      const r2 = nextLocalR2Card(prev.round2, prev.players);
+      if (r2.currentWordIndex >= 5) {
+        sounds.playWhistle();
+        showToast('🏁 اكتملت جولة "اديني في سري"!', 'تم إنجاز 5 بطاقات سرية!');
+      }
+      return {
+        ...prev,
+        round2: {
+          ...r2,
+          cardState: r2.currentWordIndex >= 5 ? 'complete' : 'active',
+          lastCardResult: null
+        }
+      };
+    });
+  };
+
   const r2AwardPoint = (team) => {
     if (socket && isConnected && roomCode) {
       socket.emit('r2_award_point', { roomCode, team, actionToken: roomState?.round2?.actionToken });
@@ -1052,18 +1074,24 @@ export function GameProvider({ children }) {
       sounds.playCorrect();
       setRoomState(prev => {
         if (prev.round2.isComplete || (prev.round2.currentWordIndex || 0) >= 5) return prev;
-        if (team !== (prev.round2.activeTurnTeam || 'team_a')) {
-          showToast('🚫 دور الفريق الآخر', 'الحكم يحسم دور الفريق اللي بيلمّح دلوقتي فقط.');
-          return prev;
-        }
-        const r2 = nextLocalR2Card(prev.round2, prev.players);
         const teams = { ...prev.teams };
-        teams[team] = { ...teams[team], score: teams[team].score + 500 };
-        if (r2.currentWordIndex >= 5) {
+        const targetTeam = team || prev.round2.activeTurnTeam || 'team_a';
+        teams[targetTeam] = { ...teams[targetTeam], score: teams[targetTeam].score + 500 };
+        const nextIndex = (prev.round2.currentWordIndex || 0) + 1;
+        const r2 = nextLocalR2Card(prev.round2, prev.players);
+        if (nextIndex >= 5) {
           sounds.playWhistle();
           showToast('🏁 اكتملت جولة "اديني في سري"!', 'تم إنجاز 5 بطاقات سرية!');
         }
-        return { ...prev, teams, round2: r2 };
+        return {
+          ...prev,
+          teams,
+          round2: {
+            ...r2,
+            cardState: 'resolved',
+            lastCardResult: { team: targetTeam, scoreAdded: 500, word: prev.round2.currentWord?.target }
+          }
+        };
       });
     }
   };
@@ -1080,7 +1108,14 @@ export function GameProvider({ children }) {
           sounds.playWhistle();
           showToast('🏁 اكتملت جولة "اديني في سري"!', 'تم إنجاز 5 بطاقات سرية!');
         }
-        return { ...prev, round2: r2 };
+        return {
+          ...prev,
+          round2: {
+            ...r2,
+            cardState: r2.currentWordIndex >= 5 ? 'complete' : 'active',
+            lastCardResult: { skipped: true }
+          }
+        };
       });
     }
   };
@@ -1204,24 +1239,21 @@ export function GameProvider({ children }) {
           suddenDeathRound: r3.suddenDeathRound || 0
         });
 
-        r3.turnIndex += 1;
-        r3.kickerTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
-        r3.interceptBuzzedBy = null;
-        r3.pendingAnswer = null;
+        // Set resolution state for manual progression without freezing or flashing
+        r3.shotState = 'resolved';
+        r3.phase = 'shot_resolved';
+        r3.lastShotResult = {
+          result,
+          bonusAwarded,
+          bonusPoints,
+          kickerId: r3.currentKickerId,
+          kickerName: kicker?.name,
+          team: kickingTeam
+        };
 
-        const teamAPlayers = prev.players.filter(p => p.team === 'team_a');
-        const teamBPlayers = prev.players.filter(p => p.team === 'team_b');
-
-        if (r3.kickerTeam === 'team_a') {
-          r3.currentKickerId = teamAPlayers[r3.turnIndex % Math.max(1, teamAPlayers.length)]?.id;
-          r3.currentGoalieId = teamBPlayers[r3.turnIndex % Math.max(1, teamBPlayers.length)]?.id;
-        } else {
-          r3.currentKickerId = teamBPlayers[r3.turnIndex % Math.max(1, teamBPlayers.length)]?.id;
-          r3.currentGoalieId = teamAPlayers[r3.turnIndex % Math.max(1, teamAPlayers.length)]?.id;
-        }
-
-        // Regulation end (10 kicks) or Sudden Death round evaluation:
-        if (r3.turnIndex >= 10) {
+        // Check if shootout reached end of regulation or sudden death
+        const completedKicks = r3.turnIndex + 1;
+        if (completedKicks >= 10) {
           const scoreA = teams.team_a.penaltyScore || 0;
           const scoreB = teams.team_b.penaltyScore || 0;
 
@@ -1234,60 +1266,31 @@ export function GameProvider({ children }) {
             } else {
               r3.phase = 'complete';
               r3.isComplete = true;
-              r3.currentQuestion = null;
-              r3.currentKickerId = null;
-              r3.currentGoalieId = null;
               sounds.playWhistle();
               showToast('🏁 انتهت ركلات الجزاء (10 ركلات)!', 'جاهزون لجولة المزاد مين يزوّد!');
-              return { ...prev, teams, round3: r3 };
             }
           } else {
-            // Already in sudden death: evaluated after complete 2-kick rounds (Team A + Team B)
-            if (r3.turnIndex % 2 === 0) {
+            // Already in sudden death: evaluated after complete pairs of kicks (Team A + Team B)
+            if (completedKicks % 2 === 0) {
               const lastTwo = r3.shotsHistory.slice(-2);
               const shotA = lastTwo.find(s => s.team === 'team_a');
               const shotB = lastTwo.find(s => s.team === 'team_b');
-              const roundPtsA = (shotA?.result === 'goal' ? 1 : 0) + (shotB?.result === 'saved' ? 1 : 0);
-              const roundPtsB = (shotB?.result === 'goal' ? 1 : 0) + (shotA?.result === 'saved' ? 1 : 0);
+              const roundPtsA = (shotA?.result === 'goal' ? 1 : 0);
+              const roundPtsB = (shotB?.result === 'goal' ? 1 : 0);
 
               if (roundPtsA !== roundPtsB) {
                 r3.phase = 'complete';
                 r3.isComplete = true;
-                r3.currentQuestion = null;
-                r3.currentKickerId = null;
-                r3.currentGoalieId = null;
                 sounds.playWhistle();
-                const winner = roundPtsA > roundPtsB ? 'فريق الحيتان' : 'فريق الوحوش';
+                const winner = roundPtsA > roundPtsB ? (teams.team_a.name || 'فريق A') : (teams.team_b.name || 'فريق B');
                 showToast('🏆 حُسمت في الموت المفاجئ!', `فاز ${winner} بعد شوط الموت المفاجئ!`);
-                return { ...prev, teams, round3: r3 };
               } else {
-                r3.suddenDeathRound += 1;
+                r3.suddenDeathRound = (r3.suddenDeathRound || 1) + 1;
                 showToast('⚡ استمرار الموت المفاجئ!', `تعادل في شوط الموت المفاجئ ${r3.suddenDeathRound - 1}! جولة جديدة.`);
               }
             }
           }
         }
-
-        // Draw next question ensuring >= 50% General rule
-        const isGeneralTurn = r3.turnIndex % 2 === 0;
-        const generalCategories = PENALTY_CATEGORIES.filter(c => isGeneralCategory(c.id));
-        const specialtyCategories = PENALTY_CATEGORIES.filter(c => !isGeneralCategory(c.id));
-        const nextCat = isGeneralTurn
-          ? (generalCategories[Math.floor(Math.random() * generalCategories.length)] || PENALTY_CATEGORIES[0])
-          : (specialtyCategories[Math.floor(Math.random() * specialtyCategories.length)] || PENALTY_CATEGORIES[0]);
-
-        const nextPenaltyQuestion = drawLocalCategoryQuestion('hat_fi_qoraybi', nextCat.id, LOCAL_ROOM_ID);
-        r3.currentCategory = nextCat;
-        r3.phase = 'duelist_selection';
-        r3.currentQuestion = nextPenaltyQuestion ? {
-          question: nextPenaltyQuestion.question_text,
-          answer: nextPenaltyQuestion.correct_answer,
-          options: nextPenaltyQuestion.options || [],
-          category: nextPenaltyQuestion.category,
-          kickerHint: nextCat.name
-        } : null;
-        r3.tieBreakActive = false;
-        r3.tieBreakData = null;
 
         return { ...prev, teams, round3: r3 };
       });
@@ -1379,13 +1382,50 @@ export function GameProvider({ children }) {
     }
     setRoomState(prev => {
       if (!prev.round3) return prev;
+      if (prev.round3.isComplete) return prev;
+
       const r3 = { ...prev.round3 };
+      const nextTurn = r3.turnIndex + 1;
+      r3.turnIndex = nextTurn;
+      r3.kickerTeam = r3.kickerTeam === 'team_a' ? 'team_b' : 'team_a';
+
+      const teamAPlayers = prev.players.filter(p => p.team === 'team_a');
+      const teamBPlayers = prev.players.filter(p => p.team === 'team_b');
+
+      if (r3.kickerTeam === 'team_a') {
+        r3.currentKickerId = teamAPlayers[r3.turnIndex % Math.max(1, teamAPlayers.length)]?.id;
+        r3.currentGoalieId = teamBPlayers[r3.turnIndex % Math.max(1, teamBPlayers.length)]?.id;
+      } else {
+        r3.currentKickerId = teamBPlayers[r3.turnIndex % Math.max(1, teamBPlayers.length)]?.id;
+        r3.currentGoalieId = teamAPlayers[r3.turnIndex % Math.max(1, teamAPlayers.length)]?.id;
+      }
+
+      // Draw next question ensuring >= 50% General rule
+      const isGeneralTurn = r3.turnIndex % 2 === 0;
+      const generalCategories = PENALTY_CATEGORIES.filter(c => isGeneralCategory(c.id));
+      const specialtyCategories = PENALTY_CATEGORIES.filter(c => !isGeneralCategory(c.id));
+      const nextCat = isGeneralTurn
+        ? (generalCategories[Math.floor(Math.random() * generalCategories.length)] || PENALTY_CATEGORIES[0])
+        : (specialtyCategories[Math.floor(Math.random() * specialtyCategories.length)] || PENALTY_CATEGORIES[0]);
+
+      const nextPenaltyQuestion = drawLocalCategoryQuestion('hat_fi_qoraybi', nextCat.id, LOCAL_ROOM_ID);
+      r3.currentCategory = nextCat;
+      r3.currentQuestion = nextPenaltyQuestion ? {
+        question: nextPenaltyQuestion.question_text,
+        answer: nextPenaltyQuestion.correct_answer,
+        options: nextPenaltyQuestion.options || [],
+        category: nextPenaltyQuestion.category,
+        kickerHint: nextCat.name
+      } : null;
+
       r3.shotState = 'selection';
       r3.lastShotResult = null;
       r3.phase = 'duelist_selection';
       r3.pendingAnswer = null;
       r3.interceptBuzzedBy = null;
-      r3.currentCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
+      r3.tieBreakActive = false;
+      r3.tieBreakData = null;
+
       return { ...prev, round3: r3 };
     });
   };
@@ -1394,6 +1434,8 @@ export function GameProvider({ children }) {
   const nextQuestion = () => {
     if (roomState?.status === 'round1') {
       r1NextQuestion();
+    } else if (roomState?.status === 'round2') {
+      r2NextCard();
     } else if (roomState?.status === 'round3') {
       r3NextShot();
     }
@@ -1617,6 +1659,7 @@ export function GameProvider({ children }) {
         nextQuestion,
         nextRound,
         r1NextQuestion,
+        r2NextCard,
         r3NextShot,
         // Round actions
         r1Score,

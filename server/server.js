@@ -1054,6 +1054,12 @@ io.on('connection', (socket) => {
     if (!context) return;
     const { room } = context;
     if (room.status !== 'round3') return;
+    if (room.round3.isComplete) {
+      room.round3.phase = 'complete';
+      emitRoomState(room);
+      return;
+    }
+    room.round3.phase = 'duelist_selection';
     room.round3.shotState = 'selection';
     room.round3.lastShotResult = null;
     emitRoomState(room);
@@ -1775,6 +1781,40 @@ io.on('connection', (socket) => {
     emitRoomState(room);
   });
 
+  socket.on('r2_next_card', ({ roomCode }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+
+    if (!requireRoundStatus(room, 'round2', socket, 'الانتقال للبطاقة التالية')) return;
+
+    const r2 = room.round2;
+    if (r2.isComplete || r2.currentWordIndex >= 5) {
+      r2.isComplete = true;
+      r2.currentWord = null;
+      emitRoomState(room);
+      return;
+    }
+    r2.actionToken = null;
+    r2.currentWordIndex += 1;
+
+    if (r2.currentWordIndex >= 5) {
+      r2.isComplete = true;
+      r2.currentWord = null;
+      r2.isTimerRunning = false;
+      io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
+      io.to(roomCode).emit('notification', {
+        title: '🏁 اكتملت جولة "اديني في سري" (5 بطاقات)!',
+        message: 'تم إنجاز الـ 5 بطاقات السرية! جاهزون للانتقال لجولة ركلات الجزاء.'
+      });
+    } else {
+      setR2CardRoles(room, { toggleTurn: true, reason: 'card_complete' });
+      dispatchR2Card(room);
+    }
+
+    emitRoomState(room);
+  });
+
   socket.on('r2_foul', ({ roomCode, team, actionToken }) => {
     const context = getRoomAndPlayer(roomCode, socket);
     if (!context) return;
@@ -2076,7 +2116,7 @@ io.on('connection', (socket) => {
 
           if (roundPtsA !== roundPtsB) {
             r3.isComplete = true;
-            const winner = roundPtsA > roundPtsB ? 'فريق الحيتان' : 'فريق الوحوش';
+            const winner = roundPtsA > roundPtsB ? (room.teams.team_a?.name || 'فريق A') : (room.teams.team_b?.name || 'فريق B');
             io.to(roomCode).emit('notification', {
               title: '🏆 حُسمت في الموت المفاجئ!',
               message: `فاز ${winner} بركلات الترجيح!`
@@ -2094,6 +2134,7 @@ io.on('connection', (socket) => {
 
       if (r3.isComplete) {
         r3.phase = 'complete';
+        r3.shotState = 'complete';
         r3.currentQuestion = null;
         r3.currentKickerId = null;
         r3.currentGoalieId = null;
@@ -2107,6 +2148,18 @@ io.on('connection', (socket) => {
       }
     }
 
+    // Retain resolution state on screen until manual next shot trigger
+    r3.shotState = 'resolved';
+    r3.phase = 'shot_resolved';
+    r3.lastShotResult = {
+      result,
+      bonusAwarded,
+      bonusPoints,
+      kickerId: r3.currentKickerId,
+      kickerName: kicker?.name,
+      team: kickingTeam
+    };
+
     // Guarantee >= 50% General questions
     const isGeneralTurn = r3.turnIndex % 2 === 0;
     const generalCategories = PENALTY_CATEGORIES.filter(c => isGeneralCategory(c.id));
@@ -2116,7 +2169,6 @@ io.on('connection', (socket) => {
       : (specialtyCategories[Math.floor(Math.random() * specialtyCategories.length)] || PENALTY_CATEGORIES[0]);
 
     r3.currentCategory = nextCategory;
-    r3.phase = 'duelist_selection';
 
     const teamAPlayers = room.players.filter(p => p.team === 'team_a');
     const teamBPlayers = room.players.filter(p => p.team === 'team_b');

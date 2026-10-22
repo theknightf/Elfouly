@@ -124,7 +124,9 @@ export default function MobileController() {
               player?.team === 'team_a' ? 'bg-arena-cyan/20 text-arena-cyan' : 'bg-arena-red/20 text-arena-red'
             }`}
           >
-            {player?.team === 'team_a' ? 'الحيتان A' : 'الوحوش B'}
+            {player?.team === 'team_a' 
+              ? (roomState?.teams?.team_a?.name || 'فريق أ') 
+              : (roomState?.teams?.team_b?.name || 'فريق ب')}
           </div>
         </div>
 
