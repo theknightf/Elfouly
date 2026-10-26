@@ -2047,6 +2047,17 @@ export function createSupabaseSocket(customClient = null) {
         break;
       }
 
+      case 'r4_end_bidding': {
+        const room = await currentRoom();
+        if (!room || !isCurrentRoom(payload.roomCode)) return;
+        const r4 = room.round4;
+        const player = findPlayer(room);
+        if (!player || r4.phase !== 'bidding' || !r4.highestBidderTeam || player.team !== r4.highestBidderTeam || r4.topicId !== payload.topicId) return;
+        r4.phase = 'challenge';
+        await persistAndBroadcast(room);
+        break;
+      }
+
       case 'r4_use_lifeline': {
         const room = await currentRoom();
         if (!room) return;

@@ -2377,6 +2377,17 @@ io.on('connection', (socket) => {
     emitRoomState(room);
   });
 
+  socket.on('r4_end_bidding', ({ roomCode, topicId }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room, player } = context;
+    const r4 = room.round4;
+    if (room.status !== 'round4' || r4.phase !== 'bidding' || !r4.highestBidderTeam || r4.topicId !== topicId) return;
+    if (player.team !== r4.highestBidderTeam) return;
+    r4.phase = 'execution';
+    emitRoomState(room);
+  });
+
   // R4 Lifelines: 'call_friend' | 'rival_hint'
   socket.on('r4_use_lifeline', ({ roomCode, team, lifelineType, topicId }) => {
     const context = getRoomAndPlayer(roomCode, socket);

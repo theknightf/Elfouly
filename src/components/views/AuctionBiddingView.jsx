@@ -24,6 +24,7 @@ export default function AuctionBiddingView({ isMobile = false }) {
     roomState,
     currentPlayer,
     r4Bid,
+    r4EndBidding,
     r4StartChallenge,
     r4ResolveBid,
     r4ToggleItem,
@@ -51,7 +52,9 @@ export default function AuctionBiddingView({ isMobile = false }) {
   const [timeLeft, setTimeLeft] = useState(() => RoundTimer.remaining(r4.endTime));
   const timerRef = useRef(null);
 
-  const phase = r4.phase || (r4.highestBidderPlayerId ? 'challenge' : 'bidding');
+  const phase = r4.phase === 'execution' || r4.phase === 'challenge'
+    ? 'challenge'
+    : r4.phase || 'bidding';
   const checkedItems = r4.itemsNamed || [];
   const validItems = activeQuestion.acceptable_answers || currentTopic.validItems || [];
 
@@ -85,7 +88,8 @@ export default function AuctionBiddingView({ isMobile = false }) {
 
   const handleFold = () => {
     sounds?.playWrong?.();
-    showToast('انسحاب!', 'قرر الفريق عدم المزايدة أكثر.');
+    r4EndBidding();
+    showToast('انسحاب!', 'انتهت المزايدة، والفريق الأعلى يبدأ التحدي.');
   };
 
   const handleStartChallenge = () => {

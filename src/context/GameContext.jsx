@@ -1259,9 +1259,21 @@ export function GameProvider({ children }) {
     }
     setRoomState(prev => {
       const r4 = prev.round4;
-      if (r4.phase !== 'challenge' || !r4.highestBidderTeam || r4.isTimerRunning) return prev;
+      if (!['challenge', 'execution'].includes(r4.phase) || !r4.highestBidderTeam || r4.isTimerRunning) return prev;
       const endTime = Date.now() + 60_000;
       return { ...prev, round4: { ...r4, timer: 60, endTime, isTimerRunning: true } };
+    });
+  };
+
+  const r4EndBidding = () => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('r4_end_bidding', { roomCode, topicId: roomState?.round4?.topicId });
+      return;
+    }
+    setRoomState(prev => {
+      const r4 = prev.round4;
+      if (r4.phase !== 'bidding' || !r4.highestBidderTeam) return prev;
+      return { ...prev, round4: { ...r4, phase: 'challenge' } };
     });
   };
 
@@ -1461,6 +1473,7 @@ export function GameProvider({ children }) {
         r3StartShootout,
         r4Bid,
         r4StartChallenge,
+        r4EndBidding,
         r4UseLifeline,
         r4ToggleItem,
         r4ResolveBid,
