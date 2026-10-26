@@ -1006,7 +1006,10 @@ export function createSupabaseSocket(customClient = null) {
 
   function settleR3Shot(room, result, meta = {}) {
     const r3 = room.round3;
-    if (r3.isComplete || r3.phase !== 'shootout') return false;
+    if (r3.shotResolved || r3.isComplete || r3.phase !== 'shootout') return false;
+    r3.shotResolved = true;
+    r3.isTimerRunning = false;
+    r3.endTime = null;
 
     const kickingTeam = r3.kickerTeam;
     const defendingTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
@@ -1879,7 +1882,6 @@ export function createSupabaseSocket(customClient = null) {
         r3.shotStartedAt = Date.now();
         r3.endTime = r3.shotStartedAt + (r3.timer || 20) * 1000;
         r3.shotResolved = false;
-        r3.endTime = r3.shotStartedAt + (r3.timer || 20) * 1000;
         r3.tieBreakActive = false;
         r3.tieBreakData = null;
         broadcastToRoom('sound_trigger', { sound: 'whistle' });

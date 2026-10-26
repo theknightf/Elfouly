@@ -1855,6 +1855,7 @@ io.on('connection', (socket) => {
     r3.goalieCompensation = 0;
     r3.shotStartedAt = Date.now();
     r3.endTime = r3.shotStartedAt + (r3.timer || 20) * 1000;
+    r3.shotResolved = false;
     r3.tieBreakActive = false;
     r3.tieBreakData = null;
     io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
@@ -1895,7 +1896,10 @@ io.on('connection', (socket) => {
 
   function settlePenaltyShot(room, roomCode, result, meta = {}) {
     const r3 = room.round3;
-    if (r3.isComplete || r3.phase !== 'shootout') return false;
+    if (r3.shotResolved || r3.isComplete || r3.phase !== 'shootout') return false;
+    r3.shotResolved = true;
+    r3.isTimerRunning = false;
+    r3.endTime = null;
 
     const kickingTeam = r3.kickerTeam;
     const defendingTeam = kickingTeam === 'team_a' ? 'team_b' : 'team_a';
