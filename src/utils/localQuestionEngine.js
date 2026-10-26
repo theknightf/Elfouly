@@ -112,36 +112,28 @@ function matchesCategory(question, category) {
   return (CATEGORY_ALIASES[category] || []).includes(question.category);
 }
 
-function pickUnserved(mode, categories, served) {
-  for (const category of categories) {
-    const candidates = questionsBank.filter(question =>
-      question.mode === mode &&
-      matchesCategory(question, category) &&
-      !served.has(question.id) &&
-      isServableQuestion(question)
-    );
-    if (candidates.length > 0) return shuffleArray(candidates)[0];
+function getQuestionQueue(roomId, mode, served) {
+  const key = `${roomId}:${mode}`;
+  let queue = queuesByRoom.get(key);
+  if (!queue) {
+    queue = new QuestionQueue(questionsBank.filter(question =>
+      question.mode === mode && isServableQuestion(question) && !served.has(question.id)
+    ));
+    queuesByRoom.set(key, queue);
   }
-  return null;
-}
-
-function pickRandomUnserved(mode, served) {
-  const candidates = questionsBank.filter(question =>
-    question.mode === mode &&
-    !served.has(question.id) &&
-    isServableQuestion(question)
-  );
-  return candidates.length > 0 ? shuffleArray(candidates)[0] : null;
+  return queue;
 }
 
 function drawQueued(roomId, mode, candidates, served) {
-  const key = `${roomId}:${mode}`;
-  let queue = queuesByRoom.get(key);
-  if (!queue || queue.remaining === 0) {
-    queue = new QuestionQueue(candidates.filter(question => !served.has(question.id)));
-    queuesByRoom.set(key, queue);
+  const queue = getQuestionQueue(roomId, mode, served);
+  let question = queue.peek();
+  if (candidates) {
+    const ids = new Set(candidates.map(item => item.id));
+    question = queue.items.slice(queue.cursor).find(item => ids.has(item.id)) || null;
+    if (question) question = queue.take(question);
+  } else {
+    question = queue.pop();
   }
-  const question = queue.pop();
   if (question) served.add(question.id);
   return question;
 }
@@ -158,26 +150,14 @@ export function drawLocalQuestion({
 
   if (slotType === 'specialty') {
     const categories = category ? [category] : getCharacterAttributes(characterId);
-    const candidates = questionsBank.filter(question => question.mode === mode && categories.some(category => matchesCategory(question, category)) && isServableQuestion(question));
+    const candidates = questionsBank.filter(question => question.mode === mode && categories.some(category => matchesCategory(question, category)) && isServableQuestion(question) && !served.has(question.id));
     question = drawQueued(roomId, mode, candidates, served);
   } else {
     if (category) {
-      const candidates = questionsBank.filter(item => item.mode === mode && matchesCategory(item, category) && isServableQuestion(item));
-      const selected = pickUnserved(mode, [category], served);
-      if (selected) {
-        const key = `${roomId}:${mode}`;
-        let queue = queuesByRoom.get(key);
-        if (!queue || queue.remaining === 0) {
-          queue = new QuestionQueue(questionsBank.filter(item => item.mode === mode && isServableQuestion(item) && !served.has(item.id)));
-          queuesByRoom.set(key, queue);
-        }
-        question = queue.take(selected);
-        if (question) served.add(question.id);
-      } else {
-        question = drawQueued(roomId, mode, candidates, served);
-      }
+      const candidates = questionsBank.filter(item => item.mode === mode && matchesCategory(item, category) && isServableQuestion(item) && !served.has(item.id));
+      question = drawQueued(roomId, mode, candidates, served);
     }
-    if (!question) question = drawQueued(roomId, mode, questionsBank.filter(item => item.mode === mode && isServableQuestion(item)), served);
+    if (!question) question = drawQueued(roomId, mode, null, served);
   }
 
   return question;

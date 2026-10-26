@@ -18,12 +18,17 @@ export class TurnManager {
   static swapClueGivers(players = [], giverAId, giverBId, currentIndex = 0) {
     const teamA = players.filter(player => player.team === 'team_a');
     const teamB = players.filter(player => player.team === 'team_b');
-    const nextA = teamA.find(player => player.id !== giverAId)?.id || giverAId || null;
-    const nextB = teamB.find(player => player.id !== giverBId)?.id || giverBId || null;
+    const swapWithinTeam = (roster, giverId) => {
+      if (!roster.length) return null;
+      const current = roster.findIndex(player => player.id === giverId);
+      return roster[(Math.max(0, current) + 1) % roster.length].id;
+    };
+    const nextA = swapWithinTeam(teamA, giverAId);
+    const nextB = swapWithinTeam(teamB, giverBId);
     return {
       activeClueGiverA: nextA,
       activeClueGiverB: nextB,
-      currentGiverIndex: players.findIndex(player => player.id === (currentIndex % 2 === 0 ? nextA : nextB))
+      currentGiverIndex: currentIndex + 1
     };
   }
 

@@ -18,17 +18,12 @@ export class QuestionQueue {
       const swapIndex = Math.floor(Math.random() * (index + 1));
       [this.items[index], this.items[swapIndex]] = [this.items[swapIndex], this.items[index]];
     }
-    this.items = this.items.filter(question => {
-      const id = question?.id;
-      if (id == null || this.usedQuestionIds.has(id)) return false;
-      return true;
-    });
     this.cursor = 0;
   }
 
   pop() {
     const question = this.items[this.cursor];
-    if (!question) return null;
+    if (!question || this.usedQuestionIds.has(question.id)) return null;
     this.cursor += 1;
     this.usedQuestionIds.add(question.id);
     return question;
@@ -36,7 +31,7 @@ export class QuestionQueue {
 
   take(question) {
     if (!question) return null;
-    const index = this.items.findIndex(item => item.id === question.id);
+    const index = this.items.findIndex((item, itemIndex) => itemIndex >= this.cursor && item.id === question.id);
     if (index < this.cursor || index < 0 || this.usedQuestionIds.has(question.id)) return null;
     [this.items[this.cursor], this.items[index]] = [this.items[index], this.items[this.cursor]];
     return this.pop();

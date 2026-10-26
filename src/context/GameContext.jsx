@@ -106,17 +106,20 @@ function nextLocalR2Card(r2, players) {
     isComplete: nextIndex >= 5
   };
   if (nextIndex < 5) {
-    Object.assign(nextCard, buildLocalR2Roles(players, nextIndex, {
+    const swappedGivers = TurnManager.swapClueGivers(
+      players,
+      r2.activeClueGiverA,
+      r2.activeClueGiverB,
+      r2.currentGiverIndex || 0
+    );
+    const roles = buildLocalR2Roles(players, nextIndex, {
       toggleTurn: true,
       activeTurnTeam: r2.activeTurnTeam
-    }));
-    const activeRoster = players.filter(player => player.team === nextCard.activeTurnTeam);
-    const activeCurrentGiver = nextCard.activeTurnTeam === 'team_a' ? r2.activeClueGiverA : r2.activeClueGiverB;
-    const nextGiverId = TurnManager.swapGiverAndGuesser(players, activeCurrentGiver);
-    const nextGiverIndex = Math.max(0, activeRoster.findIndex(player => player.id === nextGiverId));
-    if (nextCard.activeTurnTeam === 'team_a') nextCard.activeClueGiverA = nextGiverId || nextCard.activeClueGiverA;
-    else nextCard.activeClueGiverB = nextGiverId || nextCard.activeClueGiverB;
-    nextCard.currentGiverIndex = nextGiverIndex;
+    });
+    Object.assign(nextCard, roles, swappedGivers);
+    nextCard.refereePlayerId = nextCard.activeTurnTeam === 'team_a'
+      ? nextCard.activeClueGiverB
+      : nextCard.activeClueGiverA;
     nextCard.currentWord = drawLocalPasswordCard();
     nextCard.timer = 45;
     nextCard.endTime = Date.now() + 45000;
@@ -961,14 +964,8 @@ export function GameProvider({ children }) {
           showToast('🚫 دور الفريق الآخر', 'الحكم يحسم دور الفريق اللي بيلمّح دلوقتي فقط.');
           return prev;
         }
-        const r2 = {
-          ...prev.round2,
-          fouls: { ...prev.round2.fouls, [team]: (prev.round2.fouls[team] || 0) + 1 },
-          ...buildLocalR2Roles(prev.players, prev.round2.currentWordIndex || 0, {
-            toggleTurn: true,
-            activeTurnTeam: prev.round2.activeTurnTeam
-          })
-        };
+        const r2 = nextLocalR2Card(prev.round2, prev.players);
+        r2.fouls = { ...r2.fouls, [team]: (r2.fouls[team] || 0) + 1 };
         const teams = { ...prev.teams };
         teams[team] = { ...teams[team], score: Math.max(0, teams[team].score - 200) };
         return { ...prev, teams, round2: r2 };

@@ -20,8 +20,11 @@ export default function PasswordDualView({ isMobile = false }) {
   const {
     roomState,
     currentPlayer,
+    isHost,
     r2AwardPoint,
     r2Foul,
+    r2SkipCard,
+    r2NextCard,
     r2TimeFreeze,
     showToast
   } = useGame();
@@ -40,6 +43,7 @@ export default function PasswordDualView({ isMobile = false }) {
   const r2 = roomState?.round2 || {};
   const [timeLeft, setTimeLeft] = useState(() => RoundTimer.remaining(r2.endTime));
   const timerRef = useRef(null);
+  const expiryHandledRef = useRef(null);
   const cardToken = r2.actionToken || r2.currentWordIndex;
 
   const teamA = roomState?.teams?.team_a || { name: 'فريق الحيتان', score: 0 };
@@ -50,11 +54,13 @@ export default function PasswordDualView({ isMobile = false }) {
 
   useEffect(() => {
     timerRef.current?.dispose();
-    if (!r2.currentWord || r2.isComplete) return undefined;
+    if (!r2.currentWord || r2.isComplete || !r2.isTimerRunning || !r2.endTime) return undefined;
     const timer = new RoundTimer(remainingMs => setTimeLeft(Math.ceil(remainingMs / 1000)), () => {
+      if (expiryHandledRef.current === cardToken) return;
+      expiryHandledRef.current = cardToken;
       sounds?.playBuzzer?.();
       showToast('انتهى الوقت!', 'انتهى وقت تخمين كلمة السر!');
-      if (r2.actionToken) r2SkipCard();
+      if (r2.actionToken && (isR2Referee || isHost)) r2SkipCard();
     });
     timerRef.current = timer;
     const endTime = r2.endTime || Date.now() + (r2.timer || 45) * 1000;
@@ -63,7 +69,7 @@ export default function PasswordDualView({ isMobile = false }) {
       timer.dispose();
       if (timerRef.current === timer) timerRef.current = null;
     };
-  }, [cardToken, r2.currentWord, r2.endTime, r2.timer, r2.isComplete, r2.actionToken, showToast, r2SkipCard]);
+  }, [cardToken, r2.currentWord, r2.endTime, r2.timer, r2.isComplete, r2.isTimerRunning, r2.actionToken, isR2Referee, isHost, showToast, r2SkipCard]);
 
   const isTimerRunning = !!r2.isTimerRunning && timeLeft > 0;
 
