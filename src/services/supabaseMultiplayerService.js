@@ -816,7 +816,7 @@ export function createSupabaseSocket(customClient = null) {
     if (toggleTurn) {
       r2.activeTurnTeam = r2.activeTurnTeam === 'team_a' ? 'team_b' : 'team_a';
     }
-    const giverSwap = (toggleTurn || reason === 'card_end')
+    const giverSwap = toggleTurn
       ? TurnManager.swapClueGivers(room.players, previousGiverA, previousGiverB, cardIndex)
       : {
           activeClueGiverA: teamA[cardIndex % Math.max(1, teamA.length)]?.id || null,

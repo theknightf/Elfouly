@@ -1163,7 +1163,7 @@ io.on('connection', (socket) => {
       r2.activeTurnTeam = 'team_a';
     }
 
-    const giverSwap = (toggleTurn || reason === 'card_end')
+    const giverSwap = toggleTurn
       ? TurnManager.swapClueGivers(room.players, previousGiverA, previousGiverB, cardIndex)
       : {
           activeClueGiverA: teamAPlayers[cardIndex % Math.max(1, teamAPlayers.length)]?.id || null,
