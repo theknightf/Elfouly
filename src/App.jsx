@@ -21,7 +21,7 @@ function GameScreen() {
   const showLanding = !roomCode && !isMatchInProgress;
 
   return (
-    <div className="min-h-screen bg-arena-darker arcade-grid-bg text-white flex flex-col font-arabic">
+    <div dir="rtl" className="min-h-[100dvh] bg-arena-darker arcade-grid-bg text-white flex flex-col font-arabic">
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-20 right-4 z-50 bg-arena-card border-2 border-arena-yellow rounded-2xl p-4 shadow-2xl flex items-center gap-3 animate-bounce-short max-w-sm">

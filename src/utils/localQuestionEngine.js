@@ -1,5 +1,6 @@
 import questionsBank from '../../data/questions_bank.json';
 import { CHARACTERS } from '../data/characters';
+import { QuestionQueue } from '../game/QuestionQueue';
 
 const FOOTBALL_CATEGORY_HINTS = ['football', 'barcelona', 'ahly', 'real_madrid', 'champions'];
 const PRE_2010_YEAR_PATTERN = /\b(1\d{3}|200\d)\b/;
@@ -29,6 +30,7 @@ const CATEGORY_ALIASES = {
 };
 
 const servedByRoom = new Map();
+const queuesByRoom = new Map();
 
 function shuffleArray(array) {
   const arr = [...array];
@@ -94,6 +96,9 @@ export function buildLocalR1TurnPlan(characterId) {
 
 export function resetLocalQuestionSession(roomId = 'local_room') {
   servedByRoom.delete(roomId);
+  for (const key of queuesByRoom.keys()) {
+    if (key.startsWith(`${roomId}:`)) queuesByRoom.delete(key);
+  }
 }
 
 function getServedSet(roomId) {
@@ -129,6 +134,18 @@ function pickRandomUnserved(mode, served) {
   return candidates.length > 0 ? shuffleArray(candidates)[0] : null;
 }
 
+function drawQueued(roomId, mode, candidates, served) {
+  const key = `${roomId}:${mode}`;
+  let queue = queuesByRoom.get(key);
+  if (!queue || queue.remaining === 0) {
+    queue = new QuestionQueue(candidates.filter(question => !served.has(question.id)));
+    queuesByRoom.set(key, queue);
+  }
+  const question = queue.pop();
+  if (question) served.add(question.id);
+  return question;
+}
+
 export function drawLocalQuestion({
   roomId = 'local_room',
   mode,
@@ -141,13 +158,28 @@ export function drawLocalQuestion({
 
   if (slotType === 'specialty') {
     const categories = category ? [category] : getCharacterAttributes(characterId);
-    question = pickUnserved(mode, categories, served);
+    const candidates = questionsBank.filter(question => question.mode === mode && categories.some(category => matchesCategory(question, category)) && isServableQuestion(question));
+    question = drawQueued(roomId, mode, candidates, served);
   } else {
-    if (category) question = pickUnserved(mode, [category], served);
-    if (!question) question = pickRandomUnserved(mode, served);
+    if (category) {
+      const candidates = questionsBank.filter(item => item.mode === mode && matchesCategory(item, category) && isServableQuestion(item));
+      const selected = pickUnserved(mode, [category], served);
+      if (selected) {
+        const key = `${roomId}:${mode}`;
+        let queue = queuesByRoom.get(key);
+        if (!queue || queue.remaining === 0) {
+          queue = new QuestionQueue(questionsBank.filter(item => item.mode === mode && isServableQuestion(item) && !served.has(item.id)));
+          queuesByRoom.set(key, queue);
+        }
+        question = queue.take(selected);
+        if (question) served.add(question.id);
+      } else {
+        question = drawQueued(roomId, mode, candidates, served);
+      }
+    }
+    if (!question) question = drawQueued(roomId, mode, questionsBank.filter(item => item.mode === mode && isServableQuestion(item)), served);
   }
 
-  if (question) served.add(question.id);
   return question;
 }
 

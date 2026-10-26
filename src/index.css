@@ -3,13 +3,22 @@
 @tailwind utilities;
 
 @layer base {
+  html { direction: rtl; }
   body {
     background-color: #090A17;
     color: #F8FAFC;
-    font-family: 'Tajawal', 'Cairo', sans-serif;
+    font-family: 'Cairo', 'Changa', 'Tajawal', system-ui, sans-serif;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
+
+  button, input, select, textarea { font: inherit; }
+  button { touch-action: manipulation; }
+}
+
+@media (max-width: 380px) {
+  html { font-size: 14px; }
+  .font-pixel { letter-spacing: -0.04em; }
 }
 
 /* Custom 3D arcade button styles */
@@ -258,4 +267,21 @@
 .btn-crimson {
   background: linear-gradient(180deg, #872e29 0%, #681d19 50%, #4a110e 100%);
   border-color: #2b0806;
+}
+
+/* Stitch Egyptian UI Kit Tactile Shadows */
+.pixel-corners {
+  box-shadow: 0 4px 0 0 #090614, inset 0 2px 0 0 rgba(255, 255, 255, 0.2);
+}
+.pixel-shadow-heavy {
+  box-shadow: 0 6px 0 0 #090614;
+}
+.pixel-shadow-amber {
+  box-shadow: 0 5px 0 0 #6b4c00;
+}
+.pixel-shadow-red {
+  box-shadow: 0 5px 0 0 #40000c;
+}
+.pixel-shadow-cyan {
+  box-shadow: 0 5px 0 0 #004f58;
 }

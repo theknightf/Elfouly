@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { QuestionQueue } from '../src/game/QuestionQueue.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -306,6 +307,7 @@ export class TriviaEngine {
   constructor() {
     this.inMemoryBank = [];
     this.servedQuestionsByRoom = new Map();
+    this.questionQueuesByRoom = new Map();
     this.backgroundReplenishing = new Set();
     this.threshold = 20;
     this.loadInitialBank();
@@ -332,6 +334,9 @@ export class TriviaEngine {
    */
   resetRoomSession(roomId) {
     this.servedQuestionsByRoom.delete(roomId);
+    for (const key of this.questionQueuesByRoom.keys()) {
+      if (key.startsWith(`${roomId}:`)) this.questionQueuesByRoom.delete(key);
+    }
     console.log(`[TriviaEngine] Room session ${roomId} reset.`);
   }
 
@@ -386,6 +391,31 @@ export class TriviaEngine {
     return candidates.length > 0 ? this.shuffle(candidates)[0] : null;
   }
 
+  drawQueued(mode, roomId, candidates) {
+    const key = `${roomId}:${mode}`;
+    let queue = this.questionQueuesByRoom.get(key);
+    if (!queue || queue.remaining === 0) {
+      const available = candidates.filter(question => !this.getServedSet(roomId).has(question.id));
+      queue = new QuestionQueue(available);
+      this.questionQueuesByRoom.set(key, queue);
+    }
+    const question = queue.pop();
+    if (question) this.getServedSet(roomId).add(question.id);
+    return question;
+  }
+
+  takeQueued(mode, roomId, candidates, question) {
+    const key = `${roomId}:${mode}`;
+    let queue = this.questionQueuesByRoom.get(key);
+    if (!queue || queue.remaining === 0) {
+      queue = new QuestionQueue(candidates.filter(item => !this.getServedSet(roomId).has(item.id)));
+      this.questionQueuesByRoom.set(key, queue);
+    }
+    const selected = queue.take(question);
+    if (selected) this.getServedSet(roomId).add(selected.id);
+    return selected;
+  }
+
   replenishAndPick(category, mode) {
     this.reportExhaustion(mode, category);
     return null;
@@ -422,22 +452,14 @@ export class TriviaEngine {
       ? [preferredCategory, ...charCats]
       : [...charCats];
 
-    let chosenQuestion = this.pickUnserved(mode, searchCategories, servedSet);
+    let chosenQuestion = this.drawQueued(mode, roomId, this.inMemoryBank.filter(question => question.mode === mode && searchCategories.some(category => this.matchesCategory(question, category)) && isServableQuestion(question)));
 
-    if (!chosenQuestion) {
-      chosenQuestion = this.pickUnserved(mode, ['general_knowledge'], servedSet);
-    }
-
-    if (!chosenQuestion) {
-      chosenQuestion = this.pickRandomUnserved(mode, servedSet);
+    if (!chosenQuestion && searchCategories.includes('general_knowledge')) {
+      chosenQuestion = this.drawQueued(mode, roomId, this.inMemoryBank.filter(question => question.mode === mode && this.matchesCategory(question, 'general_knowledge') && isServableQuestion(question)));
     }
 
     if (!chosenQuestion) {
       chosenQuestion = this.replenishAndPick(searchCategories[0] || 'general_knowledge', mode);
-    }
-
-    if (chosenQuestion) {
-      servedSet.add(chosenQuestion.id);
     }
 
     this.triggerLowBankReplenish(mode, searchCategories[0] || 'general_knowledge', servedSet);
@@ -465,24 +487,23 @@ export class TriviaEngine {
 
     if (slotType === 'specialty') {
       const categories = preferredCategory ? [preferredCategory] : charCats;
-      chosenQuestion = this.pickUnserved(mode, categories, servedSet);
+      const matching = this.inMemoryBank.filter(question => question.mode === mode && categories.some(category => this.matchesCategory(question, category)) && isServableQuestion(question));
+      chosenQuestion = this.drawQueued(mode, roomId, matching);
       if (!chosenQuestion) {
         chosenQuestion = this.replenishAndPick(primaryCategory, mode);
       }
     } else {
       if (preferredCategory) {
-        chosenQuestion = this.pickUnserved(mode, [preferredCategory], servedSet);
+        const matching = this.inMemoryBank.filter(question => question.mode === mode && this.matchesCategory(question, preferredCategory) && isServableQuestion(question));
+        const selected = this.pickUnserved(mode, [preferredCategory], servedSet);
+        chosenQuestion = selected ? this.takeQueued(mode, roomId, matching, selected) : this.drawQueued(mode, roomId, matching);
       }
       if (!chosenQuestion) {
-        chosenQuestion = this.pickRandomUnserved(mode, servedSet);
+        chosenQuestion = this.drawQueued(mode, roomId, this.inMemoryBank.filter(question => question.mode === mode && isServableQuestion(question)));
       }
       if (!chosenQuestion) {
         chosenQuestion = this.replenishAndPick(primaryCategory, mode);
       }
-    }
-
-    if (chosenQuestion) {
-      servedSet.add(chosenQuestion.id);
     }
 
     this.triggerLowBankReplenish(mode, primaryCategory, servedSet);
@@ -496,13 +517,9 @@ export class TriviaEngine {
     const { roomId, mode, category } = options;
     const servedSet = this.getServedSet(roomId);
 
-    let chosenQuestion = this.pickUnserved(mode, [category], servedSet);
+    let chosenQuestion = this.drawQueued(mode, roomId, this.inMemoryBank.filter(question => question.mode === mode && this.matchesCategory(question, category) && isServableQuestion(question)));
     if (!chosenQuestion) {
       chosenQuestion = this.replenishAndPick(category, mode);
-    }
-
-    if (chosenQuestion) {
-      servedSet.add(chosenQuestion.id);
     }
 
     this.triggerLowBankReplenish(mode, category, servedSet);

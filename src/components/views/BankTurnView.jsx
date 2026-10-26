@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import { useTriviaRoom } from '../../hooks/useTriviaRoom';
-import { Vault, Flame, CheckCircle, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Vault, Flame, CheckCircle, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck, Lock, Zap } from 'lucide-react';
 
 /**
  * BankTurnView
  *
+ * Authentic Egyptian Pixel Art (Stitch Screen 5: 1 تو - One-Two)
  * Strict Role & View Partitioning for Round 1 ("1 تو" / Bank Mode):
  * - 12 questions per team turn.
  * - Alternates strictly question by question between the 2 active team players.
@@ -66,20 +67,20 @@ export default function BankTurnView({ isMobile = false }) {
   };
 
   return (
-    <div className={`space-y-4 pixel-grid-pattern ${isMobile ? 'text-right' : ''}`}>
+    <div className={`space-y-4 ${isMobile ? 'text-right' : ''}`}>
       
       {/* Egyptian Arcade Header Banner (Stitch Screen 5) */}
       <div className="relative bg-surface-container-low border-[3px] border-[#090614] rounded-2xl p-3 shadow-[0_4px_0_0_#090614] overflow-hidden flex items-center justify-between">
         <div className="flex items-center gap-2.5 z-10">
-          <div className="w-9 h-9 rounded-xl bg-primary-container flex items-center justify-center border-2 border-[#090614] shadow-[0_2px_0_#090614]">
-            <span className="text-lg">🏺</span>
+          <div className="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center border-2 border-[#090614] shadow-[0_2px_0_#090614]">
+            <span className="text-xl">🏺</span>
           </div>
           <div>
             <h2 className="font-headline-sm text-sm md:text-base text-arena-yellow font-black leading-tight">
               1 تو (Double or Bank) — حلبة الصعيد
             </h2>
-            <p className="text-[11px] text-on-surface-variant font-bold">
-              قرية الإخصاص.. منيا عروس الصعيد
+            <p className="text-[11px] text-gray-300 font-bold">
+              قرية الإخصاص.. منيا عروس الصعيد 🕹️
             </p>
           </div>
         </div>
@@ -93,192 +94,172 @@ export default function BankTurnView({ isMobile = false }) {
         </div>
       </div>
 
-      {/* Turn & Player Alternation Banner */}
-      <div className="bg-arena-card rounded-2xl p-3.5 border-2 border-[#090614] shadow-[0_4px_0_0_#090614] flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="bg-arena-yellow/20 text-arena-yellow font-black text-xs px-2.5 py-1 rounded-lg border border-arena-yellow/30 font-pixel text-[10px]">
-            فقرة {activeTeam.name.split('(')[0]}
-          </span>
-          <span className="text-xs text-gray-400 font-bold">
-            إجمالي الجولة: {r1.totalQuestionsAnswered || 0}/48
-          </span>
+      {/* Teams Scoreboard & In-Bank Safety Gauge */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* Active Answering Team (Blue) */}
+        <div className="bg-surface-container border-[3px] border-[#090614] rounded-2xl p-3 shadow-[0_4px_0_0_#090614] relative overflow-hidden">
+          <div className="absolute top-0 right-0 left-0 h-1 bg-arena-cyan" />
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-bold text-arena-cyan">فريق {activeTeam.name.split('(')[0]}</span>
+            <span className="font-pixel text-[8px] text-arena-cyan bg-surface-container-lowest px-1.5 py-0.5 rounded border border-arena-cyan/40">
+              دورهم الآن
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between mt-1">
+            <span className="text-xs text-gray-400">الخزنة المأمنة:</span>
+            <span className="font-pixel text-lg text-arena-cyan">{activeTeam.score || 0}</span>
+          </div>
         </div>
 
-        {/* Dynamic Answering vs Referee indicators */}
-        <div className="flex items-center gap-2 text-xs">
-          <div className="bg-arena-cyan/15 border-2 border-[#090614] px-3 py-1 rounded-xl text-arena-cyan font-bold flex items-center gap-1.5 shadow-[0_2px_0_#090614]">
-            <span>المجيب:</span>
-            <span className="font-black text-white">{designatedAnsweringPlayer?.name || 'لاعب الإجابة'}</span>
+        {/* Defending Team (Red) */}
+        <div className="bg-surface-container border-[3px] border-[#090614] rounded-2xl p-3 shadow-[0_4px_0_0_#090614] relative opacity-90">
+          <div className="absolute top-0 right-0 left-0 h-1 bg-arena-red" />
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-bold text-arena-red">فريق {defendingTeam.name.split('(')[0]}</span>
+            <span className="font-pixel text-[8px] text-gray-400 bg-surface-container-lowest px-1.5 py-0.5 rounded">
+              ينتظر
+            </span>
           </div>
-          <div className="bg-arena-red/15 border-2 border-[#090614] px-3 py-1 rounded-xl text-arena-red font-bold flex items-center gap-1.5 shadow-[0_2px_0_#090614]">
-            <span>الحكم:</span>
-            <span className="font-black text-white">{designatedReaderPlayer?.name || 'حكم الخصم'}</span>
+          <div className="flex items-baseline justify-between mt-1">
+            <span className="text-xs text-gray-400">الخزنة المأمنة:</span>
+            <span className="font-pixel text-lg text-rose-300">{defendingTeam.score || 0}</span>
           </div>
         </div>
       </div>
 
-      {/* Main Papyrus Sandstone Question Surface */}
-      <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] relative overflow-hidden">
-        {/* Sandstone Egyptian Corner Motifs */}
-        <div className="absolute top-2 right-3 font-pixel text-[8px] text-arena-yellow/30 select-none">𓉐 𓉑 𓉒</div>
-        <div className="absolute top-2 left-3 font-pixel text-[8px] text-arena-yellow/30 select-none">𓋹 𓊪 𓈖</div>
+      {/* Current Unbanked Pot & Streak Display */}
+      <div className="bg-gradient-to-r from-surface-container-high via-surface-container to-surface-container-high border-[3px] border-[#090614] rounded-2xl p-3.5 shadow-[0_4px_0_0_#090614] flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-xl bg-primary-container/20 border-2 border-primary-container flex items-center justify-center animate-bounce">
+            <Flame className="w-6 h-6 text-arena-yellow fill-current" />
+          </div>
+          <div>
+            <div className="text-xs font-black text-amber-200 flex items-center gap-1">
+              <span>سلسلة الـ 1 تو</span>
+              <span className="font-pixel text-[10px] text-arena-yellow">×{currentStreak} 🔥</span>
+            </div>
+            <span className="text-[11px] text-gray-400">لو غلطت هتصفّر كل النقاط المعلقة!</span>
+          </div>
+        </div>
 
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/30 flex items-center gap-1">
-            <span>🌍</span>
-            <span>{activeQuestion.categoryName || activeQuestion.category || 'عام'}</span>
+        {/* Floating Risk Pot */}
+        <div className="text-left bg-surface-container-lowest px-3 py-1.5 rounded-xl border-2 border-primary-container shadow-[0_2px_0_0_#6b4c00]">
+          <span className="block font-pixel text-[8px] text-amber-300 uppercase tracking-wider">على المحك (POT)</span>
+          <span className="font-pixel text-base text-arena-yellow">+{pendingPoints} نقطة</span>
+        </div>
+      </div>
+
+      {/* Papyrus Stone Question Card */}
+      <div className="bg-surface-container-high border-[3.5px] border-[#090614] rounded-3xl p-6 md:p-7 shadow-[0_6px_0_0_#090614] space-y-3 relative overflow-hidden">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/30">
+            {activeQuestion.categoryName || 'سؤال عام'}
           </span>
           <span className="font-pixel text-[10px] text-arena-yellow">
-            القيمة: +{nextValue.toLocaleString()} نقطة
+            السؤال التالي: +{nextValue} نقطة
           </span>
         </div>
 
-        {/* Question Text (Visible to ALL participants) */}
-        <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed text-right min-h-[60px] drop-shadow-[0_2px_0_#090614]">
+        <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed text-right drop-shadow-[0_2px_0_#090614]">
           {activeQuestion.question_text || activeQuestion.question}
         </h3>
 
-        {/* Referee Answer Key (STRICTLY HIDDEN from the answering team) */}
+        {/* Answer Holder / Defending Referee Secret View */}
         {isR1Referee && (
-          <div className="mt-5 pt-4 border-t-2 border-dashed border-emerald-500/40 bg-emerald-950/40 p-3.5 rounded-2xl border-2 border-[#090614] flex items-center justify-between shadow-[0_3px_0_#090614]">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-arena-green" />
-              <span className="text-xs font-bold text-gray-300">مفتاح إجابة الحكم:</span>
-              <span className="text-sm md:text-base font-black text-arena-green">
-                {activeQuestion.correct_answer || activeQuestion.answer}
+          <div className="mt-4 p-3.5 bg-surface-container-lowest rounded-2xl border-2 border-arena-yellow/40 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-arena-yellow font-black flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-arena-yellow" />
+                <span>لوحة تحكيم الخصم (الإجابة النموذجية):</span>
               </span>
-            </div>
-            <span className="text-[10px] text-gray-400 font-pixel text-[8px]">خاص بالحكم 🛡️</span>
-          </div>
-        )}
-
-        {isAnsweringTeam && (
-          <div className="mt-4 pt-3 border-t border-white/10 text-center text-xs text-gray-400 font-bold">
-            🔒 الإجابة مخفية ومتاحة لحكم الخصم فقط — أجب بصوت عالٍ!
-          </div>
-        )}
-      </div>
-
-      {/* POT & Vault Status Display (Stitch Screen 5 Style) */}
-      <div className="bg-gradient-to-r from-surface-container-high via-surface-container to-surface-container-high p-4 rounded-2xl border-[3px] border-[#090614] shadow-[0_4px_0_0_#090614] flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-primary-container/20 border-2 border-arena-yellow flex items-center justify-center animate-bounce text-xl">
-            🔥
-          </div>
-          <div>
-            <div className="font-headline-sm text-sm md:text-base text-arena-yellow font-black flex items-center gap-1.5">
-              <span>سلسلة الحظ (Streak)</span>
-              <span className="font-pixel text-xs text-arena-cyan">×{currentStreak}</span>
-            </div>
-            <span className="text-[11px] text-gray-400 font-bold">
-              {currentStreak === 0 ? 'ابدأ السلسلة بإجابة صحيحة' : 'لو غلطت هتصفّر العداد كله!'}
-            </span>
-          </div>
-        </div>
-        <div className="text-left bg-surface-container-lowest px-3.5 py-1.5 rounded-xl border-2 border-arena-yellow shadow-[0_2px_0_0_#6b4c00]">
-          <span className="block font-pixel text-[8px] text-arena-yellow uppercase tracking-wider">على المحك (POT)</span>
-          <span className="font-pixel text-base md:text-lg text-arena-yellow">+{pendingPoints.toLocaleString()}</span>
-        </div>
-      </div>
-
-      {/* Role-Specific Interactive Controls */}
-      <div className="pt-2">
-        
-        {/* VIEW 1: ACTIVE ANSWERING TEAM (Answering Player or Teammate) */}
-        {isAnsweringTeam && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* [BANK! / أمّن] Button */}
               <button
-                onClick={handleBank}
-                disabled={pendingPoints === 0}
-                className={`py-4 rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2 transition-all ${
-                  pendingPoints === 0
-                    ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-white/5'
-                    : 'btn-arcade-yellow cursor-pointer shadow-xl hover:scale-[1.02]'
-                }`}
+                onClick={() => setRevealSecret(!revealSecret)}
+                className="text-[10px] text-gray-400 hover:text-white flex items-center gap-1 cursor-pointer"
               >
-                <Vault className="w-5 h-5 fill-current" />
-                <span>[BANK! / أمّن في الخزنة] 🔒</span>
-              </button>
-
-              {/* [دبّل / كمل] Button */}
-              <button
-                onClick={handleDouble}
-                className="btn-arcade-cyan py-4 rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2 cursor-pointer shadow-xl hover:scale-[1.02]"
-              >
-                <Flame className="w-5 h-5 fill-current" />
-                <span>[دبّل / كمل للمضاعف] 🔥</span>
+                {revealSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <span>{revealSecret ? 'إخفاء' : 'إظهار'}</span>
               </button>
             </div>
 
-            {isAnswering ? (
-              <div className="bg-arena-cyan/10 border border-arena-cyan/30 p-2.5 rounded-xl text-center text-xs font-bold text-arena-cyan">
-                ⚡ أنت اللاعب المجيب لهذا السؤال ({designatedAnsweringPlayer?.name}) — جاوب قبل الحكم!
+            {revealSecret ? (
+              <div className="text-base font-black text-arena-green bg-emerald-950/60 p-2.5 rounded-xl border border-emerald-500/40 text-center">
+                {activeQuestion.answer || activeQuestion.correct_answer}
               </div>
             ) : (
-              <div className="bg-arena-card p-2.5 rounded-xl text-center text-xs text-gray-300">
-                📢 دور زميلك في الإجابة الآن — يمكنك تذكيره بتأمين النقاط إذا كان الرصيد كافياً!
+              <div className="text-xs text-gray-400 italic text-center py-1">
+                اضغط إظهار لرؤية الإجابة الصحيحة وتأكيد النتيجة بعد سماع إجابة المسدد
               </div>
             )}
-          </div>
-        )}
 
-        {/* VIEW 2: ASSIGNED REFEREE (Exclusive Grading Triggers) */}
-        {isR1Referee && (
-          <div className="space-y-3 bg-arena-card p-4 rounded-2xl border-2 border-arena-red/50 shadow-xl">
-            <div className="flex items-center justify-between text-xs font-bold text-arena-red">
-              <span>أدوات التحكيم الحصرية لفريقك:</span>
-              <span className="bg-arena-red/20 px-2 py-0.5 rounded text-[10px]">الحكم الخصم 🛡️</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              {/* [صح / (+Points)] Button */}
+            {/* Referee Quick Buttons */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
               <button
                 onClick={handleScore}
-                className="btn-arcade-green py-4 rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2 cursor-pointer shadow-xl hover:scale-[1.02]"
+                className="btn-arcade-green py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow hover:scale-[1.02]"
               >
-                <CheckCircle className="w-5 h-5" />
-                <span>[صح / (+Points)] 🎯</span>
+                <CheckCircle className="w-4 h-4" />
+                <span>صح (+{nextValue})</span>
               </button>
-
-              {/* [غلط / Break Streak] Button */}
               <button
                 onClick={handleBreak}
-                className="btn-arcade-red py-4 rounded-2xl font-black text-sm md:text-base flex items-center justify-center gap-2 cursor-pointer shadow-xl hover:scale-[1.02]"
+                className="btn-arcade-red py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow hover:scale-[1.02]"
               >
-                <XCircle className="w-5 h-5" />
-                <span>[غلط / Break Streak] 💥</span>
+                <XCircle className="w-4 h-4" />
+                <span>غلط (تصفير)</span>
               </button>
             </div>
+          </div>
+        )}
+      </div>
 
-            <p className="text-[11px] text-gray-400 text-center">
-              تحقق من نطق الخصم للإجابة بدقة قبل الضغط على القرار.
+      {/* ================= THE CORE '1 تو' ACTION HUBS: BANK vs DOUBLE ================= */}
+      {isAnsweringTeam && (
+        <div className="space-y-2.5">
+          <div className="text-center">
+            <p className="font-pixel text-[9px] text-arena-yellow uppercase tracking-wider">
+              ⚡ قرار الفريق المستحوذ (دورك دلوقتي يا كابتن) ⚡
             </p>
           </div>
-        )}
 
-        {/* Local Preview / Spectator fallback */}
-        {!isAnsweringTeam && !isDefendingTeam && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* 1. GIANT SAFE VAULT BUTTON: BANK! (أمّن) */}
             <button
-              onClick={handleScore}
-              className="btn-arcade-green py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5"
+              onClick={handleBank}
+              disabled={pendingPoints === 0}
+              className={`press-button-anim relative group overflow-hidden bg-gradient-to-b from-[#2dd4bf] to-[#0f766e] text-surface-container-lowest p-4 rounded-2xl border-[3.5px] border-[#090614] shadow-[0_5px_0_0_#090614] flex flex-col items-center justify-center gap-1 transition-all ${
+                pendingPoints === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:brightness-110 active:translate-y-1'
+              }`}
             >
-              <CheckCircle className="w-4 h-4" />
-              <span>صح (+Points)</span>
+              <div className="flex items-center gap-2">
+                <Vault className="w-6 h-6 text-white font-bold" />
+                <span className="text-xl md:text-2xl font-black text-white tracking-tight drop-shadow-[0_1px_0_rgba(0,0,0,0.5)]">
+                  أمّـن! (BANK)
+                </span>
+              </div>
+              <span className="text-xs text-emerald-100 font-bold">
+                حط الـ (+{pendingPoints}) في الخزنة واقفل الدور! 🛡️
+              </span>
             </button>
+
+            {/* 2. FIERY RED/ORANGE BUTTON: DOUBLE OR BANK (دبّل / كمل) */}
             <button
-              onClick={handleBreak}
-              className="btn-arcade-red py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5"
+              onClick={handleDouble}
+              className="press-button-anim relative group overflow-hidden bg-gradient-to-b from-primary-container to-[#ea580c] text-on-primary-container p-4 rounded-2xl border-[3.5px] border-[#090614] shadow-[0_5px_0_0_#6b4c00] flex flex-col items-center justify-center gap-1 cursor-pointer hover:brightness-110 active:translate-y-1 transition-all"
             >
-              <XCircle className="w-4 h-4" />
-              <span>غلط (تصفير)</span>
+              <div className="flex items-center gap-2">
+                <Zap className="w-6 h-6 text-on-primary-container fill-current" />
+                <span className="text-xl md:text-2xl font-black text-on-primary-container tracking-tight">
+                  دبّل / كمّل!
+                </span>
+              </div>
+              <span className="text-xs text-amber-950 font-bold">
+                خاطر عشان السؤال اللي بعده (+{nextValue})! 🔥
+              </span>
             </button>
           </div>
-        )}
+        </div>
+      )}
 
-      </div>
     </div>
   );
 }

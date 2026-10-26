@@ -8,6 +8,7 @@ import { pathToFileURL } from 'url';
 import { CHARACTERS } from '../src/data/characters.js';
 import { PASSWORD_WORDS, AUCTION_TOPICS, PENALTY_CATEGORIES } from '../src/data/questions.js';
 import { TOURNAMENT_STRUCTURE } from '../src/data/tournamentStructure.js';
+import { TurnManager } from '../src/game/TurnManager.js';
 import { triviaEngine, buildRound1TurnPlan } from '../services/triviaEngine.js';
 import { calculateBonus, isGeneralCategory } from '../src/utils/penaltyRules.js';
 
@@ -476,7 +477,7 @@ function sanitizeRoomForViewer(room, socketId) {
       target: '🤫 محجوبة',
       forbidden: ['••••', '••••', '••••', '••••'],
       category: 'سري',
-      clueIdea: 'الكلمة السرية مرئية فقط لمرشدي الفريقين في هذه البطاقة.',
+      clueIdea: 'الكلمة السرية مرئية فقط لمرشدي الفريقين في هذا الدور.',
       redacted: true
     };
   }
@@ -629,11 +630,13 @@ function createInitialRoomState(roomCode, hostId) {
       currentWordIndex: 0,
       totalQuestions: 5,
       currentWord: null,
+      currentGiverIndex: 0,
       actionToken: null,
       isComplete: false,
       timeFreezeUsed: false,
       timer: 45,
       isTimerRunning: false,
+      endTime: null,
       fouls: { team_a: 0, team_b: 0 }
     },
     // Round 3: "حط في قريبي" (Penalty Shootouts) - 10 shots (5 each alternating)
@@ -668,6 +671,7 @@ function createInitialRoomState(roomCode, hostId) {
       highestBidderPlayerId: null,
       timer: 60,
       isTimerRunning: false,
+      endTime: null,
       phase: 'bidding', // 'bidding' | 'execution' | 'resolved'
       itemsNamed: [],
       usedLifelines: { team_a: [], team_b: [] }
@@ -1071,6 +1075,8 @@ io.on('connection', (socket) => {
     const teamAPlayers = room.players.filter(p => p.team === 'team_a');
     const teamBPlayers = room.players.filter(p => p.team === 'team_b');
     const cardIndex = Math.max(0, r2.currentWordIndex || 0);
+    const previousGiverA = r2.activeClueGiverA;
+    const previousGiverB = r2.activeClueGiverB;
 
     if (toggleTurn) {
       r2.activeTurnTeam = getR2ActiveTurnTeam(room) === 'team_a' ? 'team_b' : 'team_a';
@@ -1078,12 +1084,23 @@ io.on('connection', (socket) => {
       r2.activeTurnTeam = 'team_a';
     }
 
-    r2.activeClueGiverA = teamAPlayers.length > 0
-      ? teamAPlayers[cardIndex % teamAPlayers.length].id
-      : null;
-    r2.activeClueGiverB = teamBPlayers.length > 0
-      ? teamBPlayers[cardIndex % teamBPlayers.length].id
-      : null;
+    const giverSwap = toggleTurn
+      ? TurnManager.swapClueGivers(room.players, previousGiverA, previousGiverB, cardIndex)
+      : {
+          activeClueGiverA: teamAPlayers[cardIndex % Math.max(1, teamAPlayers.length)]?.id || null,
+          activeClueGiverB: teamBPlayers[cardIndex % Math.max(1, teamBPlayers.length)]?.id || null,
+          currentGiverIndex: cardIndex
+        };
+    const nextGiverId = r2.activeTurnTeam === 'team_a' ? giverSwap.activeClueGiverA : giverSwap.activeClueGiverB;
+    const otherGiverId = r2.activeTurnTeam === 'team_a' ? giverSwap.activeClueGiverB : giverSwap.activeClueGiverA;
+    if (r2.activeTurnTeam === 'team_a') {
+      r2.activeClueGiverA = nextGiverId;
+      r2.activeClueGiverB = otherGiverId;
+    } else {
+      r2.activeClueGiverB = nextGiverId;
+      r2.activeClueGiverA = otherGiverId;
+    }
+    r2.currentGiverIndex = giverSwap.currentGiverIndex;
 
     assignReferee(room, 'round2', { reason });
   }
@@ -1104,6 +1121,9 @@ io.on('connection', (socket) => {
       };
       room.round2.actionToken = crypto.randomUUID();
       room.round2.timeFreezeUsed = false;
+      room.round2.timer = 45;
+      room.round2.endTime = Date.now() + 45000;
+      room.round2.isTimerRunning = true;
       return true;
     }
 
@@ -1111,6 +1131,9 @@ io.on('connection', (socket) => {
     room.round2.currentWord = fallbackWord ? { ...fallbackWord } : null;
     room.round2.actionToken = fallbackWord ? crypto.randomUUID() : null;
     room.round2.timeFreezeUsed = false;
+    room.round2.timer = 45;
+    room.round2.endTime = Date.now() + 45000;
+    room.round2.isTimerRunning = !!fallbackWord;
     return false;
   }
 
@@ -1831,6 +1854,7 @@ io.on('connection', (socket) => {
     r3.interceptCompensatedAt = null;
     r3.goalieCompensation = 0;
     r3.shotStartedAt = Date.now();
+    r3.endTime = r3.shotStartedAt + (r3.timer || 20) * 1000;
     r3.tieBreakActive = false;
     r3.tieBreakData = null;
     io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
@@ -2203,6 +2227,18 @@ io.on('connection', (socket) => {
     emitRoomState(room);
   });
 
+  socket.on('r4_start_challenge', ({ roomCode, topicId }) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room, player } = context;
+    const r4 = room.round4;
+    if (r4.phase !== 'execution' || r4.highestBidderTeam !== player.team || r4.topicId !== topicId || r4.isTimerRunning) return;
+    r4.timer = 60;
+    r4.endTime = Date.now() + 60000;
+    r4.isTimerRunning = true;
+    emitRoomState(room);
+  });
+
   // R4 Lifelines: 'call_friend' | 'rival_hint'
   socket.on('r4_use_lifeline', ({ roomCode, team, lifelineType, topicId }) => {
     const context = getRoomAndPlayer(roomCode, socket);
@@ -2358,6 +2394,8 @@ io.on('connection', (socket) => {
     }
 
     r4.phase = 'resolved';
+    r4.isTimerRunning = false;
+    r4.endTime = null;
 
     if (success) {
       const reward = r4.highestBid * 400;
@@ -2396,6 +2434,8 @@ io.on('connection', (socket) => {
       r4.usedLifelines = { team_a: [], team_b: [] };
       r4.highestBidderTeam = null;
       r4.highestBidderPlayerId = null;
+      r4.isTimerRunning = false;
+      r4.endTime = null;
       assignReferee(room, 'round4', { reason: 'next_topic' });
     }
 

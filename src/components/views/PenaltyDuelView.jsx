@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGame } from '../../context/GameContext';
 import { useTriviaRoom } from '../../hooks/useTriviaRoom';
 import { sounds } from '../../utils/soundEffects';
 import { Shield, Radio, CheckCircle, XCircle, Eye, EyeOff, Zap, Trophy, Flame } from 'lucide-react';
 import { calculateBonus, isGeneralCategory } from '../../utils/penaltyRules';
+import { RoundTimer } from '../../game/RoundTimer';
 
 /**
  * PenaltyDuelView
@@ -41,6 +42,8 @@ export default function PenaltyDuelView({ isMobile = false }) {
 
   const r3 = roomState?.round3 || {};
   const [selectedOption, setSelectedOption] = useState(null);
+  const [answerFeedback, setAnswerFeedback] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(0);
   const [showKey, setShowKey] = useState(false);
 
   const kickerTeamKey = r3.kickerTeam || 'team_a';
@@ -52,6 +55,31 @@ export default function PenaltyDuelView({ isMobile = false }) {
   const currentGoalie = roomState?.players?.find(p => p.id === r3.currentGoalieId) || { name: 'الحارس' };
 
   const isIntercepted = !!r3.interceptBuzzedBy;
+
+  useEffect(() => {
+    if (r3.answerFeedback) {
+      setAnswerFeedback({ option: r3.answerFeedback.option, correct: r3.answerFeedback.isCorrect });
+    }
+  }, [r3.answerFeedback]);
+
+  useEffect(() => {
+    setSelectedOption(null);
+    setAnswerFeedback(null);
+  }, [r3.turnIndex, r3.phase]);
+
+  useEffect(() => {
+    if (r3.phase !== 'shootout' || !r3.shotStartedAt || r3.isComplete) {
+      setTimeLeft(0);
+      return undefined;
+    }
+    const endTime = r3.endTime || r3.shotStartedAt + (r3.timer || 20) * 1000;
+    const timer = new RoundTimer(remainingMs => setTimeLeft(Math.ceil(remainingMs / 1000)), () => {
+      setAnswerFeedback({ correct: false, timeout: true });
+      r3RecordShot(isIntercepted ? 'saved' : 'missed');
+    });
+    timer.start(Math.max(0, (endTime - Date.now()) / 1000));
+    return () => timer.dispose();
+  }, [r3.phase, r3.shotStartedAt, r3.endTime, r3.timer, r3.turnIndex, r3.isComplete, isIntercepted, r3RecordShot]);
 
   const categoryId = activeQuestion?.categoryName || activeQuestion?.category;
   const isGeneral = isGeneralCategory(categoryId);
@@ -66,6 +94,7 @@ export default function PenaltyDuelView({ isMobile = false }) {
       return;
     }
     setSelectedOption(option);
+    setAnswerFeedback({ option, pending: true });
     sounds?.playTap?.();
     r3SubmitAnswer(option);
   };
@@ -122,7 +151,7 @@ export default function PenaltyDuelView({ isMobile = false }) {
       </div>
 
       {/* Main Question Card (Visible to all) */}
-      <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] relative overflow-hidden">
+      <div className="bg-arena-card rounded-3xl p-4 sm:p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] relative overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/30">
@@ -149,6 +178,9 @@ export default function PenaltyDuelView({ isMobile = false }) {
         <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed text-right min-h-[60px] drop-shadow-[0_2px_0_#090614]">
           {activeQuestion.question_text || activeQuestion.question}
         </h3>
+        {r3.phase === 'shootout' && <div className="mt-3 text-center font-mono text-2xl font-black text-arena-yellow" role="timer">{timeLeft}s</div>}
+        {r3.phase === 'shootout' && <div className="mt-3 inline-flex rounded-full bg-arena-darker px-3 py-1 font-mono text-arena-yellow" role="timer">⏱ {timeLeft}s</div>}
+        {answerFeedback && <div className={`mt-3 rounded-xl p-3 text-center font-black ${answerFeedback.timeout ? 'bg-red-700/40 text-red-200' : 'bg-amber-700/40 text-amber-100'}`} role="status">{answerFeedback.timeout ? 'انتهى الوقت — الإجابة اتحسمت' : 'تم استلام إجابتك — جاري حسم الركلة فورًا'}</div>}
 
         {/* Intercept Alert */}
         {isIntercepted && (
@@ -174,7 +206,7 @@ export default function PenaltyDuelView({ isMobile = false }) {
                 <button
                   key={idx}
                   onClick={() => handleKickerOptionClick(opt)}
-                  disabled={isIntercepted}
+                  disabled={isIntercepted || selectedOption !== null || !!answerFeedback}
                   className={`p-4 rounded-xl text-right font-black text-sm transition-all border ${
                     isSelected
                       ? 'bg-arena-cyan text-arena-darker border-white shadow-lg scale-102'

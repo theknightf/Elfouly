@@ -1,4 +1,5 @@
 /** @type {import('tailwindcss').Config} */
+import { themeTokens } from './src/theme/tokens.js';
 export default {
   content: [
     "./index.html",
@@ -7,20 +8,22 @@ export default {
   theme: {
     extend: {
       colors: {
-        arena: {
-          dark: '#0F1026',
-          darker: '#090A17',
-          card: '#181A3A',
-          cyan: '#00F2FE',
-          red: '#FF4B4B',
-          yellow: '#FFD200',
-          green: '#00E676',
-          purple: '#8B5CF6',
-          pink: '#EC4899',
-        }
+        arena: themeTokens.colors.arena,
+        // Stitch Egyptian UI Kit Design Tokens
+        surface: { DEFAULT: themeTokens.colors.surface.card, dim: themeTokens.colors.surface.default, bright: '#3b3650', variant: themeTokens.colors.surface.highest, container: { lowest: '#0f0a22', low: themeTokens.colors.surface.low, DEFAULT: themeTokens.colors.surface.card, high: themeTokens.colors.surface.high, highest: themeTokens.colors.surface.highest } },
+        'primary-container': themeTokens.colors.primary.container,
+        'on-primary-container': themeTokens.colors.primary.onContainer,
+        'primary-fixed-dim': '#ffba20',
+        'secondary-container': '#00e3fd',
+        'secondary-fixed-dim': '#00daf3',
+        'tertiary-container': '#ffb0b3',
+        'on-surface-variant': '#d5c4ab',
+        'outline-variant': themeTokens.colors.outline,
       },
       fontFamily: {
-        arabic: ['"Tajawal"', '"Readex Pro"', '"Cairo"', 'system-ui', 'sans-serif'],
+        arabic: themeTokens.fonts.arabic,
+        rubik: themeTokens.fonts.rubik,
+        pixel: themeTokens.fonts.pixel,
       },
       boxShadow: {
         'arcade-cyan': '0 6px 0 #008f97',

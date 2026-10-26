@@ -207,7 +207,11 @@ async function runSupabaseAuthorityTests() {
     // ------------------------------------------------------------------
     console.log('\n🔹 Test 5: The penalty answer must be validated by the answer holder...');
     hostSocket.emit('change_round', { roomCode: testRoomCode, targetRound: 'round3' });
-    const round3State = await waitForState(hostSocket, (state: any) => state.status === 'round3', 25000, 'round3');
+    const [round3State] = await Promise.all([
+      waitForState(hostSocket, (state: any) => state.status === 'round3', 25000, 'round3 host'),
+      waitForState(clientB, (state: any) => state.status === 'round3', 25000, 'round3 clientB'),
+      waitForState(clientC, (state: any) => state.status === 'round3', 25000, 'round3 clientC')
+    ]);
 
     // The duelists are chosen from the teams the engine assigned, not by a
     // hardcoded assumption about who kicks first.
@@ -226,10 +230,13 @@ async function runSupabaseAuthorityTests() {
     const kickerSocket = socketsById[kickerPlayer.id];
     const goalieSocket = socketsById[goaliePlayer.id];
 
+    const goalieSelected = waitForState(hostSocket, (state: any) => Boolean(state.round3?.currentGoalieId), 25000, 'goalie selection');
     goalieSocket.emit('r3_select_duelists', { roomCode: testRoomCode, goalieId: goaliePlayer.id });
-    await delay(500);
+    await goalieSelected;
+
+    const kickerSelected = waitForState(hostSocket, (state: any) => Boolean(state.round3?.currentKickerId), 25000, 'kicker selection');
     kickerSocket.emit('r3_select_duelists', { roomCode: testRoomCode, kickerId: kickerPlayer.id });
-    await delay(500);
+    await kickerSelected;
 
     hostSocket.emit('r3_start_shootout', { roomCode: testRoomCode });
     const shootoutState = await waitForState(

@@ -16,6 +16,7 @@ import { getServerUrl } from '../utils/serverUrl';
 import { createSupabaseSocket } from '../services/supabaseMultiplayerService';
 import { CHARACTERS } from '../data/characters';
 import { calculateBonus, isGeneralCategory } from '../utils/penaltyRules';
+import { TurnManager } from '../game/TurnManager';
 
 export const CONNECTION_STATUS_MESSAGES = {
   connecting: 'بنتصل بالسيرفر…',
@@ -109,10 +110,21 @@ function nextLocalR2Card(r2, players) {
       toggleTurn: true,
       activeTurnTeam: r2.activeTurnTeam
     }));
+    const activeRoster = players.filter(player => player.team === nextCard.activeTurnTeam);
+    const activeCurrentGiver = nextCard.activeTurnTeam === 'team_a' ? r2.activeClueGiverA : r2.activeClueGiverB;
+    const nextGiverId = TurnManager.swapGiverAndGuesser(players, activeCurrentGiver);
+    const nextGiverIndex = Math.max(0, activeRoster.findIndex(player => player.id === nextGiverId));
+    if (nextCard.activeTurnTeam === 'team_a') nextCard.activeClueGiverA = nextGiverId || nextCard.activeClueGiverA;
+    else nextCard.activeClueGiverB = nextGiverId || nextCard.activeClueGiverB;
+    nextCard.currentGiverIndex = nextGiverIndex;
     nextCard.currentWord = drawLocalPasswordCard();
+    nextCard.timer = 45;
+    nextCard.endTime = Date.now() + 45000;
+    nextCard.isTimerRunning = true;
   } else {
     nextCard.currentWord = null;
     nextCard.isTimerRunning = false;
+    nextCard.endTime = null;
   }
   return nextCard;
 }
@@ -128,10 +140,13 @@ function buildLocalR2Roles(players, cardIndex, { toggleTurn = false, activeTurnT
 
   const activeClueGiverA = teamARoster[cardIndex % teamARoster.length].id;
   const activeClueGiverB = teamBRoster[cardIndex % teamBRoster.length].id;
+  const activeRoster = nextTurn === 'team_a' ? teamARoster : teamBRoster;
+  const activeGiver = activeRoster[cardIndex % activeRoster.length]?.id;
 
   return {
     activeClueGiverA,
     activeClueGiverB,
+    currentGiverIndex: activeRoster.findIndex(player => player.id === activeGiver),
     activeTurnTeam: nextTurn,
     refereePlayerId: nextTurn === 'team_a' ? activeClueGiverB : activeClueGiverA
   };
@@ -247,10 +262,12 @@ export function GameProvider({ children }) {
       currentWordIndex: 0,
       totalQuestions: 5,
       currentWord: null,
+      currentGiverIndex: 0,
       isComplete: false,
       timeFreezeUsed: false,
       timer: 45,
       isTimerRunning: false,
+      endTime: null,
       fouls: { team_a: 0, team_b: 0 }
     },
     round3: {
@@ -281,6 +298,7 @@ export function GameProvider({ children }) {
       highestBidderPlayerId: null,
       timer: 60,
       isTimerRunning: false,
+      endTime: null,
       phase: 'bidding',
       topicDeck: [],
       itemsNamed: [],
@@ -723,7 +741,8 @@ export function GameProvider({ children }) {
             isComplete: false,
             timeFreezeUsed: false,
             timer: 45,
-            isTimerRunning: false,
+            isTimerRunning: true,
+            endTime: Date.now() + 45000,
             fouls: { team_a: 0, team_b: 0 }
           };
         } else if (targetRound === 'round3') {
@@ -966,7 +985,7 @@ export function GameProvider({ children }) {
         showToast('تجميد الوقت الفندقي 🛎️', 'زياد الفندقي مد الوقت +10 ثواني كاملة!');
         return {
           ...prev,
-          round2: { ...prev.round2, timer: prev.round2.timer + 10, timeFreezeUsed: true }
+          round2: { ...prev.round2, timer: prev.round2.timer + 10, endTime: prev.round2.endTime ? prev.round2.endTime + 10000 : null, timeFreezeUsed: true }
         };
       });
     }
@@ -1152,6 +1171,10 @@ export function GameProvider({ children }) {
     const expected = norm(currentQuestion?.answer);
     const isCorrect = !!submitted && !!expected && submitted === expected;
     const intercepted = !!roomState?.round3?.interceptBuzzedBy;
+    setRoomState(prev => {
+      if (prev.round3.phase !== 'shootout' || prev.round3.answerSubmitted) return prev;
+      return { ...prev, round3: { ...prev.round3, answerSubmitted: true, answerFeedback: { option, isCorrect } } };
+    });
     r3RecordShot(intercepted ? 'saved' : isCorrect ? 'goal' : 'missed');
   };
 
@@ -1194,6 +1217,8 @@ export function GameProvider({ children }) {
             interceptBuzzedBy: null,
             interceptAt: null,
             shotStartedAt: Date.now(),
+            endTime: Date.now() + 20000,
+            answerSubmitted: false,
             tieBreakActive: false,
             tieBreakData: null
           }
@@ -1226,6 +1251,19 @@ export function GameProvider({ children }) {
     }
   };
 
+  const r4StartChallenge = () => {
+    if (socket && isConnected && roomCode) {
+      socket.emit('r4_start_challenge', { roomCode, topicId: roomState?.round4?.topicId });
+      return;
+    }
+    setRoomState(prev => {
+      const r4 = prev.round4;
+      if (r4.phase !== 'challenge' || !r4.highestBidderTeam || r4.isTimerRunning) return prev;
+      const endTime = Date.now() + 60_000;
+      return { ...prev, round4: { ...r4, timer: 60, endTime, isTimerRunning: true } };
+    });
+  };
+
   const r4UseLifeline = (lifelineType) => {
     const team = currentPlayer?.team || roomState?.round4?.highestBidderTeam || 'team_a';
     if (socket && isConnected && roomCode) {
@@ -1252,6 +1290,7 @@ export function GameProvider({ children }) {
         r4.usedLifelines[callerTeam].push(lifelineType);
         if (lifelineType === 'call_friend') {
           r4.timer += 20;
+          if (r4.endTime) r4.endTime += 20000;
           sounds.playBid();
           showToast('📞 اتصل بصديق (+20 ثانية)', 'تم تمديد الوقت 20 ثانية إضافية!');
         } else if (lifelineType === 'rival_hint') {
@@ -1317,6 +1356,8 @@ export function GameProvider({ children }) {
 
         r4.currentTopicIndex = (r4.currentTopicIndex || 0) + 1;
         r4.phase = 'resolved';
+        r4.isTimerRunning = false;
+        r4.endTime = null;
 
         if (r4.currentTopicIndex >= 4) {
           r4.currentTopic = null;
@@ -1330,6 +1371,8 @@ export function GameProvider({ children }) {
           r4.topicId = `local-topic-${r4.currentTopicIndex}`;
           r4.highestBid = nextTopic.minBid;
           r4.timer = 60;
+          r4.endTime = null;
+          r4.isTimerRunning = false;
           r4.itemsNamed = [];
           r4.phase = 'bidding';
           r4.usedLifelines = { team_a: [], team_b: [] };
@@ -1416,6 +1459,7 @@ export function GameProvider({ children }) {
         r3SelectDuelists,
         r3StartShootout,
         r4Bid,
+        r4StartChallenge,
         r4UseLifeline,
         r4ToggleItem,
         r4ResolveBid,

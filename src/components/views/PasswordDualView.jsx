@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useGame } from '../../context/GameContext';
 import { useTriviaRoom } from '../../hooks/useTriviaRoom';
 import { sounds } from '../../utils/soundEffects';
-import { Lock, Eye, EyeOff, AlertTriangle, Timer, Award, Snowflake, ShieldAlert } from 'lucide-react';
+import { Lock, Eye, EyeOff, AlertTriangle, Timer, Award, Snowflake, ShieldAlert, CheckCircle, XCircle } from 'lucide-react';
+import { RoundTimer } from '../../game/RoundTimer';
 
 /**
  * PasswordDualView
  *
+ * Authentic Egyptian Pixel Art (Stitch Screen 2: اديني في سري)
  * Strict Role & View Partitioning for Round 2 ("اديني في سري" / Password Mode):
  * - 2 Clue-Givers (1 from Team A, 1 from Team B): see Target Word + 4 Forbidden Words.
  * - Team A clue-giver grades Team B ([نقطة لتيم ب], [مخالفة على تيم ب]).
@@ -36,8 +38,9 @@ export default function PasswordDualView({ isMobile = false }) {
   } = triviaRoom;
 
   const r2 = roomState?.round2 || {};
-  const [timeLeft, setTimeLeft] = useState(r2.timer || 45);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(() => RoundTimer.remaining(r2.endTime));
+  const timerRef = useRef(null);
+  const cardToken = r2.actionToken || r2.currentWordIndex;
 
   const teamA = roomState?.teams?.team_a || { name: 'فريق الحيتان', score: 0 };
   const teamB = roomState?.teams?.team_b || { name: 'فريق الوحوش', score: 0 };
@@ -45,34 +48,24 @@ export default function PasswordDualView({ isMobile = false }) {
   const clueGiverA = roomState?.players?.find(p => p.id === r2.activeClueGiverA);
   const clueGiverB = roomState?.players?.find(p => p.id === r2.activeClueGiverB);
 
-  // Timer tick
   useEffect(() => {
-    let interval = null;
-    if (isTimerRunning && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            sounds.playBuzzer();
-            setIsTimerRunning(false);
-            showToast('انتهى الوقت!', 'انتهى وقت تخمين كلمة السر!');
-            return 0;
-          }
-          if (prev <= 6) sounds.playTick();
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerRunning, timeLeft]);
+    timerRef.current?.dispose();
+    if (!r2.currentWord || r2.isComplete) return undefined;
+    const timer = new RoundTimer(remainingMs => setTimeLeft(Math.ceil(remainingMs / 1000)), () => {
+      sounds?.playBuzzer?.();
+      showToast('انتهى الوقت!', 'انتهى وقت تخمين كلمة السر!');
+      if (r2.actionToken) r2SkipCard();
+    });
+    timerRef.current = timer;
+    const endTime = r2.endTime || Date.now() + (r2.timer || 45) * 1000;
+    timer.start(Math.max(0, (endTime - Date.now()) / 1000));
+    return () => {
+      timer.dispose();
+      if (timerRef.current === timer) timerRef.current = null;
+    };
+  }, [cardToken, r2.currentWord, r2.endTime, r2.timer, r2.isComplete, r2.actionToken, showToast, r2SkipCard]);
 
-  const handleStartTimer = () => {
-    setIsTimerRunning(true);
-    sounds.playWhistle();
-  };
-
-  const handlePauseTimer = () => {
-    setIsTimerRunning(false);
-  };
+  const isTimerRunning = !!r2.isTimerRunning && timeLeft > 0;
 
   const handleFreeze = () => {
     r2TimeFreeze();
@@ -99,194 +92,165 @@ export default function PasswordDualView({ isMobile = false }) {
     r2Foul('team_b');
   };
 
+  const forbiddenWords = activeQuestion?.forbidden_words || activeQuestion?.forbidden || [
+    'ممنوعة 1', 'ممنوعة 2', 'ممنوعة 3', 'ممنوعة 4'
+  ];
+
   return (
-    <div className={`space-y-5 arcade-pattern ${isMobile ? 'text-right' : ''}`}>
+    <div className={`space-y-4 ${isMobile ? 'text-right' : ''}`}>
       
-      {/* Egyptian Arcade Header (Stitch Screen 2) */}
-      <div className="relative bg-surface-container rounded-2xl p-3.5 border-[3px] border-[#090614] shadow-[0_4px_0_0_#090614] flex flex-wrap items-center justify-between gap-3 overflow-hidden">
+      {/* Top Banner Ribbon (Stitch Screen 2) */}
+      <div className="relative overflow-hidden bg-surface-container rounded-2xl p-3 border-[3px] border-[#090614] shadow-[0_4px_0_0_#090614] flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl bg-primary-container border-2 border-[#090614] shadow-[0_2px_0_0_#090614] flex items-center justify-center text-xl">
-            🤫
+          <div className="w-10 h-10 rounded-xl bg-primary-container border-2 border-[#090614] shadow-[0_2px_0_0_#090614] flex items-center justify-center">
+            <span className="text-xl">🤫</span>
           </div>
-          <div>
-            <div className="font-pixel text-[9px] text-arena-cyan tracking-wider">طور التحدي المصري</div>
-            <h2 className="font-headline-sm text-sm md:text-base text-arena-yellow font-black leading-tight">
-              اديني في سري (Password)
-            </h2>
+          <div className="flex flex-col">
+            <span className="font-pixel text-[8px] text-arena-cyan tracking-wider">طور التحدي السري</span>
+            <span className="font-headline-sm text-sm md:text-base font-black text-arena-yellow leading-tight">اديني في سري (Password Duel)</span>
           </div>
         </div>
 
-        {/* Center Arcade Countdown Timer */}
-        <div className="flex items-center gap-2 bg-surface-container-lowest px-3 py-1.5 rounded-full border-2 border-arena-yellow shadow-[0_0_10px_rgba(255,184,0,0.25)]">
-          <Timer className={`w-4 h-4 ${timeLeft <= 10 ? 'text-arena-red animate-pulse' : 'text-arena-yellow'}`} />
-          <span className={`font-pixel text-sm md:text-base ${timeLeft <= 10 ? 'text-arena-red' : 'text-arena-yellow'}`}>
-            00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+        {/* Center Countdown Timer Pill */}
+        <div className="flex items-center gap-2">
+          <div className="bg-surface-container-lowest px-3 py-1 rounded-full border-2 border-primary-container shadow-[0_0_10px_rgba(255,184,0,0.3)] flex items-center gap-1.5 animate-pulse">
+            <Timer className="w-3.5 h-3.5 text-arena-yellow" />
+            <span className="font-pixel text-xs text-arena-yellow font-black">
+              00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+            </span>
+          </div>
+          <span className="font-pixel text-[9px] bg-surface-container-highest px-2 py-1 rounded-lg text-gray-300 border border-[#090614]">
+            كرت {((r2.cardIndex || 0) + 1)}/5
           </span>
-          {isTimerRunning ? (
-            <button
-              onClick={handlePauseTimer}
-              className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-[10px] hover:bg-amber-500/30"
-            >
-              إيقاف
-            </button>
-          ) : (
-            <button
-              onClick={handleStartTimer}
-              className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px] hover:bg-emerald-500/30"
-            >
-              تشغيل
-            </button>
-          )}
         </div>
-
-        <span className="font-pixel text-[9px] bg-surface-container-highest px-2 py-1 rounded-lg text-white border border-[#090614]">
-          بطاقة {((r2.currentWordIndex || 0) + 1)}/5
-        </span>
       </div>
 
-      {/* CLUE-GIVERS MUTUAL SUPERVISION VIEW */}
+      {/* Clue-Givers Rotation Pill Header */}
+      <div className="bg-surface-container rounded-2xl p-3 border-[2.5px] border-[#090614] shadow-[0_4px_0_0_#090614] flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-2">
+          <span className="text-arena-cyan font-bold">المتكلم (أ):</span>
+          <span className="font-black text-white bg-arena-cyan/20 px-2 py-0.5 rounded border border-arena-cyan/40">
+            {clueGiverA?.name || 'فارس'}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-rose-400 font-bold">المتكلم (ب):</span>
+          <span className="font-black text-white bg-rose-500/20 px-2 py-0.5 rounded border border-rose-400/40">
+            {clueGiverB?.name || 'زيزو'}
+          </span>
+        </div>
+      </div>
+
+      {/* ================= CLUE-GIVERS VIEW (SECRET TABOO TABLET) ================= */}
       {isClueGiver ? (
-        <div className="space-y-4">
+        <div className="relative bg-surface-container-low rounded-3xl border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] overflow-hidden space-y-4">
           
-          {/* Secret Word & Forbidden Words Card */}
-          <div className="bg-arena-card rounded-3xl p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] relative">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-bold text-arena-yellow bg-arena-yellow/10 px-3 py-1 rounded-full border border-arena-yellow/30">
-                {activeQuestion.categoryName || 'كلمة السر'}
-              </span>
-              <span className="text-xs font-bold text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-500/30 font-pixel text-[8px]">
-                مشتركة للملقنين فقط 🔒
-              </span>
+          {/* Header strip */}
+          <div className="bg-surface-container-high px-4 py-2 flex items-center justify-between border-b-[2.5px] border-[#090614]">
+            <div className="flex items-center gap-1.5">
+              <Lock className="w-4 h-4 text-arena-yellow" />
+              <span className="font-pixel text-[10px] text-amber-200">لوحة المتكلم السرية (ممنوع يشوفها المخمن)</span>
             </div>
+            <span className="bg-rose-950 text-rose-300 px-2 py-0.5 rounded text-[10px] font-bold border border-rose-500">
+              ممنوع نطق الممنوعات!
+            </span>
+          </div>
 
-            <div className="text-center py-4 space-y-1">
-              <div className="text-xs text-gray-400 font-bold">الكلمة المستهدفة (Target Word):</div>
-              <div className="text-3xl md:text-4xl font-black text-arena-yellow tracking-wide drop-shadow-[0_2px_0_#090614]">
-                {activeQuestion.question_text || activeQuestion.question}
+          <div className="p-5 md:p-6 space-y-5">
+            {/* Target Secret Word */}
+            <div className="text-center">
+              <span className="font-pixel text-[9px] text-gray-400 block mb-1">الكلمة السرية المطلوب شرحها:</span>
+              <div className="inline-block bg-surface-container-lowest px-8 py-3 rounded-2xl border-[3px] border-primary-container shadow-[0_4px_0_0_#6b4c00]">
+                <h1 className="text-2xl md:text-3xl font-black text-arena-yellow tracking-wide drop-shadow-[0_2px_0_#090614] flex items-center justify-center gap-2">
+                  <span>{activeQuestion.target_word || activeQuestion.word || 'برج القاهرة'}</span>
+                  <span>✨</span>
+                </h1>
               </div>
             </div>
 
-            {/* 4 Forbidden Words */}
-            <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
-              <div className="text-xs font-bold text-arena-red flex items-center justify-center gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                <span>الكلمات الممنوعة (Forbidden Words) — يمنع نطقها أو مشتقاتها:</span>
+            {/* Forbidden Words */}
+            <div className="pt-2 border-t-2 border-dashed border-white/10">
+              <div className="flex items-center justify-center gap-1 mb-2.5">
+                <AlertTriangle className="w-4 h-4 text-rose-400" />
+                <span className="text-xs font-black text-rose-300">الكلمات الممنوعة (لو نطقتها هتتخصم منك نقطة):</span>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-1">
-                {(activeQuestion.forbidden_words || ['ممنوع 1', 'ممنوع 2', 'ممنوع 3', 'ممنوع 4']).map((word, idx) => (
+
+              <div className="grid grid-cols-2 gap-2.5">
+                {forbiddenWords.map((word, idx) => (
                   <div
                     key={idx}
-                    className="bg-red-950/50 border border-red-500/40 text-red-200 px-3 py-2 rounded-xl text-center text-xs md:text-sm font-black"
+                    className="p-3 rounded-xl bg-rose-950/60 border-2 border-rose-500/60 text-center font-black text-rose-200 text-sm shadow-[0_2px_0_0_#40000c] flex items-center justify-center gap-1.5"
                   >
-                    🚫 {word}
+                    <span>🚫</span>
+                    <span>{word}</span>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
 
-          {/* Mutual Grading Anti-Cheat Controls */}
-          <div className="bg-arena-darker/90 rounded-2xl p-5 border border-white/10 shadow-xl space-y-3">
-            <div className="flex items-center justify-between border-b border-white/10 pb-2">
-              <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                <Award className="w-4 h-4 text-arena-cyan" />
-                <span>تحكيم متبادل لمنع الغش (Mutual Anti-Cheat Grading):</span>
-              </h4>
-              <span className="text-[10px] text-gray-400">كل ملقّن يحكّم للخصم</span>
-            </div>
-
-            {/* Grading Buttons split by Team */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              
-              {/* Grading for Team A (Held by Team B Clue Giver or Host) */}
-              <div className="bg-arena-card/80 p-3.5 rounded-xl border border-arena-cyan/30 space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-arena-cyan">
-                  <span>تحكيم فريق الحيتان (Team A):</span>
-                  <span className="text-[10px] text-gray-400">بواسطة ملقن B</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={handleAwardA}
-                    className="btn-arcade-green py-2.5 rounded-xl font-black text-xs cursor-pointer shadow hover:scale-[1.02]"
-                  >
-                    [نقطة لتيم أ] +500 🎯
-                  </button>
-                  <button
-                    onClick={handleFoulA}
-                    className="btn-arcade-red py-2.5 rounded-xl font-black text-xs cursor-pointer shadow hover:scale-[1.02]"
-                  >
-                    [مخالفة على تيم أ] -200 ⚠️
-                  </button>
-                </div>
+            {/* Reciprocal Grading Controls */}
+            <div className="pt-3 border-t border-white/10 space-y-2">
+              <div className="text-xs font-bold text-gray-300 flex items-center justify-between">
+                <span>تحكيم الدور المتبادل:</span>
+                <span className="text-[10px] text-arena-cyan font-bold">
+                  {isClueGiverA ? 'أنت تحكم على تخمين فريق (ب)' : 'أنت تحكم على تخمين فريق (أ)'}
+                </span>
               </div>
 
-              {/* Grading for Team B (Held by Team A Clue Giver or Host) */}
-              <div className="bg-arena-card/80 p-3.5 rounded-xl border border-arena-red/30 space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-arena-red">
-                  <span>تحكيم فريق الوحوش (Team B):</span>
-                  <span className="text-[10px] text-gray-400">بواسطة ملقن A</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={handleAwardB}
-                    className="btn-arcade-green py-2.5 rounded-xl font-black text-xs cursor-pointer shadow hover:scale-[1.02]"
-                  >
-                    [نقطة لتيم ب] +500 🎯
-                  </button>
-                  <button
-                    onClick={handleFoulB}
-                    className="btn-arcade-red py-2.5 rounded-xl font-black text-xs cursor-pointer shadow hover:scale-[1.02]"
-                  >
-                    [مخالفة على تيم ب] -200 ⚠️
-                  </button>
-                </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={isClueGiverA ? handleAwardB : handleAwardA}
+                  className="btn-arcade-green py-3 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow hover:scale-[1.02]"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  <span>[صح +نقطة] خمن صح! 🎉</span>
+                </button>
+                <button
+                  onClick={isClueGiverA ? handleFoulB : handleFoulA}
+                  className="btn-arcade-red py-3 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow hover:scale-[1.02]"
+                >
+                  <XCircle className="w-4 h-4" />
+                  <span>[مخالفة كلمة ممنوعة -1] ⚠️</span>
+                </button>
               </div>
-
             </div>
 
-            {/* Time Freeze Option */}
-            <div className="pt-2 text-center">
+            {/* Timer controls */}
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <span className="px-4 py-2 rounded-xl bg-surface-container-high border-2 border-[#090614] text-xs font-bold text-white shadow">
+                {isTimerRunning ? '⏱️ العداد شغال تلقائي' : '⏱️ انتهى الوقت'}
+              </span>
               <button
                 onClick={handleFreeze}
-                disabled={r2.timeFreezeUsed}
-                className={`px-4 py-2 rounded-xl text-xs font-black inline-flex items-center gap-1.5 ${
-                  r2.timeFreezeUsed
-                    ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                    : 'bg-cyan-950/80 border border-cyan-400 text-cyan-300 hover:bg-cyan-900 cursor-pointer'
-                }`}
+                className="px-4 py-2 rounded-xl bg-sky-950 border-2 border-sky-500 text-xs font-bold text-sky-200 shadow hover:scale-105 cursor-pointer flex items-center gap-1"
               >
                 <Snowflake className="w-3.5 h-3.5" />
-                <span>تجميد الوقت (10 ثوانٍ إضافية)</span>
+                <span>تجميد الوقت ❄️</span>
               </button>
             </div>
           </div>
-
         </div>
       ) : (
-        /* GUESSERS SCREEN (STRICTLY REDACTED) */
-        <div className="bg-arena-card rounded-3xl p-8 border-2 border-arena-cyan/30 text-center space-y-6 shadow-2xl">
-          <div className="w-16 h-16 rounded-2xl bg-arena-cyan/10 border-2 border-arena-cyan mx-auto flex items-center justify-center text-3xl">
-            🔒
+        /* ================= GUESSERS VIEW (BLIND SPECTATOR) ================= */
+        <div className="bg-surface-container rounded-3xl p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-surface-container-highest border-2 border-[#090614] mx-auto flex items-center justify-center shadow-lg">
+            <Lock className="w-8 h-8 text-arena-yellow animate-pulse" />
           </div>
 
-          <div className="space-y-2">
-            <h3 className="text-2xl font-black text-white">
-              استمع للتلميح وخمن! 🎧
-            </h3>
-            <p className="text-sm text-gray-300 max-w-md mx-auto">
-              الملقنون يشاهدون كلمة السر والكلمات الممنوعة الآن. استمع جيداً للتلميحات وتوقع الكلمة بصوت واضح!
-            </p>
-          </div>
+          <h2 className="text-xl md:text-2xl font-black text-white leading-tight">
+            استمع لتلميح زميلك وخمن الكلمة السرية!
+          </h2>
 
-          <div className="bg-arena-darker/90 p-4 rounded-2xl border border-white/10 max-w-sm mx-auto flex items-center justify-center gap-3">
-            <Timer className="w-5 h-5 text-arena-yellow animate-spin" />
-            <span className="text-xl font-mono font-black text-white">
-              الوقت المتبقي: {timeLeft}s
-            </span>
-          </div>
+          <p className="text-xs text-gray-400 max-w-sm mx-auto">
+            الكلمة السرية والممنوعات محجوبة تماماً عنك عشان النزاهة. اسمع تلميح زميلك كويس وقدم تخميناتك!
+          </p>
 
-          <div className="text-xs text-gray-500 font-bold">
-            🚫 الكلمة المستهدفة والكلمات الممنوعة محجوبة بالكامل لحماية نزاهة الجولة.
+          <div className="bg-surface-container-lowest p-4 rounded-2xl border-2 border-white/10 max-w-xs mx-auto">
+            <span className="font-pixel text-xs text-arena-cyan">الوقت المتبقي للتخمين:</span>
+            <div className="text-3xl font-mono font-black text-arena-yellow mt-1">
+              00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+            </div>
           </div>
         </div>
       )}

@@ -376,11 +376,13 @@ function createInitialState(roomCode, hostId) {
       activeTurnTeam: 'team_a',
       activeClueGiverA: null,
       activeClueGiverB: null,
+      currentGiverIndex: 0,
       refereePlayerId: null,
       isComplete: false,
       timeFreezeUsed: false,
       timer: 45,
       isTimerRunning: false,
+      endTime: null,
       actionToken: null,
       fouls: { team_a: 0, team_b: 0 }
     },
@@ -414,6 +416,7 @@ function createInitialState(roomCode, hostId) {
       refereePlayerId: null,
       timer: 60,
       isTimerRunning: false,
+      endTime: null,
       phase: 'bidding',
       itemsNamed: [],
       usedLifelines: { team_a: [], team_b: [] }
@@ -817,12 +820,22 @@ export function createSupabaseSocket(customClient = null) {
     const teamA = room.players.filter(player => player.team === 'team_a');
     const teamB = room.players.filter(player => player.team === 'team_b');
     const cardIndex = Math.max(0, r2.currentWordIndex || 0);
+    const previousGiverA = r2.activeClueGiverA;
+    const previousGiverB = r2.activeClueGiverB;
 
     if (toggleTurn) {
       r2.activeTurnTeam = r2.activeTurnTeam === 'team_a' ? 'team_b' : 'team_a';
     }
-    r2.activeClueGiverA = teamA.length ? teamA[cardIndex % teamA.length].id : null;
-    r2.activeClueGiverB = teamB.length ? teamB[cardIndex % teamB.length].id : null;
+    const giverSwap = toggleTurn
+      ? TurnManager.swapClueGivers(room.players, previousGiverA, previousGiverB, cardIndex)
+      : {
+          activeClueGiverA: teamA[cardIndex % Math.max(1, teamA.length)]?.id || null,
+          activeClueGiverB: teamB[cardIndex % Math.max(1, teamB.length)]?.id || null,
+          currentGiverIndex: cardIndex
+        };
+    r2.activeClueGiverA = giverSwap.activeClueGiverA;
+    r2.activeClueGiverB = giverSwap.activeClueGiverB;
+    r2.currentGiverIndex = giverSwap.currentGiverIndex;
     r2.refereePlayerId = getRoundRefereeId(room, 'round2');
   }
 
@@ -838,6 +851,8 @@ export function createSupabaseSocket(customClient = null) {
     r2.actionToken = word ? `act_${Math.random().toString(36).substring(2, 12)}` : null;
     r2.timeFreezeUsed = false;
     r2.isTimerRunning = true;
+    r2.timer = 45;
+    r2.endTime = Date.now() + 45000;
     return !!word;
   }
 
@@ -1791,6 +1806,7 @@ export function createSupabaseSocket(customClient = null) {
         const room = await currentRoom();
         if (!room) return;
         if (!isCurrentRoom(payload.roomCode)) return;
+        if (room.status !== 'round3') return;
         const r3 = room.round3;
         const player = findPlayer(room);
         if (!player) return;
@@ -1861,6 +1877,9 @@ export function createSupabaseSocket(customClient = null) {
         r3.interceptBuzzedBy = null;
         r3.interceptAt = null;
         r3.shotStartedAt = Date.now();
+        r3.endTime = r3.shotStartedAt + (r3.timer || 20) * 1000;
+        r3.shotResolved = false;
+        r3.endTime = r3.shotStartedAt + (r3.timer || 20) * 1000;
         r3.tieBreakActive = false;
         r3.tieBreakData = null;
         broadcastToRoom('sound_trigger', { sound: 'whistle' });
@@ -2039,6 +2058,19 @@ export function createSupabaseSocket(customClient = null) {
         broadcastToRoom('sound_trigger', { sound: 'bid' });
         await persistAndBroadcast(room);
         publishSecrets(room);
+        break;
+      }
+
+      case 'r4_start_challenge': {
+        const room = await currentRoom();
+        if (!room || !isCurrentRoom(payload.roomCode)) return;
+        const player = findPlayer(room);
+        const r4 = room.round4;
+        if (!player || r4.phase !== 'challenge' || r4.highestBidderTeam !== player.team || r4.topicId !== payload.topicId || r4.isTimerRunning) return;
+        r4.timer = 60;
+        r4.endTime = Date.now() + 60000;
+        r4.isTimerRunning = true;
+        await persistAndBroadcast(room);
         break;
       }
 
