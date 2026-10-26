@@ -1,13 +1,17 @@
+@import './theme/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  html { direction: rtl; }
+  html { direction: rtl; min-height: 100%; }
   body {
-    background-color: #090A17;
+    background-color: var(--page-background);
     color: #F8FAFC;
-    font-family: 'Cairo', 'Changa', 'Tajawal', system-ui, sans-serif;
+    font-family: var(--font-arabic);
+    min-width: 320px;
+    overflow-x: hidden;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
   }

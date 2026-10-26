@@ -28,6 +28,7 @@ export const BANK_RULES = Object.freeze({
   QUESTIONS_PER_TEAM: 12,
   QUESTIONS_PER_ROUND: 24,
   TOTAL_QUESTIONS: 48,
+  QUESTION_TIME_SECONDS: 30,
   STREAK_LADDER: [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000]
 });
 
@@ -37,6 +38,15 @@ export const PENALTY_RULES = Object.freeze({
   BONUS_POINTS: 1,
   BONUS_SCORE_MULTIPLIER: 500,
   GOAL_SCORE: 1000
+});
+
+export const ROUND_TIMERS = Object.freeze({
+  bankSeconds: BANK_RULES.QUESTION_TIME_SECONDS,
+  passwordSeconds: 45,
+  penaltySeconds: 20,
+  mazatSeconds: 60,
+  passwordCards: 5,
+  mazatTopics: 4
 });
 
 export const ALERT_KINDS = Object.freeze({

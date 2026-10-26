@@ -27,7 +27,7 @@ class MockLobbyServer {
   generateRoomCode(): string {
     const digits = '0123456789';
     let num = '';
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       num += digits.charAt(Math.floor(Math.random() * digits.length));
     }
     return `QZ-${num}`;
@@ -159,12 +159,12 @@ async function runLobbyTests() {
 
   const server = new MockLobbyServer();
 
-  // Test 1: 6-Character Room ID Generation
-  console.log('🔹 Test 1: 6-Character Alphanumeric Room Code Generation (QZ-XXXX)...');
+  // Test 1: Six-digit Room ID Generation
+  console.log('🔹 Test 1: Six-digit Room Code Generation (QZ-XXXXXX)...');
   const code1 = server.generateRoomCode();
   const code2 = server.generateRoomCode();
   assert(code1.startsWith('QZ-'), `Expected code to start with QZ-, got ${code1}`);
-  assert(code1.length === 7, `Expected length 7 (QZ- + 4 digits = 6 alphanumeric chars), got ${code1.length}`);
+  assert(/^QZ-\d{6}$/.test(code1), `Expected QZ- followed by six digits, got ${code1}`);
   assert(code1 !== code2, 'Expected randomly generated codes to be unique');
   console.log(`   ✅ Generated unique valid codes: ${code1}, ${code2}`);
 

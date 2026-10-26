@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useGame } from '../../context/GameContext';
 import { useTriviaRoom } from '../../hooks/useTriviaRoom';
+import { RoundTimer } from '../../game/RoundTimer';
 import { Vault, Flame, CheckCircle, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck, Lock, Zap } from 'lucide-react';
 
 /**
@@ -22,12 +23,15 @@ export default function BankTurnView({ isMobile = false }) {
     r1Break,
     r1Bank,
     r1PassTurn,
+    r1NextQuestion,
+    isHost,
     showToast
   } = useGame();
 
   const triviaRoom = useTriviaRoom();
   const {
     activeQuestion,
+    nextQuestion,
     currentTurnQNumber,
     designatedAnsweringPlayer,
     designatedReaderPlayer,
@@ -40,6 +44,19 @@ export default function BankTurnView({ isMobile = false }) {
   } = triviaRoom;
 
   const [revealSecret, setRevealSecret] = useState(false);
+  const [isAdvancing, setIsAdvancing] = useState(false);
+
+  useEffect(() => {
+    if (r1.questionState === 'active') {
+      setIsAdvancing(false);
+    }
+  }, [r1.questionState, r1.currentQuestionIndex]);
+
+  const handleNextQuestion = () => {
+    if (isAdvancing) return;
+    setIsAdvancing(true);
+    r1NextQuestion();
+  };
 
   const r1 = roomState?.round1 || {};
   const currentStreak = r1.streak || 0;
@@ -47,6 +64,30 @@ export default function BankTurnView({ isMobile = false }) {
   const streakLadder = r1.streakLadder || [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000];
   const nextStreak = Math.min(currentStreak + 1, 10);
   const nextValue = streakLadder[nextStreak];
+  const hasLiveQuestion = !!r1.currentQuestion;
+  const [timeLeft, setTimeLeft] = useState(() => RoundTimer.remaining(r1.endTime));
+  const timerRef = useRef(null);
+  const timeoutHandledRef = useRef(null);
+
+  useEffect(() => {
+    timerRef.current?.dispose();
+    if (!hasLiveQuestion || !r1.isTimerRunning || !r1.endTime) {
+      setTimeLeft(0);
+      return undefined;
+    }
+    const token = r1.actionToken || r1.currentQuestionIndex;
+    const timer = new RoundTimer(remaining => setTimeLeft(Math.ceil(remaining / 1000)), () => {
+      if (timeoutHandledRef.current === token) return;
+      timeoutHandledRef.current = token;
+      if (isHost) r1NextQuestion();
+    });
+    timerRef.current = timer;
+    timer.start(Math.max(0, (r1.endTime - Date.now()) / 1000));
+    return () => {
+      timer.dispose();
+      if (timerRef.current === timer) timerRef.current = null;
+    };
+  }, [hasLiveQuestion, r1.isTimerRunning, r1.endTime, r1.actionToken, r1.currentQuestionIndex, isHost, r1NextQuestion]);
 
   const handleScore = () => {
     setRevealSecret(false);
@@ -163,6 +204,7 @@ export default function BankTurnView({ isMobile = false }) {
         <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed text-right drop-shadow-[0_2px_0_#090614]">
           {activeQuestion.question_text || activeQuestion.question}
         </h3>
+        {hasLiveQuestion && <div className="text-center font-mono text-xl font-black text-arena-yellow" role="timer">⏱ {timeLeft}s</div>}
 
         {/* Answer Holder / Defending Referee Secret View */}
         {isR1Referee && (
@@ -208,6 +250,54 @@ export default function BankTurnView({ isMobile = false }) {
                 <span>غلط (تصفير)</span>
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Question Resolution Outcome (No Auto-Advancement & Zero-delay next) */}
+        {r1.questionState === 'resolved' && (
+          <div className={`mt-4 p-4 rounded-2xl border-2 flex flex-col md:flex-row items-center justify-between gap-3 animate-fadeIn ${
+            r1.lastResult?.correct
+              ? 'bg-emerald-950/70 border-arena-green shadow-[0_0_20px_rgba(16,185,129,0.3)]'
+              : 'bg-rose-950/70 border-arena-red shadow-[0_0_20px_rgba(239,68,68,0.3)]'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className="text-3xl">
+                {r1.lastResult?.correct ? '🎯' : '💥'}
+              </div>
+              <div className="text-right">
+                <div className={`text-base font-black ${r1.lastResult?.correct ? 'text-arena-green' : 'text-arena-red'}`}>
+                  {r1.lastResult?.correct
+                    ? `إجابة صحيحة! (+${(r1.lastResult?.pointsEarned || 0).toLocaleString()} نقطة)`
+                    : 'إجابة خاطئة! تم تصفير الستريك'}
+                </div>
+                <div className="text-xs text-gray-300 font-bold">
+                  {r1.lastResult?.correct
+                    ? `وصلت السلسلة إلى ×${r1.lastResult?.streak || 0} في بنك النقاط`
+                    : 'يمكن للفريق الخصم التأمين أو الاستمرار في الأدوار القادمة'}
+                </div>
+              </div>
+            </div>
+
+            {/* Host / Referee Manual Progression Trigger with double-click guard */}
+            {(isHost || isR1Referee) && (
+              <button
+                type="button"
+                onClick={handleNextQuestion}
+                disabled={isAdvancing}
+                className={`btn-arcade-yellow px-6 py-2.5 rounded-xl font-black text-xs md:text-sm flex items-center gap-2 cursor-pointer shadow-lg hover:scale-[1.02] transition-all ${
+                  isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              >
+                <span>السؤال التالي ➡️</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Preloaded next question rendered hidden for 0ms font & layout delay */}
+        {nextQuestion && (
+          <div className="hidden" aria-hidden="true">
+            {nextQuestion.question_text || nextQuestion.question}
           </div>
         )}
       </div>

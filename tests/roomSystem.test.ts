@@ -215,10 +215,10 @@ async function run() {
     console.log('🚪 QUIZ ARENA - ROOM SYSTEM INTEGRATION TEST SUITE');
     console.log('================================================================================\n');
 
-    await test('Room codes are QZ-XXXXXX without look-alike characters', async () => {
+    await test('Room codes are QZ- plus six digits', async () => {
       const host = await opened();
       const created = await createRoom(host, 'Code Host', CHARACTERS[0].id);
-      assert(/^QZ-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/.test(created.roomCode), `Invalid room code: ${created.roomCode}`);
+      assert(/^QZ-\d{6}$/.test(created.roomCode), `Invalid room code: ${created.roomCode}`);
       assert(typeof created.playerToken === 'string' && created.playerToken.length >= 10, 'playerToken was not issued');
     });
 

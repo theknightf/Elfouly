@@ -67,7 +67,7 @@ export default function AuctionBiddingView({ isMobile = false }) {
     const timer = new RoundTimer(remainingMs => setTimeLeft(Math.ceil(remainingMs / 1000)), () => {
       sounds?.playBuzzer?.();
       showToast('انتهى الوقت!', 'حان وقت الحسم في التحدي!');
-      r4ResolveBid(false);
+      if (isAuctionReferee) r4ResolveBid(false);
     });
     timerRef.current = timer;
     const endTime = r4.endTime || Date.now() + (r4.timer || 60) * 1000;
@@ -76,7 +76,7 @@ export default function AuctionBiddingView({ isMobile = false }) {
       timer.dispose();
       if (timerRef.current === timer) timerRef.current = null;
     };
-  }, [phase, r4.topicId, r4.highestBidderTeam, r4.isTimerRunning, r4.endTime, r4.timer, showToast, r4ResolveBid]);
+  }, [phase, r4.topicId, r4.highestBidderTeam, r4.isTimerRunning, r4.endTime, r4.timer, showToast, r4ResolveBid, isAuctionReferee]);
 
   const challengeStarted = !!r4.isTimerRunning;
 

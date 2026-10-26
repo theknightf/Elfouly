@@ -58,6 +58,7 @@ export default function MobileController() {
   // Round 3 Roles
   const r3 = roomState?.round3 || {};
   const isKickerInR3 = r3.currentKickerId === player?.id;
+  const isGoalieInR3 = r3.currentGoalieId === player?.id;
   const isRefereeInR3 = r3.refereePlayerId === player?.id;
   const isDuelistSelectionInR3 = r3.phase === 'duelist_selection';
   const kickingTeamKeyInR3 = r3.kickerTeam || 'team_a';
@@ -435,10 +436,10 @@ export default function MobileController() {
                   <div className="text-[10px] text-arena-cyan font-bold">
                     {isKickerInR3 ? '🎯 أنت المسدد الآن:' : 'سؤال ركلة الجزاء:'}
                   </div>
-                  <div className="text-xs font-black text-white">
-                    {r3.currentQuestion?.question}
-                  </div>
-                  {r3.currentQuestion?.options && (
+                  {!isKickerInR3 && !isGoalieInR3 && <div className="text-xs font-black text-white">{r3.currentQuestion?.question}</div>}
+                  {isKickerInR3 && <div className="text-xs text-gray-300">اختار إجابتك من غير ما تشوف السؤال، واسمعه من الحكم.</div>}
+                  {isGoalieInR3 && <div className="text-xs text-gray-300">استنى قراءة الحكم للسؤال، وبعدها قرر تضغط زر الصد.</div>}
+                  {isKickerInR3 && r3.currentQuestion?.options && (
                     <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
                       {r3.currentQuestion.options.map((opt, i) => (
                         <button

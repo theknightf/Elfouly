@@ -178,3 +178,9 @@ export function drawLocalCategoryQuestion(mode, category, roomId = 'local_room')
 export function shuffleLocal(items) {
   return shuffleArray(items);
 }
+
+export function preloadLocalNextQuestion(roomId, mode) {
+  const served = getServedSet(roomId);
+  const queue = getQuestionQueue(roomId, mode, served);
+  return queue ? queue.preloadNext() : null;
+}

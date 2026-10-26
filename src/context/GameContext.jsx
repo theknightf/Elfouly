@@ -17,6 +17,8 @@ import { createSupabaseSocket } from '../services/supabaseMultiplayerService';
 import { CHARACTERS } from '../data/characters';
 import { calculateBonus, isGeneralCategory } from '../utils/penaltyRules';
 import { TurnManager } from '../game/TurnManager';
+import { RoundTimer } from '../game/RoundTimer';
+import { ROUND_TIMERS } from '../game/constants';
 
 export const CONNECTION_STATUS_MESSAGES = {
   connecting: 'بنتصل بالسيرفر…',
@@ -80,6 +82,10 @@ function dispatchLocalR1Question(r1, players) {
   r1.turnPlanIndex += 1;
   r1.currentQuestionIndex += 1;
   r1.currentQuestion = mapLocalR1Question(question, slot);
+  r1.timer = ROUND_TIMERS.bankSeconds;
+  r1.endTime = Date.now() + ROUND_TIMERS.bankSeconds * 1000;
+  r1.isTimerRunning = true;
+  r1.actionToken = `local-r1-${r1.currentQuestionIndex}`;
   return true;
 }
 
@@ -116,13 +122,16 @@ function nextLocalR2Card(r2, players) {
       toggleTurn: true,
       activeTurnTeam: r2.activeTurnTeam
     });
-    Object.assign(nextCard, roles, swappedGivers);
+    nextCard.activeTurnTeam = roles.activeTurnTeam;
+    nextCard.activeClueGiverA = swappedGivers.activeClueGiverA;
+    nextCard.activeClueGiverB = swappedGivers.activeClueGiverB;
+    nextCard.currentGiverIndex = swappedGivers.currentGiverIndex;
     nextCard.refereePlayerId = nextCard.activeTurnTeam === 'team_a'
       ? nextCard.activeClueGiverB
       : nextCard.activeClueGiverA;
     nextCard.currentWord = drawLocalPasswordCard();
-    nextCard.timer = 45;
-    nextCard.endTime = Date.now() + 45000;
+    nextCard.timer = ROUND_TIMERS.passwordSeconds;
+    nextCard.endTime = Date.now() + ROUND_TIMERS.passwordSeconds * 1000;
     nextCard.isTimerRunning = true;
   } else {
     nextCard.currentWord = null;
@@ -309,6 +318,9 @@ export function GameProvider({ children }) {
     },
     messages: []
   });
+  const bankTimerRef = React.useRef(null);
+  const bankExpiryHandledRef = React.useRef(null);
+  const bankAdvanceRef = React.useRef(null);
 
   // Check URL parameters for dynamic screen separation (?view=controller)
   useEffect(() => {
@@ -745,7 +757,7 @@ export function GameProvider({ children }) {
             timeFreezeUsed: false,
             timer: 45,
             isTimerRunning: true,
-            endTime: Date.now() + 45000,
+            endTime: Date.now() + ROUND_TIMERS.passwordSeconds * 1000,
             fouls: { team_a: 0, team_b: 0 }
           };
         } else if (targetRound === 'round3') {
@@ -831,18 +843,34 @@ export function GameProvider({ children }) {
 
   // Round 1 Handlers
   const r1Score = () => {
+    const ladder = roomState?.round1?.streakLadder || [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000];
+    const currStreak = roomState?.round1?.streak || 0;
+    const nextStreak = Math.min(currStreak + 1, 10);
+    const nextVal = ladder[nextStreak];
+    // Immediate optimistic sound & UI feedback on tap
+    sounds.playStreakUp(nextStreak);
+    setRoomState(prev => {
+      if (!prev?.round1?.currentQuestion) return prev;
+      const r1 = { ...prev.round1 };
+      r1.streak = nextStreak;
+      r1.pendingPoints = nextVal;
+      r1.questionState = 'resolved';
+      r1.lastResult = {
+        correct: true,
+        pointsEarned: nextVal,
+        streak: nextStreak,
+        question: r1.currentQuestion
+      };
+      return { ...prev, round1: r1 };
+    });
     if (socket && isConnected && roomCode) {
       socket.emit('r1_action_score', { roomCode, actionToken: roomState?.round1?.actionToken });
     } else {
       setRoomState(prev => {
         if ((prev.round1?.totalQuestionsAnswered || 0) >= 48 || !prev.round1?.currentQuestion) return prev;
         const r1 = { ...prev.round1 };
-        const nextStreak = Math.min(r1.streak + 1, 10);
-        r1.streak = nextStreak;
-        r1.pendingPoints = r1.streakLadder[nextStreak];
         advanceR1LocalQuota(r1, prev.players, prev.teams);
         dispatchLocalR1Question(r1, prev.players);
-        sounds.playStreakUp(nextStreak);
         return { ...prev, round1: r1 };
       });
     }
@@ -913,6 +941,71 @@ export function GameProvider({ children }) {
     }
   };
 
+  const r1NextQuestion = () => {
+    // Optimistic UI: immediately clear resolution and swap to preloaded question
+    setRoomState(prev => {
+      if (!prev?.round1) return prev;
+      const r1 = { ...prev.round1 };
+      r1.questionState = 'active';
+      r1.lastResult = null;
+      if (r1.nextQuestion) {
+        r1.currentQuestion = r1.nextQuestion;
+        r1.nextQuestion = null;
+      }
+      r1.endTime = Date.now() + (ROUND_TIMERS?.bankSeconds || 30) * 1000;
+      r1.isTimerRunning = !!r1.currentQuestion;
+      return { ...prev, round1: r1 };
+    });
+    if (socket && isConnected && roomCode) {
+      socket.emit('r1_next_question', { roomCode });
+    }
+  };
+
+  useEffect(() => {
+    bankTimerRef.current?.dispose();
+    const r1 = roomState?.round1;
+    const question = r1?.currentQuestion;
+    if (roomState?.status !== 'round1' || !question || !r1.isTimerRunning || !r1.endTime) return undefined;
+    const token = r1.actionToken || r1.currentQuestionIndex;
+    const timer = new RoundTimer(null, () => {
+      if (bankExpiryHandledRef.current === token) return;
+      bankExpiryHandledRef.current = token;
+      setRoomState(prev => {
+        const active = { ...prev.round1 };
+        if (!active?.currentQuestion || active.actionToken !== r1.actionToken || active.questionState === 'timeout') return prev;
+        active.actionToken = null;
+        active.questionState = 'timeout';
+        active.lastResult = { outcome: 'timeout', question: active.currentQuestion, at: Date.now() };
+        active.endTime = null;
+        active.isTimerRunning = false;
+        return { ...prev, round1: { ...active } };
+      });
+      if (!socket || !isConnected || !roomCode) {
+        bankAdvanceRef.current = window.setTimeout(() => {
+          setRoomState(prev => {
+            if (prev.round1?.questionState !== 'timeout' || (prev.round1?.actionToken || prev.round1?.currentQuestionIndex) !== token) return prev;
+            const r1 = { ...prev.round1 };
+            advanceR1LocalQuota(r1, prev.players, prev.teams);
+            dispatchLocalR1Question(r1, prev.players);
+            return { ...prev, round1: r1 };
+          });
+          bankAdvanceRef.current = null;
+        }, 2000);
+      }
+    });
+    bankTimerRef.current = timer;
+    timer.start(Math.max(0, (r1.endTime - Date.now()) / 1000));
+    return () => {
+      timer.dispose();
+      if (bankTimerRef.current === timer) bankTimerRef.current = null;
+    };
+  }, [roomState?.status, roomState?.round1?.currentQuestionIndex, roomState?.round1?.actionToken, roomState?.round1?.endTime, roomState?.round1?.isTimerRunning, socket, isConnected, roomCode]);
+
+  useEffect(() => () => {
+    bankTimerRef.current?.dispose();
+    if (bankAdvanceRef.current) clearTimeout(bankAdvanceRef.current);
+  }, []);
+
   // Round 2 Handlers
   const r2AwardPoint = (team) => {
     if (socket && isConnected && roomCode) {
@@ -921,10 +1014,10 @@ export function GameProvider({ children }) {
       sounds.playCorrect();
       setRoomState(prev => {
         if (prev.round2.isComplete || (prev.round2.currentWordIndex || 0) >= 5) return prev;
-        if (team !== (prev.round2.activeTurnTeam || 'team_a')) {
-          showToast('🚫 دور الفريق الآخر', 'الحكم يحسم دور الفريق اللي بيلمّح دلوقتي فقط.');
-          return prev;
-        }
+      if (team !== (prev.round2.activeTurnTeam || 'team_a')) {
+        showToast('🚫 دور الفريق الآخر', 'المرشد يحسم دور الفريق المخمّن الحالي.');
+        return prev;
+      }
         const r2 = nextLocalR2Card(prev.round2, prev.players);
         const teams = { ...prev.teams };
         teams[team] = { ...teams[team], score: teams[team].score + 500 };
@@ -961,7 +1054,7 @@ export function GameProvider({ children }) {
       sounds.playBuzzer();
       setRoomState(prev => {
         if (team !== (prev.round2.activeTurnTeam || 'team_a')) {
-          showToast('🚫 دور الفريق الآخر', 'الحكم يحسم دور الفريق اللي بيلمّح دلوقتي فقط.');
+          showToast('🚫 دور الفريق الآخر', 'المرشد يحسم دور الفريق المخمّن الحالي.');
           return prev;
         }
         const r2 = nextLocalR2Card(prev.round2, prev.players);
@@ -1462,6 +1555,7 @@ export function GameProvider({ children }) {
         r1Break,
         r1Bank,
         r1PassTurn,
+        r1NextQuestion,
         r2AwardPoint,
         r2SkipCard,
         r2Foul,

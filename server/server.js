@@ -65,7 +65,7 @@ const MAX_ROOM_PLAYERS = 4;
 const TEAM_PLAYERS = 2;
 const MAX_CHAT_LENGTH = 240;
 const CHAT_RATE_LIMIT_MS = 500;
-const ROOM_CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'; // no 0, O, 1, I, L
+const ROOM_CODE_ALPHABET = '0123456789';
 
 function sanitizePlayerName(inputName) {
   if (typeof inputName !== 'string') return '';
@@ -505,7 +505,7 @@ function emitRoomState(room) {
   }
 }
 
-// Helper to generate a unique 6-character alphanumeric room code (e.g., QZ-AB2C9D)
+// Helper to generate a unique six-digit room code (e.g., QZ-482019)
 function generateRoomCode() {
   let body = '';
   for (let i = 0; i < 6; i++) {
@@ -524,7 +524,7 @@ function findRoom(inputCode) {
   const stripped = clean.replace(/-/g, '');
   const body = stripped.startsWith('QZ') ? stripped.slice(2) : stripped;
 
-  // Try formatted with hyphen (e.g. QZAB2C9D or AB2C9D -> QZ-AB2C9D)
+  // Try formatted with hyphen (e.g. QZ482019 or 482019 -> QZ-482019)
   if (body.length === 6) {
     const formatted = `QZ-${body}`;
     if (rooms.has(formatted)) return rooms.get(formatted);
@@ -1119,6 +1119,28 @@ io.on('connection', (socket) => {
         : 'سؤال عشوائي من بنك الجولة الأولى كله.'
     };
     r1.actionToken = crypto.randomUUID();
+    r1.timer = 30;
+    r1.endTime = Date.now() + r1.timer * 1000;
+    r1.isTimerRunning = true;
+    const scheduledToken = r1.actionToken;
+    setTimeout(() => {
+      const active = room.round1;
+      if (room.status !== 'round1' || active.actionToken !== scheduledToken || Date.now() < active.endTime) return;
+      active.actionToken = null;
+      active.isTimerRunning = false;
+      active.questionState = 'timeout';
+      active.lastResult = { outcome: 'timeout', question: active.currentQuestion, at: Date.now() };
+      active.endTime = null;
+      emitRoomState(room);
+      setTimeout(() => {
+        if (room.status !== 'round1' || room.round1.questionState !== 'timeout') return;
+        room.round1.questionState = 'active';
+        room.round1.lastResult = null;
+        advanceR1Question(room, room.code);
+        dispatchR1Question(room);
+        emitRoomState(room);
+      }, 2000);
+    }, r1.timer * 1000);
     return true;
   }
 
@@ -1154,8 +1176,6 @@ io.on('connection', (socket) => {
     const teamAPlayers = room.players.filter(p => p.team === 'team_a');
     const teamBPlayers = room.players.filter(p => p.team === 'team_b');
     const cardIndex = Math.max(0, r2.currentWordIndex || 0);
-    const previousGiverA = r2.activeClueGiverA;
-    const previousGiverB = r2.activeClueGiverB;
 
     if (toggleTurn) {
       r2.activeTurnTeam = getR2ActiveTurnTeam(room) === 'team_a' ? 'team_b' : 'team_a';
@@ -1163,23 +1183,13 @@ io.on('connection', (socket) => {
       r2.activeTurnTeam = 'team_a';
     }
 
-    const giverSwap = toggleTurn
-      ? TurnManager.swapClueGivers(room.players, previousGiverA, previousGiverB, cardIndex)
-      : {
-          activeClueGiverA: teamAPlayers[cardIndex % Math.max(1, teamAPlayers.length)]?.id || null,
-          activeClueGiverB: teamBPlayers[cardIndex % Math.max(1, teamBPlayers.length)]?.id || null,
-          currentGiverIndex: cardIndex
-        };
-    const nextGiverId = r2.activeTurnTeam === 'team_a' ? giverSwap.activeClueGiverA : giverSwap.activeClueGiverB;
-    const otherGiverId = r2.activeTurnTeam === 'team_a' ? giverSwap.activeClueGiverB : giverSwap.activeClueGiverA;
-    if (r2.activeTurnTeam === 'team_a') {
-      r2.activeClueGiverA = nextGiverId;
-      r2.activeClueGiverB = otherGiverId;
-    } else {
-      r2.activeClueGiverB = nextGiverId;
-      r2.activeClueGiverA = otherGiverId;
-    }
-    r2.currentGiverIndex = giverSwap.currentGiverIndex;
+    r2.activeClueGiverA = teamAPlayers.length > 0
+      ? teamAPlayers[cardIndex % teamAPlayers.length].id
+      : null;
+    r2.activeClueGiverB = teamBPlayers.length > 0
+      ? teamBPlayers[cardIndex % teamBPlayers.length].id
+      : null;
+    r2.currentGiverIndex = cardIndex;
 
     assignReferee(room, 'round2', { reason });
   }
@@ -1743,6 +1753,7 @@ io.on('connection', (socket) => {
     r2.actionToken = null;
 
     room.teams[team].score += 500;
+    r2.lastResult = { outcome: 'correct', team, by: caller.id, at: Date.now() };
     r2.currentWordIndex += 1;
 
     // Check if 5 cards quota reached
@@ -1750,6 +1761,7 @@ io.on('connection', (socket) => {
       r2.isComplete = true;
       r2.currentWord = null;
       r2.isTimerRunning = false;
+      r2.endTime = null;
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
       io.to(roomCode).emit('notification', {
         title: '🏁 اكتملت جولة "اديني في سري" (5 بطاقات)!',
@@ -1785,11 +1797,13 @@ io.on('connection', (socket) => {
     }
     r2.actionToken = null;
     r2.currentWordIndex += 1;
+    r2.lastResult = { outcome: 'skipped', at: Date.now() };
 
     if (r2.currentWordIndex >= 5) {
       r2.isComplete = true;
       r2.currentWord = null;
       r2.isTimerRunning = false;
+      r2.endTime = null;
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
       io.to(roomCode).emit('notification', {
         title: '🏁 اكتملت جولة "اديني في سري" (5 بطاقات)!',
@@ -1869,10 +1883,10 @@ io.on('connection', (socket) => {
     // Deduct 200 points on foul
     room.teams[team].score = Math.max(0, room.teams[team].score - 200);
 
-    // A foul ends this clue turn. The other clue-giver becomes the judge.
-    r2.activeTurnTeam = getR2ActiveTurnTeam(room) === 'team_a' ? 'team_b' : 'team_a';
+    // A foul passes the turn to the other team for this card
+    r2.lastResult = { outcome: 'foul', team, by: caller.id, at: Date.now() };
+    setR2CardRoles(room, { toggleTurn: true, reason: 'foul' });
     r2.actionToken = crypto.randomUUID();
-    assignReferee(room, 'round2', { reason: 'clue_turn_change' });
 
     io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
     emitRoomState(room);

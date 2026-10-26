@@ -10,14 +10,14 @@ export default {
       colors: {
         arena: themeTokens.colors.arena,
         // Stitch Egyptian UI Kit Design Tokens
-        surface: { DEFAULT: themeTokens.colors.surface.card, dim: themeTokens.colors.surface.default, bright: '#3b3650', variant: themeTokens.colors.surface.highest, container: { lowest: '#0f0a22', low: themeTokens.colors.surface.low, DEFAULT: themeTokens.colors.surface.card, high: themeTokens.colors.surface.high, highest: themeTokens.colors.surface.highest } },
+        surface: { DEFAULT: themeTokens.colors.surface.card, dim: themeTokens.colors.surface.default, bright: themeTokens.spacing.bright, variant: themeTokens.colors.surface.highest, container: { lowest: themeTokens.colors.surface.lowest, low: themeTokens.colors.surface.low, DEFAULT: themeTokens.colors.surface.card, high: themeTokens.colors.surface.high, highest: themeTokens.colors.surface.highest } },
         'primary-container': themeTokens.colors.primary.container,
         'on-primary-container': themeTokens.colors.primary.onContainer,
-        'primary-fixed-dim': '#ffba20',
-        'secondary-container': '#00e3fd',
-        'secondary-fixed-dim': '#00daf3',
-        'tertiary-container': '#ffb0b3',
-        'on-surface-variant': '#d5c4ab',
+        'primary-fixed-dim': themeTokens.spacing.primaryFixedDim,
+        'secondary-container': themeTokens.spacing.secondaryContainer,
+        'secondary-fixed-dim': themeTokens.spacing.secondaryFixedDim,
+        'tertiary-container': themeTokens.spacing.tertiaryContainer,
+        'on-surface-variant': themeTokens.spacing.onSurfaceVariant,
         'outline-variant': themeTokens.colors.outline,
       },
       fontFamily: {

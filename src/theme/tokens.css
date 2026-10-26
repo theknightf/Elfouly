@@ -1,0 +1,23 @@
+:root {
+  --arena-dark: #0F1026;
+  --arena-darker: #090A17;
+  --arena-card: #181A3A;
+  --arena-cyan: #00F2FE;
+  --arena-red: #FF4B4B;
+  --arena-yellow: #FFD200;
+  --arena-green: #00E676;
+  --arena-purple: #8B5CF6;
+  --surface-default: #151028;
+  --surface-low: #1d1830;
+  --surface-card: #211c35;
+  --surface-high: #2c2640;
+  --surface-highest: #37314b;
+  --surface-lowest: #0f0a22;
+  --primary-container: #ffb800;
+  --primary-on-container: #6b4c00;
+  --page-background: var(--arena-darker);
+  --font-arabic: Cairo, Changa, Tajawal, system-ui, sans-serif;
+  --space-screen: clamp(0.75rem, 2.5vw, 1.5rem);
+  --space-section: clamp(0.75rem, 2vw, 1.25rem);
+  --space-card: clamp(0.75rem, 3vw, 1.75rem);
+}

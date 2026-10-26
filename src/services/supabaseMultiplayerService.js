@@ -47,7 +47,7 @@ import {
 } from '../utils/localQuestionEngine';
 import { calculateBonus, isGeneralCategory } from '../utils/penaltyRules.js';
 
-const ROOM_CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+const ROOM_CODE_ALPHABET = '0123456789';
 const MAX_PLAYERS = 4;
 const TEAM_PLAYERS = 2;
 const MAX_CHAT_LENGTH = 240;
@@ -293,12 +293,14 @@ function stripRoundSecrets(room) {
   const clone = deepClone(room);
   if (!clone) return clone;
   if (clone.round1?.currentQuestion) clone.round1.currentQuestion.answer = null;
+  if (clone.round1?.nextQuestion) clone.round1.nextQuestion.answer = null;
   if (clone.round2?.currentWord) {
     clone.round2.currentWord.target = '🔒 [كلمة سرية]';
     clone.round2.currentWord.forbidden = ['🔒 ممنوع', '🔒 ممنوع', '🔒 ممنوع', '🔒 ممنوع'];
     clone.round2.currentWord.redacted = true;
   }
   if (clone.round3?.currentQuestion) clone.round3.currentQuestion.answer = null;
+  if (clone.round3?.nextQuestion) clone.round3.nextQuestion.answer = null;
   if (clone.round4?.currentTopic) clone.round4.currentTopic.validItems = [];
   return clone;
 }
@@ -1493,6 +1495,65 @@ export function createSupabaseSocket(customClient = null) {
         break;
       }
 
+
+      case 'r1_next_question': {
+        const room = await currentRoom();
+        if (!room || !isCurrentRoom(payload.roomCode)) return;
+        if (room.status !== 'round1') return;
+        const r1 = room.round1;
+        // Guard against duplicate listener/client triggers
+        if (r1.questionState === 'active') return;
+        r1.questionState = 'active';
+        r1.lastResult = null;
+        advanceR1Quota(room);
+        dispatchR1Question(room);
+        publishSecrets(room);
+        await persistAndBroadcast(room);
+        break;
+      }
+
+      case 'r2_next_card': {
+        const room = await currentRoom();
+        if (!room || !isCurrentRoom(payload.roomCode)) return;
+        if (room.status !== 'round2') return;
+        const r2 = room.round2;
+        if (r2.cardState === 'active') return;
+        r2.cardState = 'active';
+        r2.lastCardResult = null;
+        r2.currentWordIndex = (r2.currentWordIndex || 0) + 1;
+        if (r2.currentWordIndex >= R2_TOTAL_CARDS) {
+          r2.isComplete = true;
+        } else {
+          dispatchR2Card(room);
+        }
+        publishSecrets(room);
+        await persistAndBroadcast(room);
+        break;
+      }
+
+      case 'r3_next_shot': {
+        const room = await currentRoom();
+        if (!room || !isCurrentRoom(payload.roomCode)) return;
+        if (room.status !== 'round3') return;
+        const r3 = room.round3;
+        // Guard against double next-shot triggers
+        if (r3.phase === 'duelist_selection' && r3.shotState === 'selection') return;
+        if (r3.isComplete) {
+          r3.phase = 'complete';
+          await persistAndBroadcast(room);
+          return;
+        }
+        r3.phase = 'duelist_selection';
+        r3.shotState = 'selection';
+        r3.lastShotResult = null;
+        r3.turnIndex = (r3.turnIndex || 0) + 1;
+        r3.kickerTeam = r3.kickerTeam === 'team_a' ? 'team_b' : 'team_a';
+        dispatchR3Shot(room);
+        publishSecrets(room);
+        await persistAndBroadcast(room);
+        break;
+      }
+
       case 'r1_action_score': {
         const room = await currentRoom();
         if (!room) return;
@@ -1672,12 +1733,14 @@ export function createSupabaseSocket(customClient = null) {
         }
         r2.actionToken = null;
         room.teams[team].score += 500;
+        r2.lastResult = { outcome: 'correct', team, by: player.id, at: Date.now() };
         r2.currentWordIndex += 1;
 
         if (r2.currentWordIndex >= R2_TOTAL_CARDS) {
           r2.isComplete = true;
           r2.currentWord = null;
           r2.isTimerRunning = false;
+          r2.endTime = null;
           broadcastToRoom('sound_trigger', { sound: 'whistle' });
         } else {
           setR2CardRoles(room, { toggleTurn: true });
@@ -1710,11 +1773,13 @@ export function createSupabaseSocket(customClient = null) {
         }
         r2.actionToken = null;
         r2.currentWordIndex += 1;
+        r2.lastResult = { outcome: 'skipped', at: Date.now() };
 
         if (r2.currentWordIndex >= R2_TOTAL_CARDS) {
           r2.isComplete = true;
           r2.currentWord = null;
           r2.isTimerRunning = false;
+          r2.endTime = null;
           broadcastToRoom('sound_trigger', { sound: 'whistle' });
         } else {
           setR2CardRoles(room, { toggleTurn: true });
@@ -1753,9 +1818,18 @@ export function createSupabaseSocket(customClient = null) {
         r2.actionToken = null;
         r2.fouls[team] = (r2.fouls[team] || 0) + 1;
         room.teams[team].score = Math.max(0, room.teams[team].score - 200);
-        r2.activeTurnTeam = team === 'team_a' ? 'team_b' : 'team_a';
-        r2.refereePlayerId = getRoundRefereeId(room, 'round2');
-        r2.actionToken = `act_${Math.random().toString(36).substring(2, 12)}`;
+        r2.lastResult = { outcome: 'foul', team, by: player.id, at: Date.now() };
+        r2.actionToken = null;
+        r2.currentWordIndex += 1;
+        if (r2.currentWordIndex >= R2_TOTAL_CARDS) {
+          r2.isComplete = true;
+          r2.currentWord = null;
+          r2.isTimerRunning = false;
+          r2.endTime = null;
+        } else {
+          setR2CardRoles(room, { toggleTurn: true });
+          dispatchR2Card(room);
+        }
         broadcastToRoom('sound_trigger', { sound: 'buzzer' });
         await persistAndBroadcast(room);
         break;
@@ -2039,7 +2113,7 @@ export function createSupabaseSocket(customClient = null) {
         if (!room || !isCurrentRoom(payload.roomCode)) return;
         const player = findPlayer(room);
         const r4 = room.round4;
-        if (!player || r4.phase !== 'challenge' || r4.highestBidderTeam !== player.team || r4.topicId !== payload.topicId || r4.isTimerRunning) return;
+        if (!player || !['challenge', 'execution'].includes(r4.phase) || r4.highestBidderTeam !== player.team || r4.topicId !== payload.topicId || r4.isTimerRunning) return;
         r4.timer = 60;
         r4.endTime = Date.now() + 60000;
         r4.isTimerRunning = true;

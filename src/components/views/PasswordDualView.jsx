@@ -42,9 +42,22 @@ export default function PasswordDualView({ isMobile = false }) {
 
   const r2 = roomState?.round2 || {};
   const [timeLeft, setTimeLeft] = useState(() => RoundTimer.remaining(r2.endTime));
+  const [isAdvancing, setIsAdvancing] = useState(false);
   const timerRef = useRef(null);
   const expiryHandledRef = useRef(null);
   const cardToken = r2.actionToken || r2.currentWordIndex;
+
+  useEffect(() => {
+    if (r2.cardState === 'active') {
+      setIsAdvancing(false);
+    }
+  }, [r2.cardState, r2.currentWordIndex]);
+
+  const handleNextCard = () => {
+    if (isAdvancing) return;
+    setIsAdvancing(true);
+    r2NextCard();
+  };
 
   const teamA = roomState?.teams?.team_a || { name: 'فريق الحيتان', score: 0 };
   const teamB = roomState?.teams?.team_b || { name: 'فريق الوحوش', score: 0 };
@@ -196,11 +209,11 @@ export default function PasswordDualView({ isMobile = false }) {
             </div>
 
             {/* Reciprocal Grading Controls */}
-            <div className="pt-3 border-t border-white/10 space-y-2">
+            {isR2Referee && <div className="pt-3 border-t border-white/10 space-y-2">
               <div className="text-xs font-bold text-gray-300 flex items-center justify-between">
                 <span>تحكيم الدور المتبادل:</span>
                 <span className="text-[10px] text-arena-cyan font-bold">
-                  {isClueGiverA ? 'أنت تحكم على تخمين فريق (ب)' : 'أنت تحكم على تخمين فريق (أ)'}
+                  {isClueGiverA ? `أنت مرشد ${teamA.name} وبتحكم على ${teamB.name}` : `أنت مرشد ${teamB.name} وبتحكم على ${teamA.name}`}
                 </span>
               </div>
 
@@ -220,7 +233,31 @@ export default function PasswordDualView({ isMobile = false }) {
                   <span>[مخالفة كلمة ممنوعة -1] ⚠️</span>
                 </button>
               </div>
-            </div>
+            </div>}
+
+
+            {/* Resolution outcome and next card trigger */}
+            {r2.cardState === 'resolved' && (
+              <div className="p-3 bg-arena-card border border-arena-yellow/40 rounded-xl text-center space-y-2">
+                <span className="text-xs font-bold text-arena-yellow">
+                  تم حسم هذه البطاقة بنجاح!
+                </span>
+                {(isHost || isR2Referee) && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={handleNextCard}
+                      disabled={isAdvancing}
+                      className={`btn-arcade-yellow px-5 py-2 rounded-xl text-xs font-black inline-flex items-center gap-1.5 cursor-pointer shadow hover:scale-105 ${
+                        isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      <span>البطاقة التالية (Next Card) ➡️</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Timer controls */}
             <div className="flex items-center justify-center gap-3 pt-2">

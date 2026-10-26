@@ -396,7 +396,7 @@ export class TriviaEngine {
     let queue = this.questionQueuesByRoom.get(key);
     if (!queue) {
       const available = this.inMemoryBank.filter(question => question.mode === mode && isServableQuestion(question) && !this.getServedSet(roomId).has(question.id));
-      queue = new QuestionQueue(available);
+      queue = new QuestionQueue(available, this.getServedSet(roomId));
       this.questionQueuesByRoom.set(key, queue);
     }
     let question;
@@ -415,12 +415,19 @@ export class TriviaEngine {
     const key = `${roomId}:${mode}`;
     let queue = this.questionQueuesByRoom.get(key);
     if (!queue) {
-      queue = new QuestionQueue(this.inMemoryBank.filter(item => item.mode === mode && isServableQuestion(item) && !this.getServedSet(roomId).has(item.id)));
+      queue = new QuestionQueue(this.inMemoryBank.filter(item => item.mode === mode && isServableQuestion(item) && !this.getServedSet(roomId).has(item.id)), this.getServedSet(roomId));
       this.questionQueuesByRoom.set(key, queue);
     }
     const selected = queue.take(question);
     if (selected) this.getServedSet(roomId).add(selected.id);
     return selected;
+  }
+
+
+  preloadNextQuestion(mode, roomId) {
+    const key = `${roomId}:${mode}`;
+    const queue = this.questionQueuesByRoom.get(key);
+    return queue ? queue.preloadNext() : null;
   }
 
   replenishAndPick(category, mode) {

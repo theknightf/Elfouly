@@ -27,7 +27,7 @@ export const CHARACTERS = [
     avatar: '🍦',
     color: '#FFD200',
     accentColor: '#b39200',
-    badge: 'دكتور الحبايب وخبير الجيلاتي',
+    badge: 'طبيب الحبايب وخبير الجيلاتي',
     catchphrase: 'بيلا فيتا يا عيوني.. الجيلاتي مظبوط والتشريح بالفيمتو ثانية!',
     lore: 'طبيب بيطري فنان في الجيلاتي والحلويات، عاشق للأهلي والكرة الحديثة ومرجع إسلامي معتمد في السهرة.',
     attributes: ['veterinary_biology', 'gelato_sweets', 'football_post_2010', 'islamic_studies'],

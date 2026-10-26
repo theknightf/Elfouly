@@ -20,11 +20,8 @@ import {
 const ROOM_BODY_LENGTH = 6;
 const PIXEL_ART_BG = "https://lh3.googleusercontent.com/aida-public/AB6AXuAcaQl_g0dkRzM5iLmCvCWVZwoMUSS--Mogk7_MIAwTSfG329zGrLNqE1icHdfA_wfTm2avdfIXHh9VGGUFVn0XILo-_FtM92pGnBj1csJ3sKjh-_pWYwWv1LhK80cqIQGdP7DKfz7AO6-Q31QwR88SiRD4CkHU89iw_W3Z_CoJejfZ_VRTuvGGb4nmTu2AMUjTw4vCTsyAUOlCLjK0lelBue4iFDnE5INCS5lTfI7fhWKD_LKRJG3uyzM3gjZzMuIufvY";
 
-function toRoomBody(value, { stripPrefix = true } = {}) {
-  let raw = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (stripPrefix && raw.startsWith('QZ') && raw.length > ROOM_BODY_LENGTH) {
-    raw = raw.slice(2);
-  }
+function toRoomBody(value) {
+  let raw = String(value || '').replace(/\D/g, '');
   return raw.slice(0, ROOM_BODY_LENGTH);
 }
 
@@ -146,9 +143,8 @@ export default function Landing() {
   };
 
   const handleCodeChange = (event) => {
-    const raw = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const body = raw.startsWith('QZ') && raw.length > ROOM_BODY_LENGTH ? raw.slice(2) : raw;
-    setJoinCode(body.slice(0, ROOM_BODY_LENGTH));
+    const digits = event.target.value.replace(/\D/g, '');
+    setJoinCode(digits.slice(0, ROOM_BODY_LENGTH));
     setFormError(null);
     clearActionError();
   };
@@ -482,7 +478,7 @@ export default function Landing() {
             <div className="text-center space-y-1">
               <span className="text-2xl">🔑</span>
               <h2 className="font-rubik font-black text-lg text-arena-yellow">ادخل بكود الغرفة</h2>
-              <p className="text-xs text-gray-300">الكود مكون من 6 خانات بعد QZ-</p>
+              <p className="text-xs text-gray-300">كود الغرفة مكوّن من 6 أرقام</p>
             </div>
 
             <div className="space-y-3">
@@ -509,11 +505,13 @@ export default function Landing() {
                     </span>
                     <input
                       ref={codeInputRef}
-                      type="text"
+                      type="tel"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={joinCode}
                       onChange={handleCodeChange}
                       maxLength={ROOM_BODY_LENGTH}
-                      placeholder="XXXXXX"
+                      placeholder="123456"
                       className="w-full rounded-xl bg-black/60 border border-white/20 pl-11 pr-3 py-2 text-sm text-white font-mono font-bold uppercase tracking-widest text-center"
                     />
                   </div>

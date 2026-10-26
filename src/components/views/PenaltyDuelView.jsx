@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useGame } from '../../context/GameContext';
 import { useTriviaRoom } from '../../hooks/useTriviaRoom';
 import { sounds } from '../../utils/soundEffects';
@@ -28,6 +28,7 @@ export default function PenaltyDuelView({ isMobile = false }) {
     r3InterceptBuzz,
     r3RecordShot,
     r3SubmitAnswer,
+    r3NextShot,
     isConnected,
     showToast
   } = useGame();
@@ -35,6 +36,7 @@ export default function PenaltyDuelView({ isMobile = false }) {
   const triviaRoom = useTriviaRoom();
   const {
     activeQuestion,
+    nextQuestion,
     isKicker,
     isGoalie,
     isDuelist,
@@ -46,6 +48,20 @@ export default function PenaltyDuelView({ isMobile = false }) {
   const [answerFeedback, setAnswerFeedback] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const [showKey, setShowKey] = useState(false);
+  const [isAdvancing, setIsAdvancing] = useState(false);
+
+  useEffect(() => {
+    if (r3.phase === 'duelist_selection' || r3.shotState === 'selection') {
+      setIsAdvancing(false);
+    }
+  }, [r3.phase, r3.shotState, r3.turnIndex]);
+
+  const handleNextShot = () => {
+    if (isAdvancing) return;
+    setIsAdvancing(true);
+    r3NextShot();
+  };
+  const timeoutHandledRef = useRef(null);
 
   const kickerTeamKey = r3.kickerTeam || 'team_a';
   const kickerTeam = roomState?.teams?.[kickerTeamKey] || { name: 'فريق الحيتان', score: 0 };
@@ -74,13 +90,16 @@ export default function PenaltyDuelView({ isMobile = false }) {
       return undefined;
     }
     const endTime = r3.endTime || r3.shotStartedAt + (r3.timer || 20) * 1000;
+    const shotToken = `${r3.turnIndex}:${r3.shotStartedAt}`;
     const timer = new RoundTimer(remainingMs => setTimeLeft(Math.ceil(remainingMs / 1000)), () => {
+      if (timeoutHandledRef.current === shotToken) return;
+      timeoutHandledRef.current = shotToken;
       setAnswerFeedback({ correct: false, timeout: true });
-      if (!isConnected) r3RecordShot(isIntercepted ? 'saved' : 'missed');
+      if (isPenaltyReferee) r3RecordShot(isIntercepted ? 'saved' : 'missed');
     });
     timer.start(Math.max(0, (endTime - Date.now()) / 1000));
     return () => timer.dispose();
-  }, [r3.phase, r3.shotStartedAt, r3.endTime, r3.timer, r3.turnIndex, r3.isComplete, isIntercepted, isConnected, r3RecordShot]);
+  }, [r3.phase, r3.shotStartedAt, r3.endTime, r3.timer, r3.turnIndex, r3.isComplete, isIntercepted, isPenaltyReferee, r3RecordShot]);
 
   const categoryId = activeQuestion?.categoryName || activeQuestion?.category;
   const isGeneral = isGeneralCategory(categoryId);
@@ -152,7 +171,7 @@ export default function PenaltyDuelView({ isMobile = false }) {
       </div>
 
       {/* Main Question Card (Visible to all) */}
-      <div className="bg-arena-card rounded-3xl p-4 sm:p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] relative overflow-hidden">
+      {(!isKicker || r3.phase !== 'shootout') && <div className="bg-arena-card rounded-3xl p-4 sm:p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] relative overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/30">
@@ -179,7 +198,6 @@ export default function PenaltyDuelView({ isMobile = false }) {
         <h3 className="text-xl md:text-2xl font-black text-white leading-relaxed text-right min-h-[60px] drop-shadow-[0_2px_0_#090614]">
           {activeQuestion.question_text || activeQuestion.question}
         </h3>
-        {r3.phase === 'shootout' && <div className="mt-3 text-center font-mono text-2xl font-black text-arena-yellow" role="timer">{timeLeft}s</div>}
         {r3.phase === 'shootout' && <div className="mt-3 inline-flex rounded-full bg-arena-darker px-3 py-1 font-mono text-arena-yellow" role="timer">⏱ {timeLeft}s</div>}
         {answerFeedback && <div className={`mt-3 rounded-xl p-3 text-center font-black ${answerFeedback.timeout ? 'bg-red-700/40 text-red-200' : 'bg-amber-700/40 text-amber-100'}`} role="status">{answerFeedback.timeout ? 'انتهى الوقت — الإجابة اتحسمت' : 'تم استلام إجابتك — جاري حسم الركلة فورًا'}</div>}
 
@@ -190,7 +208,7 @@ export default function PenaltyDuelView({ isMobile = false }) {
             <span>الحارس ضغط زر الصد! مطلوب منه تسميع الإجابة شفهياً الآن!</span>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* ================= VIEW A: KICKER (MC Options) ================= */}
       {isKicker && (
@@ -292,6 +310,49 @@ export default function PenaltyDuelView({ isMobile = false }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Question Resolution Outcome (Next Shot trigger with double-click guard) */}
+      {(r3.shotState === 'resolved' || r3.lastShotResult) && (
+        <div className="p-4 bg-surface-container-high rounded-2xl border-2 border-primary-container shadow-xl flex flex-col md:flex-row items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">
+              {r3.lastShotResult?.result === 'goal' ? '⚽' : r3.lastShotResult?.result === 'saved' ? '🧤' : '❌'}
+            </span>
+            <div className="text-right">
+              <span className="font-headline-sm text-sm md:text-base font-black text-arena-yellow">
+                {r3.lastShotResult?.result === 'goal'
+                  ? 'تم تسجيل هدف بنجاح! Goal! 🎉'
+                  : r3.lastShotResult?.result === 'saved'
+                  ? 'تم التصدي للركلة بنجاح! Saved! 🧤'
+                  : 'الركلة ضاعت خارج المرمى! Missed! ❌'}
+              </span>
+              <p className="text-xs text-gray-400">
+                اضغط على زر الركلة التالية للمتابعة دون أي تأخير
+              </p>
+            </div>
+          </div>
+
+          {(isHost || isPenaltyReferee) && (
+            <button
+              type="button"
+              onClick={handleNextShot}
+              disabled={isAdvancing}
+              className={`btn-arcade-yellow px-6 py-2.5 rounded-xl font-black text-xs md:text-sm flex items-center gap-2 cursor-pointer shadow-lg hover:scale-[1.02] transition-all ${
+                isAdvancing ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            >
+              <span>الركلة التالية (Next Shot) ➡️</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Preloaded next penalty question rendered hidden for 0ms font & layout delay */}
+      {nextQuestion && (
+        <div className="hidden" aria-hidden="true">
+          {nextQuestion.question_text || nextQuestion.question}
         </div>
       )}
 
