@@ -10,6 +10,8 @@ import BonusAuction from './components/BonusAuction';
 import GameOver from './components/GameOver';
 import MobileController from './components/MobileController';
 import TauntChat from './components/TauntChat';
+import RoleAlertModal from './components/RoleAlertModal';
+import GameProgressionControls from './components/GameProgressionControls';
 import ErrorBoundary from './components/ErrorBoundary';
 import { PlayCircle, Lock, Shield, Gavel, Trophy, Sparkles } from 'lucide-react';
 
@@ -45,6 +47,11 @@ function GameScreen() {
             <MobileController />
           ) : (
             <>
+              {['round1', 'round2', 'round3', 'round4'].includes(currentStatus) && (
+                <div className="max-w-7xl mx-auto px-3 pt-3">
+                  <GameProgressionControls />
+                </div>
+              )}
               {(currentStatus === 'lobby' || currentStatus === 'waiting') && <Lobby />}
               {currentStatus === 'round1' && <Round1Bank />}
               {currentStatus === 'round2' && <Round2Password />}
@@ -131,6 +138,9 @@ function GameScreen() {
 
       {/* Floating Street Taunt Drawer */}
       <TauntChat />
+
+      {/* Blocking role alerts (answerer / judge / penalty shooter) */}
+      <RoleAlertModal />
     </div>
   );
 }

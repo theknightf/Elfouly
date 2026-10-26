@@ -75,8 +75,8 @@ async function runUiAudit() {
   // 6. Audit Round 3 ("حط في قريبي" / Penalty Shootouts)
   const r3Jsx = fs.readFileSync(path.resolve('src/components/Round3Penalty.jsx'), 'utf-8');
   check('6. Round 3 Penalties', '5-Kick Penalty Grid', r3Jsx.includes('teamAShots') && r3Jsx.includes('teamBShots'), 'Visual grid tracking 5 penalty shots per team');
-  check('6. Round 3 Penalties', 'Intercept Buzzer [صد يا بربخ!]', r3Jsx.includes('صد يا بربخ!') && r3Jsx.includes('animate-buzzer'), 'Giant glowing 3D intercept buzzer for goalkeeper');
-  check('6. Round 3 Penalties', '1v1 Matchup Spotlight', r3Jsx.includes('currentKicker') && r3Jsx.includes('currentGoalie'), 'Kicker vs Goalie avatar spotlight badges');
+  check('6. Round 3 Penalties', 'Judge Console [Goal / Miss]', r3Jsx.includes('Goal') && r3Jsx.includes('Miss') && r3Jsx.includes('judge'), 'Single judge records Goal or Miss for every kick');
+  check('6. Round 3 Penalties', 'Shooter vs Judge Spotlight', r3Jsx.includes('currentKicker') && r3Jsx.includes('judge'), 'Kicker vs Judge spotlight badges');
 
   // 7. Audit Round 4 ("مين يزوّد؟" / Blind Auction)
   const r4Jsx = fs.readFileSync(path.resolve('src/components/BonusAuction.jsx'), 'utf-8');
@@ -89,7 +89,7 @@ async function runUiAudit() {
   const mobileJsx = fs.readFileSync(path.resolve('src/components/MobileController.jsx'), 'utf-8');
   check('8. Mobile Controller', 'Smartphone Device Frame', mobileJsx.includes('rounded-[38px]') && mobileJsx.includes('max-w-md'), 'Simulates ergonomic touch controller frame');
   check('8. Mobile Controller', 'Dynamic Role Adaptability', mobileJsx.includes('isReaderInR1') && mobileJsx.includes('isAnsweringInR1'), 'Screen dynamically adapts to Reader, Goalie, Kicker, or Clue Giver');
-  check('8. Mobile Controller', 'Giant Touch Target Buzzers', mobileJsx.includes('py-8 rounded-3xl'), 'Meets touch accessibility targets >= 44px');
+  check('8. Mobile Controller', 'Large Touch Decision Buttons', mobileJsx.includes('py-3') && mobileJsx.includes('btn-arcade-green'), 'Meets touch accessibility targets >= 44px');
   check('8. Mobile Controller', 'Quick Egyptian Taunts Drawer', mobileJsx.includes('sendTaunt') && mobileJsx.includes('إفيهات وقفشات'), 'One-tap street-smart taunts bar');
 
   // Print Formatted Report Table

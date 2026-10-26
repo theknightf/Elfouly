@@ -145,3 +145,13 @@ export const TEAMS = [
   { id: 'team_a', name: 'فريق الحيتان (Team A)', color: '#00F2FE', score: 0, bank: 0 },
   { id: 'team_b', name: 'فريق الوحوش (Team B)', color: '#FF4B4B', score: 0, bank: 0 }
 ];
+
+export const TEAM_PRESETS = [
+  { id: 'whales_sharks', nameA: 'فريق الحيتان 🐬', nameB: 'فريق القروش 🦈', label: 'الحيتان والقروش' },
+  { id: 'pharaohs_legends', nameA: 'فريق الفراعنة 👑', nameB: 'فريق الأساطير ⚡', label: 'الفراعنة والأساطير' },
+  { id: 'falcons_eagles', nameA: 'صقور الأرينا 🦅', nameB: 'نسور الجيزة 🦅', label: 'الصقور والنسور' },
+  { id: 'derby', nameA: 'الأهلي 🔴', nameB: 'الزمالك ⚪', label: 'ديربي القمة' },
+  { id: 'wolves_tigers', nameA: 'ذئاب المعادي 🐺', nameB: 'نمور المنيا 🐯', label: 'الذئاب والنمور' },
+  { id: 'classic_ab', nameA: 'تيم أ (Team A) 🔵', nameB: 'تيم ب (Team B) 🔴', label: 'تيم أ وتيم ب' }
+];
+

@@ -241,19 +241,73 @@ async function run() {
       }, /صلاحية/);
     });
 
+    await test('Round 1 Bank / Continue belongs to the opposing team only', async () => {
+      const sockets = [await opened(), await opened(), await opened(), await opened()];
+      const { roomCode, state } = await setupFourPlayers(sockets, 'round1');
+      const r1 = state.round1;
+      const socketOf = (playerId: string) => sockets.find(socket => socket.id === playerId);
+      const answeringSocket = socketOf(r1.answeringPlayerId);
+      const activeTeamSocket = sockets.find(socket => {
+        const player = state.players.find((candidate: any) => candidate.id === socket.id);
+        return player?.team === r1.activeTeam;
+      });
+      const opponentSocket = sockets.find(socket => {
+        const player = state.players.find((candidate: any) => candidate.id === socket.id);
+        return player?.team !== r1.activeTeam;
+      });
+      assert(answeringSocket && activeTeamSocket && opponentSocket, 'Could not resolve Round 1 bank roles');
+
+      const scoredPromise = waitForRoomState(
+        sockets[0],
+        room => (room.round1?.pendingPoints || 0) === 100
+      );
+      const referee = socketOf(r1.refereePlayerId);
+      referee.emit('r1_action_score', { roomCode, actionToken: r1.actionToken });
+      const scored = await scoredPromise;
+      assert(scored.round1.pendingPoints === 100, 'Correct answer did not build the pot');
+
+      await expectErrorMessage(answeringSocket, () => {
+        answeringSocket.emit('r1_action_bank', { roomCode });
+      }, /الخصم|ممنوع/);
+      await expectErrorMessage(activeTeamSocket, () => {
+        activeTeamSocket.emit('r1_action_continue', { roomCode });
+      }, /الخصم|ممنوع/);
+
+      const bankedPromise = waitForRoomState(
+        sockets[0],
+        room => room.teams[r1.activeTeam].score === 100 && (room.round1?.pendingPoints || 0) === 0
+      );
+      opponentSocket.emit('r1_action_bank', { roomCode });
+      const banked = await bankedPromise;
+      assert(banked.round1.lastDecision === 'bank', 'Bank decision was not recorded');
+
+      await expectErrorMessage(answeringSocket, () => {
+        answeringSocket.emit('r1_action_continue', { roomCode });
+      }, /الخصم|ممنوع/);
+
+      const continuedPromise = waitForRoomState(
+        sockets[0],
+        room => room.round1?.lastDecision === 'continue'
+      );
+      opponentSocket.emit('r1_action_continue', { roomCode });
+      await continuedPromise;
+    });
+
     await test('Round 3 hides answers, gates submissions, and rejects unofficial options', async () => {
       const sockets = [await opened(), await opened(), await opened(), await opened()];
       const { roomCode, state } = await setupFourPlayers(sockets, 'round3');
       const kickerId = state.round3.currentKickerId;
       const goalieId = state.round3.currentGoalieId;
+      const judgeId = state.round3.refereePlayerId;
       const kicker = sockets.find(socket => socket.id === kickerId);
       const goalie = sockets.find(socket => socket.id === goalieId);
+      const judge = sockets.find(socket => socket.id === judgeId);
       const host = sockets[0];
-      assert(kicker && goalie && kicker.id !== goalie.id, 'Round 3 duelists were not assigned');
+      assert(kicker && goalie && judge, 'Round 3 roles were not assigned');
 
       await expectErrorMessage(goalie, () => {
         goalie.emit('r3_start_shootout', { roomCode });
-      }, /الهوست|الحكم/);
+      }, /ممثل الفريق الضارب|الحكم/);
 
       const shootoutPromise = waitForRoomState(sockets[0], room => room.round3.phase === 'shootout');
       host.emit('r3_start_shootout', { roomCode });
@@ -270,8 +324,23 @@ async function run() {
         kicker.emit('r3_submit_answer', { roomCode, option: '__not_an_official_option__' });
       }, /الخيارات/);
 
-      const settledPromise = waitForRoomState(sockets[0], room => room.round3.turnIndex === 1);
+      const lockedPromise = waitForRoomState(
+        sockets[0],
+        room => !!room.round3.pendingAnswer
+      );
       kicker.emit('r3_submit_answer', { roomCode, option });
+      await lockedPromise;
+
+      await expectErrorMessage(kicker, () => {
+        kicker.emit('r3_submit_answer', { roomCode, option: shootout.round3.currentQuestion.options[1] });
+      }, /بالفعل/);
+
+      await expectErrorMessage(goalie, () => {
+        goalie.emit('r3_record_shot', { roomCode, result: 'goal' });
+      }, /الحكم/);
+
+      const settledPromise = waitForRoomState(sockets[0], room => room.round3.turnIndex === 1);
+      judge.emit('r3_record_shot', { roomCode, result: 'goal' });
       await settledPromise;
     });
 

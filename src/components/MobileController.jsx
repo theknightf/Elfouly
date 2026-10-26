@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { CHARACTERS } from '../data/characters';
 import {
-  Smartphone, Zap, Shield, Vault, Flame, PhoneCall, Lightbulb, CheckSquare, Square, UserPlus
+  Smartphone, Zap, Vault, Flame, PhoneCall, Lightbulb, CheckSquare, Square, UserPlus
 } from 'lucide-react';
 
 export default function MobileController() {
@@ -11,11 +11,11 @@ export default function MobileController() {
     r1Score,
     r1Break,
     r1Bank,
+    r1Continue,
     r2AwardPoint,
     r2SkipCard,
     r2Foul,
     r2TimeFreeze,
-    r3InterceptBuzz,
     r3RecordShot,
     r3SubmitAnswer,
     r3SelectDuelists,
@@ -37,9 +37,10 @@ export default function MobileController() {
   // Round 1 Roles
   const r1 = roomState?.round1 || {};
   const isAnsweringInR1 = r1.answeringPlayerId === player?.id;
-  const isReaderInR1 = r1.readerPlayerId === player?.id;
+  const isReaderInR1 = (r1.refereePlayerId || r1.readerPlayerId) === player?.id;
   const isTeammateInR1 = player?.team === r1.activeTeam && !isAnsweringInR1;
   const isOpponentInR1 = player?.team !== r1.activeTeam && !isReaderInR1;
+  const hasLiveR1Question = !!r1.currentQuestion;
 
   // Round 2 Roles
   const r2 = roomState?.round2 || {};
@@ -57,12 +58,13 @@ export default function MobileController() {
   // Round 3 Roles
   const r3 = roomState?.round3 || {};
   const isKickerInR3 = r3.currentKickerId === player?.id;
-  const isGoalieInR3 = r3.currentGoalieId === player?.id;
   const isRefereeInR3 = r3.refereePlayerId === player?.id;
-  const canStartR3 = !!player?.isHost || isRefereeInR3;
   const isDuelistSelectionInR3 = r3.phase === 'duelist_selection';
   const kickingTeamKeyInR3 = r3.kickerTeam || 'team_a';
+  const kickingTeamPlayersInR3 = (roomState?.players || []).filter(p => p.team === kickingTeamKeyInR3);
   const isKickingTeamInR3 = player?.team === kickingTeamKeyInR3;
+  const isR3Representative = !!player && kickingTeamPlayersInR3[0]?.id === player.id;
+  const canStartR3 = (isKickingTeamInR3 && isR3Representative) || false;
   const currentCategoryInR3 = r3.currentCategory || { name: 'برشلونة وأوروبا (بعد 2010)', icon: '⚽', hint: 'تخصص كروي' };
 
   // Round 4 Roles
@@ -122,7 +124,9 @@ export default function MobileController() {
               player?.team === 'team_a' ? 'bg-arena-cyan/20 text-arena-cyan' : 'bg-arena-red/20 text-arena-red'
             }`}
           >
-            {player?.team === 'team_a' ? 'الحيتان A' : 'الوحوش B'}
+            {player?.team === 'team_a' 
+              ? (roomState?.teams?.team_a?.name || 'فريق أ') 
+              : (roomState?.teams?.team_b?.name || 'فريق ب')}
           </div>
         </div>
 
@@ -154,7 +158,7 @@ export default function MobileController() {
             <div className="flex items-center justify-between text-xs border-b border-white/10 pb-2">
               <span className="font-bold text-arena-yellow">جولة 1: "1 تو" (Bank)</span>
               <span className="font-mono text-[10px] text-gray-400">
-                سؤال {(r1.subBatchQuestionsAnswered || 0) + 1}/6 (إجمالي {r1.totalQuestionsAnswered || 0}/48)
+                سؤال {(r1.segmentQuestionsAnswered || 0) + 1}/12 (إجمالي {r1.totalQuestionsAnswered || 0}/48)
               </span>
             </div>
 
@@ -182,6 +186,31 @@ export default function MobileController() {
                     غلط (تصفير) ❌
                   </button>
                 </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={r1Bank}
+                    disabled={!hasLiveR1Question || (r1.pendingPoints || 0) === 0}
+                    className={`py-2.5 rounded-xl font-black text-[11px] flex items-center justify-center gap-1 ${
+                      hasLiveR1Question && (r1.pendingPoints || 0) > 0
+                        ? 'btn-arcade-yellow cursor-pointer'
+                        : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    <Vault className="w-4 h-4" />
+                    <span>BANK! أمّن 🔒</span>
+                  </button>
+                  <button
+                    onClick={r1Continue}
+                    disabled={!hasLiveR1Question}
+                    className={`py-2.5 rounded-xl font-black text-[11px] flex items-center justify-center gap-1 ${
+                      hasLiveR1Question ? 'btn-arcade-cyan cursor-pointer' : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    <Flame className="w-4 h-4" />
+                    <span>CONTINUE كمل 🔥</span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -203,26 +232,11 @@ export default function MobileController() {
                   </div>
                 </div>
 
-                <button
-                  onClick={r1Bank}
-                  disabled={(r1.pendingPoints || 0) === 0}
-                  className={`w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 ${
-                    (r1.pendingPoints || 0) === 0
-                      ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                      : 'btn-arcade-yellow cursor-pointer'
-                  }`}
-                >
-                  <Vault className="w-5 h-5 fill-current" />
-                  <span>أمّن في الخزنة BANK! 🔒</span>
-                </button>
-
-                <button
-                  onClick={() => showToast('دبّل وكمل!', 'قررت المغامرة ومواصلة صعود السلّم!')}
-                  className="w-full btn-arcade-cyan py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Flame className="w-4 h-4 fill-current" />
-                  <span>دبّل / كمّل للمضاعف التالي 🔥</span>
-                </button>
+                <div className="bg-arena-card p-3 rounded-2xl text-center border border-white/10">
+                  <p className="text-xs font-bold text-gray-300">
+                    🔒 قرار الخزنة (Bank / Continue) من حق الفريق الخصم فقط.
+                  </p>
+                </div>
               </div>
             )}
 
@@ -232,7 +246,7 @@ export default function MobileController() {
                 <div className="text-3xl">📣</div>
                 <div className="text-sm font-black text-arena-cyan">فريقك في وضع الهجوم!</div>
                 <p className="text-xs text-gray-300">
-                  زميلك يجيب على الـ 6 أسئلة الخاصة بهذه الفقرة. شجعه وقول له يأمن في الخزنة لو النقاط تستاهل!
+                  زميلك يجيب بالتبادل على أسئلة فقرة الـ 12. قرار الخزنة عند الفريق الخصم فقط.
                 </p>
                 <div className="bg-arena-darker p-2.5 rounded-xl font-mono text-arena-yellow font-black text-lg">
                   {(r1.pendingPoints || 0).toLocaleString()} نقطة معلقة
@@ -246,8 +260,32 @@ export default function MobileController() {
                 <div className="text-3xl">👀</div>
                 <div className="text-sm font-black text-arena-red">فريق الخصم يجيب الآن</div>
                 <p className="text-xs text-gray-300">
-                  زميلك في الفريق يقرأ لهم الأسئلة ويحكم. استعد لتبديل الدور بعد انتهاء فقرتهم!
+                  فريقك هو الخصم — قرار الخزنة (Bank / Continue) من حقكم أنتم فقط.
                 </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={r1Bank}
+                    disabled={!hasLiveR1Question || (r1.pendingPoints || 0) === 0}
+                    className={`py-2.5 rounded-xl font-black text-[11px] flex items-center justify-center gap-1 ${
+                      hasLiveR1Question && (r1.pendingPoints || 0) > 0
+                        ? 'btn-arcade-yellow cursor-pointer'
+                        : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    <Vault className="w-4 h-4" />
+                    <span>BANK! أمّن 🔒</span>
+                  </button>
+                  <button
+                    onClick={r1Continue}
+                    disabled={!hasLiveR1Question}
+                    className={`py-2.5 rounded-xl font-black text-[11px] flex items-center justify-center gap-1 ${
+                      hasLiveR1Question ? 'btn-arcade-cyan cursor-pointer' : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    <Flame className="w-4 h-4" />
+                    <span>CONTINUE كمل 🔥</span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -343,31 +381,24 @@ export default function MobileController() {
                   <div className="text-[10px] text-gray-400">{currentCategoryInR3.hint}</div>
                 </div>
 
-                {/* Duelist Pickers */}
+                {/* Shooter picker — representative of the kicking team only */}
                 <div className="space-y-2">
                   <div className="text-[11px] font-bold text-gray-300">
-                    {isKickingTeamInR3 ? '🎯 اختر مسدد فريقك:' : '🧤 اختر حارس مرمى فريقك:'}
+                    {isR3Representative
+                      ? '🎯 أنت ممثل الفريق — اختر المسدد:'
+                      : `🎯 ممثل ${roomState?.teams?.[kickingTeamKeyInR3]?.name || 'الفريق'} هو من يختار المسدد.`}
                   </div>
-                  <div className="space-y-1.5">
-                    {(roomState?.players || [])
-                      .filter(p => p.team === (isKickingTeamInR3 ? kickingTeamKeyInR3 : (kickingTeamKeyInR3 === 'team_a' ? 'team_b' : 'team_a')))
-                      .map(p => {
-                        const isSelected = isKickingTeamInR3 ? p.id === r3.currentKickerId : p.id === r3.currentGoalieId;
+                  {isR3Representative && (
+                    <div className="space-y-1.5">
+                      {kickingTeamPlayersInR3.map(p => {
+                        const isSelected = p.id === r3.currentKickerId;
                         return (
                           <button
                             key={p.id}
-                            onClick={() => {
-                              if (isKickingTeamInR3) {
-                                r3SelectDuelists(p.id, null);
-                              } else {
-                                r3SelectDuelists(null, p.id);
-                              }
-                            }}
+                            onClick={() => r3SelectDuelists(p.id, r3.currentGoalieId || null)}
                             className={`w-full p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
                               isSelected
-                                ? isKickingTeamInR3
-                                  ? 'bg-arena-cyan/20 border-arena-cyan text-white shadow-sm'
-                                  : 'bg-arena-red/20 border-arena-red text-white shadow-sm'
+                                ? 'bg-arena-cyan/20 border-arena-cyan text-white shadow-sm'
                                 : 'bg-arena-card border-white/10 text-gray-400'
                             }`}
                           >
@@ -376,12 +407,13 @@ export default function MobileController() {
                               <span>{p.name}</span>
                             </div>
                             {isSelected && (
-                              <span className="text-[10px] text-arena-yellow font-black">تم الاعتماد ✔️</span>
+                              <span className="text-[10px] text-arena-yellow font-black">المسدد ✔️</span>
                             )}
                           </button>
                         );
                       })}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 <button
@@ -412,13 +444,13 @@ export default function MobileController() {
                         <button
                           key={i}
                           onClick={() => {
-                            if (!isKickerInR3 || r3.tieBreakActive) return;
-                            showToast('تم إرسال إجابتك ⚽', 'السيرفر هو من يحسم الهدف أو التصدي.');
+                            if (!isKickerInR3 || r3.pendingAnswer) return;
+                            showToast('تم تسجيل إجابتك 🔒', 'الحكم الوحيد هو من يعتمد النتيجة الآن.');
                             r3SubmitAnswer(opt);
                           }}
-                          disabled={!isKickerInR3 || r3.tieBreakActive}
+                          disabled={!isKickerInR3 || !!r3.pendingAnswer}
                           className={`p-3 rounded-xl font-bold text-gray-200 border border-white/10 transition-all text-right flex items-center justify-between shadow-sm ${
-                            isKickerInR3 && !r3.tieBreakActive
+                            isKickerInR3 && !r3.pendingAnswer
                               ? 'bg-arena-darker hover:bg-arena-cyan/20 hover:border-arena-cyan cursor-pointer active:scale-95'
                               : 'bg-arena-darker/50 text-gray-500 cursor-not-allowed'
                           }`}
@@ -429,39 +461,27 @@ export default function MobileController() {
                       ))}
                     </div>
                   )}
+                  {r3.pendingAnswer && (
+                    <div className="text-[10px] text-arena-cyan font-bold text-center">
+                      🔒 تم تسجيل الإجابة — في انتظار قرار الحكم.
+                    </div>
+                  )}
                 </div>
 
-                {/* Giant Intercept Buzzer for Goalie */}
-                <div className="space-y-2 text-center">
-                  <div className="text-xs text-gray-400">
-                    {isGoalieInR3 ? '🧤 أنت حارس المرمى! اضغط على البزر للصد:' : 'بزر الصد المباشر:'}
-                  </div>
-                  <button
-                    onClick={r3InterceptBuzz}
-                    disabled={!isGoalieInR3 || !!r3.interceptBuzzedBy}
-                    className={`w-full py-8 rounded-3xl font-black text-xl flex flex-col items-center justify-center gap-2 ${
-                      isGoalieInR3 && !r3.interceptBuzzedBy
-                        ? 'btn-arcade-red animate-buzzer cursor-pointer'
-                        : 'bg-arena-card text-gray-500 cursor-not-allowed'
-                    }`}
-                  >
-                    <Shield className="w-8 h-8 fill-current" />
-                    <span>صد يا بربخ! (Intercept) 🛡️</span>
-                  </button>
-                </div>
-
-                {/* Neutral referee tie-break decision only */}
-                {isRefereeInR3 && r3.tieBreakActive && (
-                  <div className="grid grid-cols-3 gap-2">
-                    <button onClick={() => r3RecordShot('goal')} className="btn-arcade-green py-2.5 rounded-xl font-black text-xs">
-                      هدف ⚽
-                    </button>
-                    <button onClick={() => r3RecordShot('saved')} className="btn-arcade-yellow py-2.5 rounded-xl font-black text-xs">
-                      اتصدت 🧤
-                    </button>
-                    <button onClick={() => r3RecordShot('missed')} className="btn-arcade-red py-2.5 rounded-xl font-black text-xs">
-                      ضاعت ❌
-                    </button>
+                {/* Single judge decides Goal / Miss */}
+                {isRefereeInR3 && (
+                  <div className="space-y-2">
+                    <div className="text-[10px] text-arena-red font-black text-center">
+                      أنت الحكم الوحيد لهذه الركلة — اعتمد النتيجة:
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => r3RecordShot('goal')} className="btn-arcade-green py-3 rounded-xl font-black text-sm">
+                        هدف ⚽
+                      </button>
+                      <button onClick={() => r3RecordShot('missed')} className="btn-arcade-red py-3 rounded-xl font-black text-sm">
+                        ضاعت ❌
+                      </button>
+                    </div>
                   </div>
                 )}
               </>

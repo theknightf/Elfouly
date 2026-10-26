@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useGame } from '../context/GameContext';
-import { CHARACTERS } from '../data/characters';
+import { CHARACTERS, TEAM_PRESETS } from '../data/characters';
+import HostTeamManager from './HostTeamManager';
 import {
   CheckCircle,
   Clock,
@@ -14,7 +15,8 @@ import {
   Zap,
   Loader2,
   WifiOff,
-  AlertTriangle
+  AlertTriangle,
+  Edit3
 } from 'lucide-react';
 
 export default function Lobby() {
@@ -31,6 +33,7 @@ export default function Lobby() {
     countdown,
     startMatchCountdown,
     updatePlayerProfile,
+    updateTeamNames,
     actionError,
     showToast
   } = useGame();
@@ -49,16 +52,6 @@ export default function Lobby() {
   useEffect(() => {
     if (me?.team) setSelectedTeam(me.team);
   }, [me?.team]);
-
-  const takenByOthers = useMemo(() => {
-    const map = new Map();
-    players.forEach(player => {
-      if (player.id !== me?.id && player.character?.id) {
-        map.set(player.character.id, player.name);
-      }
-    });
-    return map;
-  }, [players, me?.id]);
 
   const teamACount = players.filter(player => player.team === 'team_a').length;
   const teamBCount = players.filter(player => player.team === 'team_b').length;
@@ -79,7 +72,6 @@ export default function Lobby() {
   const canStart = isConnected && players.length === 4 && teamACount === 2 && teamBCount === 2 && allHumansConnected;
 
   const handleSelectCharacter = (character) => {
-    if (takenByOthers.has(character.id)) return;
     setSelectedCharId(character.id);
   };
 
@@ -285,12 +277,17 @@ export default function Lobby() {
               </div>
 
               <div className="text-[10px] font-black text-center rounded-lg py-1 border border-white/10 bg-arena-darker/80">
-                {player.team === 'team_a' ? 'الحيتان (A) 🐬' : 'الوحوش (B) 🦁'}
+                {player.team === 'team_a'
+                  ? (roomState?.teams?.team_a?.name || 'فريق A 🐬')
+                  : (roomState?.teams?.team_b?.name || 'فريق B 🦁')}
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Host Team Management Panel (Host Only) */}
+      <HostTeamManager />
 
       {/* Character + team selection */}
       <div className="rounded-3xl bg-arena-card border-2 border-arena-cyan/30 p-4 md:p-6 shadow-2xl space-y-5">
@@ -301,7 +298,7 @@ export default function Lobby() {
               <span>اختار شخصيتك وفريقك</span>
             </h2>
             <p className="text-xs text-gray-400 mt-1">
-              كل شخصية لصاحب واحد فقط. كل فريق حد أقصى لاعبين (2/2).
+              يمكن أكتر من لاعب يختاروا نفس الشخصية. كل فريق حد أقصى لاعبين (2/2).
             </p>
           </div>
 
@@ -316,23 +313,18 @@ export default function Lobby() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {CHARACTERS.map((char) => {
             const isSelected = selectedCharId === char.id;
-            const takenBy = takenByOthers.get(char.id);
-            const isTaken = Boolean(takenBy);
 
             return (
               <button
                 key={char.id}
                 type="button"
                 onClick={() => handleSelectCharacter(char)}
-                disabled={isTaken}
                 className={`relative text-right rounded-2xl p-3 border-2 transition-all duration-200 ${
-                  isTaken
-                    ? 'bg-arena-darker/40 border-white/5 opacity-55 cursor-not-allowed'
-                    : isSelected
-                      ? 'bg-arena-card shadow-xl scale-[1.01] cursor-pointer'
-                      : 'bg-arena-card/60 border-white/10 hover:border-white/30 cursor-pointer'
+                  isSelected
+                    ? 'bg-arena-card shadow-xl scale-[1.01] cursor-pointer'
+                    : 'bg-arena-card/60 border-white/10 hover:border-white/30 cursor-pointer'
                 }`}
-                style={{ borderColor: isSelected && !isTaken ? char.color : undefined }}
+                style={{ borderColor: isSelected ? char.color : undefined }}
               >
                 <div className="flex items-center gap-2">
                   <div
@@ -345,7 +337,7 @@ export default function Lobby() {
                     <div className="text-xs font-black text-white truncate">{char.name}</div>
                     <div className="text-[10px] text-arena-yellow font-bold truncate">{char.badge}</div>
                   </div>
-                  {isSelected && !isTaken && (
+                  {isSelected && (
                     <CheckCircle className="w-4 h-4 shrink-0" style={{ color: char.color }} />
                   )}
                 </div>
@@ -365,11 +357,6 @@ export default function Lobby() {
                   ))}
                 </div>
 
-                {isTaken && (
-                  <div className="mt-2 text-[10px] font-black text-arena-red bg-arena-red/10 border border-arena-red/30 rounded-lg px-2 py-1 truncate">
-                    محجوز لـ {takenBy}
-                  </div>
-                )}
               </button>
             );
           })}
@@ -378,6 +365,33 @@ export default function Lobby() {
         {characterError && (
           <p className="text-xs font-bold text-arena-red">{characterError}</p>
         )}
+
+        {/* Dynamic Team Presets & Custom Selection */}
+        <div className="bg-arena-darker/60 rounded-2xl p-3 border border-white/10 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-gray-300">
+            <span className="flex items-center gap-1.5 text-arena-yellow font-black">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>تخصيص ثنائي الفرق (اختر اسماً جاهزاً للمباراة):</span>
+            </span>
+            <span className="text-[10px] text-gray-400">انقر للتطبيق المباشر ⚡</span>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {TEAM_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  updateTeamNames({ team_a: preset.nameA, team_b: preset.nameB });
+                  showToast('تم تحديث أسماء الفرق! 🏷️', `${preset.nameA} ضد ${preset.nameB}`);
+                }}
+                className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-surface-container border border-white/10 hover:border-arena-cyan hover:text-arena-cyan transition-all cursor-pointer text-gray-200"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="flex flex-col md:flex-row md:items-center gap-3">
           <div className="flex flex-col sm:flex-row gap-2 flex-1">
@@ -393,7 +407,7 @@ export default function Lobby() {
                     : 'bg-arena-darker text-arena-cyan border-arena-cyan/30 hover:border-arena-cyan'
               }`}
             >
-              فريق الحيتان (A) 🐬
+              {roomState?.teams?.team_a?.name || 'فريق الحيتان (A) 🐬'}
               <span className="block text-[10px] mt-0.5 opacity-80">
                 {teamACount}/2 {isTeamFull('team_a') ? '— مكتمل' : ''}
               </span>
@@ -411,7 +425,7 @@ export default function Lobby() {
                     : 'bg-arena-darker text-arena-red border-arena-red/30 hover:border-arena-red'
               }`}
             >
-              فريق الوحوش (B) 🦁
+              {roomState?.teams?.team_b?.name || 'فريق الوحوش (B) 🦁'}
               <span className="block text-[10px] mt-0.5 opacity-80">
                 {teamBCount}/2 {isTeamFull('team_b') ? '— مكتمل' : ''}
               </span>

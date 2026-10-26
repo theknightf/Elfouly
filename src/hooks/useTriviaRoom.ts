@@ -239,7 +239,7 @@ export function useTriviaRoom() {
   // Active question guarantee: NEVER null or undefined during active rounds
   const activeQuestion = useMemo<Question>(() => {
     if (round === 'round1') {
-      const raw = r1.currentQuestion || questionsQueue[0] || {
+      const raw = r1.currentQuestion || r1.lastResult?.question || questionsQueue[0] || {
         question: 'ما هو الحيوان صاحب أطول فترة نوم شتوي؟',
         answer: 'القنفذ الأوروبي',
         categoryName: 'عالم الطبيعة والحيوان',
