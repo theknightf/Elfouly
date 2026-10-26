@@ -394,12 +394,19 @@ export class TriviaEngine {
   drawQueued(mode, roomId, candidates) {
     const key = `${roomId}:${mode}`;
     let queue = this.questionQueuesByRoom.get(key);
-    if (!queue || queue.remaining === 0) {
-      const available = candidates.filter(question => !this.getServedSet(roomId).has(question.id));
+    if (!queue) {
+      const available = this.inMemoryBank.filter(question => question.mode === mode && isServableQuestion(question) && !this.getServedSet(roomId).has(question.id));
       queue = new QuestionQueue(available);
       this.questionQueuesByRoom.set(key, queue);
     }
-    const question = queue.pop();
+    let question;
+    if (candidates) {
+      const candidateIds = new Set(candidates.map(item => item.id));
+      const selected = queue.items.slice(queue.cursor).find(item => candidateIds.has(item.id));
+      question = selected ? queue.take(selected) : null;
+    } else {
+      question = queue.pop();
+    }
     if (question) this.getServedSet(roomId).add(question.id);
     return question;
   }
@@ -407,8 +414,8 @@ export class TriviaEngine {
   takeQueued(mode, roomId, candidates, question) {
     const key = `${roomId}:${mode}`;
     let queue = this.questionQueuesByRoom.get(key);
-    if (!queue || queue.remaining === 0) {
-      queue = new QuestionQueue(candidates.filter(item => !this.getServedSet(roomId).has(item.id)));
+    if (!queue) {
+      queue = new QuestionQueue(this.inMemoryBank.filter(item => item.mode === mode && isServableQuestion(item) && !this.getServedSet(roomId).has(item.id)));
       this.questionQueuesByRoom.set(key, queue);
     }
     const selected = queue.take(question);
@@ -495,8 +502,7 @@ export class TriviaEngine {
     } else {
       if (preferredCategory) {
         const matching = this.inMemoryBank.filter(question => question.mode === mode && this.matchesCategory(question, preferredCategory) && isServableQuestion(question));
-        const selected = this.pickUnserved(mode, [preferredCategory], servedSet);
-        chosenQuestion = selected ? this.takeQueued(mode, roomId, matching, selected) : this.drawQueued(mode, roomId, matching);
+        chosenQuestion = this.drawQueued(mode, roomId, matching);
       }
       if (!chosenQuestion) {
         chosenQuestion = this.drawQueued(mode, roomId, this.inMemoryBank.filter(question => question.mode === mode && isServableQuestion(question)));
@@ -517,7 +523,8 @@ export class TriviaEngine {
     const { roomId, mode, category } = options;
     const servedSet = this.getServedSet(roomId);
 
-    let chosenQuestion = this.drawQueued(mode, roomId, this.inMemoryBank.filter(question => question.mode === mode && this.matchesCategory(question, category) && isServableQuestion(question)));
+    const categoryQuestions = this.inMemoryBank.filter(question => question.mode === mode && this.matchesCategory(question, category) && isServableQuestion(question));
+    let chosenQuestion = this.drawQueued(mode, roomId, categoryQuestions);
     if (!chosenQuestion) {
       chosenQuestion = this.replenishAndPick(category, mode);
     }

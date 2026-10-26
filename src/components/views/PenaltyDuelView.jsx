@@ -28,6 +28,7 @@ export default function PenaltyDuelView({ isMobile = false }) {
     r3InterceptBuzz,
     r3RecordShot,
     r3SubmitAnswer,
+    isConnected,
     showToast
   } = useGame();
 
@@ -75,11 +76,11 @@ export default function PenaltyDuelView({ isMobile = false }) {
     const endTime = r3.endTime || r3.shotStartedAt + (r3.timer || 20) * 1000;
     const timer = new RoundTimer(remainingMs => setTimeLeft(Math.ceil(remainingMs / 1000)), () => {
       setAnswerFeedback({ correct: false, timeout: true });
-      r3RecordShot(isIntercepted ? 'saved' : 'missed');
+      if (!isConnected) r3RecordShot(isIntercepted ? 'saved' : 'missed');
     });
     timer.start(Math.max(0, (endTime - Date.now()) / 1000));
     return () => timer.dispose();
-  }, [r3.phase, r3.shotStartedAt, r3.endTime, r3.timer, r3.turnIndex, r3.isComplete, isIntercepted, r3RecordShot]);
+  }, [r3.phase, r3.shotStartedAt, r3.endTime, r3.timer, r3.turnIndex, r3.isComplete, isIntercepted, isConnected, r3RecordShot]);
 
   const categoryId = activeQuestion?.categoryName || activeQuestion?.category;
   const isGeneral = isGeneralCategory(categoryId);

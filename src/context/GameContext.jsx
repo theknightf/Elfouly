@@ -1157,16 +1157,20 @@ export function GameProvider({ children }) {
   };
 
   const r3SubmitAnswer = (option) => {
-    if (socket && isConnected && roomCode) {
-      socket.emit('r3_submit_answer', { roomCode, option });
-      return;
-    }
-
     const currentQuestion = roomState?.round3?.currentQuestion;
     const norm = (value) => String(value || '').trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/\s+/g, ' ');
     const submitted = norm(option);
     const expected = norm(currentQuestion?.answer);
     const isCorrect = !!submitted && !!expected && submitted === expected;
+    if (socket && isConnected && roomCode) {
+      setRoomState(prev => {
+        if (prev.round3.phase !== 'shootout' || prev.round3.answerSubmitted) return prev;
+        return { ...prev, round3: { ...prev.round3, answerSubmitted: true, answerFeedback: { option, isCorrect } } };
+      });
+      socket.emit('r3_submit_answer', { roomCode, option });
+      return;
+    }
+
     const intercepted = !!roomState?.round3?.interceptBuzzedBy;
     setRoomState(prev => {
       if (prev.round3.phase !== 'shootout' || prev.round3.answerSubmitted) return prev;
