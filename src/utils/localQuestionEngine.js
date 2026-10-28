@@ -79,6 +79,8 @@ export function isServableQuestion(question) {
 }
 
 export function getCharacterAttributes(characterId) {
+  // A player's own chosen categories (array) win over the character's defaults (id).
+  if (Array.isArray(characterId) && characterId.length) return characterId;
   const character = CHARACTERS.find(char => char.id === characterId);
   return character?.attributes?.length ? character.attributes : ['general_knowledge'];
 }
@@ -92,6 +94,17 @@ export function buildLocalR1TurnPlan(characterId) {
   }));
   const randomSlots = [0, 1, 2].map(() => ({ slotType: 'random' }));
   return shuffleArray([...specialtySlots, ...randomSlots]);
+}
+
+/** Ids already served in this room, so other devices can be told (Supabase mode). */
+export function getServedIds(roomId = 'local_room') {
+  return [...getServedSet(roomId)];
+}
+
+/** Merge ids served elsewhere (another device) so this device never serves them again. */
+export function markServed(roomId = 'local_room', ids = []) {
+  const served = getServedSet(roomId);
+  for (const id of ids || []) served.add(id);
 }
 
 export function resetLocalQuestionSession(roomId = 'local_room') {
@@ -124,15 +137,31 @@ function getQuestionQueue(roomId, mode, served) {
   return queue;
 }
 
+// One-time-only: a question is never served twice in a room. Ids marked as served by
+// another device are skipped too.
 function drawQueued(roomId, mode, candidates, served) {
-  const queue = getQuestionQueue(roomId, mode, served);
-  let question = queue.peek();
-  if (candidates) {
-    const ids = new Set(candidates.map(item => item.id));
-    question = queue.items.slice(queue.cursor).find(item => ids.has(item.id)) || null;
-    if (question) question = queue.take(question);
-  } else {
-    question = queue.pop();
+  let queue = getQuestionQueue(roomId, mode, served);
+  const takeNext = () => {
+    if (candidates) {
+      const ids = new Set(candidates.map(item => item.id));
+      const found = queue.items.slice(queue.cursor).find(item => ids.has(item.id) && !served.has(item.id));
+      return found ? queue.take(found) : null;
+    }
+    let next;
+    do { next = queue.pop(); } while (next && served.has(next.id));
+    return next;
+  };
+
+  let question = takeNext();
+  const modePool = questionsBank.filter(item => item.mode === mode && isServableQuestion(item));
+  if (!question && modePool.length > 0 && modePool.every(item => served.has(item.id))) {
+    // Every question of this mode has been used once: start a fresh pass rather than freeze the match.
+    for (const item of questionsBank) {
+      if (item.mode === mode) served.delete(item.id);
+    }
+    queuesByRoom.delete(`${roomId}:${mode}`);
+    queue = getQuestionQueue(roomId, mode, served);
+    question = takeNext();
   }
   if (question) served.add(question.id);
   return question;

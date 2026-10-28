@@ -13,8 +13,8 @@ export const CHARACTERS = [
     attributes: ['football_post_2010', 'capitals_and_flags', 'general_knowledge'],
     attributesDisplay: ['كرة قدم بعد 2010 ⚽', 'عواصم وأعلام الدول 🌍', 'معلومات عامة ومنوعات 💡'],
     bonus: {
-      title: 'بوصلة الفولي',
-      description: 'معاينة تصنيف السؤال قبل بدء العد التنازلي (بدون أي مضاعف نقاط)',
+      title: 'بوصلة الفولي: غيّر السؤال',
+      description: 'بدّل السؤال الحالي بسؤال جديد (جولة 1 أو 3) — مرة واحدة في الماتش.',
       categoryPeek: true,
       appliedCategories: ['capitals_and_flags', 'general_knowledge', 'football_post_2010']
     }
@@ -33,8 +33,8 @@ export const CHARACTERS = [
     attributes: ['veterinary_biology', 'gelato_sweets', 'football_post_2010', 'islamic_studies'],
     attributesDisplay: ['بيولوجيا وبيطري 🔬', 'جيلاتي وحلويات 🍨', 'كرة قدم بعد 2010 ⚽', 'دراسات إسلامية 📖'],
     bonus: {
-      title: 'حماية الستريك البيلافيتا',
-      description: 'درع حماية ضد كسر الستريك في أسئلة التاريخ الإسلامي والبيولوجيا',
+      title: 'درع بيلافيتا',
+      description: 'أول إجابة غلط في جولة 1 بعد التفعيل متكلّفكش ستريك ولا سرقة — مرة واحدة.',
       streakShield: true,
       appliedCategories: ['islamic_studies', 'veterinary_biology', 'gelato_sweets']
     }
@@ -50,11 +50,11 @@ export const CHARACTERS = [
     badge: 'حائط الصد ومستر بريكينج باد',
     catchphrase: 'البربخ مسيطر.. مفيش شوتة ولا جون بيعدي من هنا!',
     lore: 'بيطري، مجمّع هاردوير احترافي، حافظ بريكينج باد كلمة بكلمة، والريال والأهلي في دمه.',
-    attributes: ['veterinary_medicine', 'pc_hardware_gaming', 'series_breaking_bad', 'football_post_2010', 'islamic_culture'],
+    attributes: ['veterinary_biology', 'pc_hardware_gaming', 'series_breaking_bad', 'football_post_2010', 'islamic_studies'],
     attributesDisplay: ['طب بيطري 🐾', 'هاردوير وجيمنج 🖥️', 'مسلسل Breaking Bad 🧪', 'كرة قدم بعد 2010 ⚽', 'ثقافة إسلامية 🕌'],
     bonus: {
-      title: 'حائط صد البربخ',
-      description: 'أعلى فرصة إنقاذ واعتراض (Intercept) كرات ترجيحية في جولة حط في قريبي',
+      title: 'حائط البربخ: صد فوري',
+      description: 'اعترض الركلة فورًا من غير ما تستنى 10 ثواني (جولة 3) — مرة واحدة.',
       interceptBonus: true,
       appliedCategories: ['football_post_2010', 'pc_hardware_gaming', 'series_breaking_bad']
     }
@@ -74,7 +74,7 @@ export const CHARACTERS = [
     attributesDisplay: ['مسلسلات أجنبية شهيرة 📺', 'كرة قدم بعد 2010 ⚽', 'معلومات عامة ومنوعات 💡'],
     bonus: {
       title: 'تجميد الوقت الفندقي',
-      description: 'خاصية تجميد الوقت +10 ثواني كاملة في الجولات السريعة (Time Freeze)',
+      description: 'زوّد +10 ثواني على بطاقة "اديني في سري" الحالية — مرة واحدة.',
       timeFreeze: 10,
       appliedCategories: ['popular_foreign_series', 'general_knowledge', 'football_post_2010']
     }
@@ -93,8 +93,8 @@ export const CHARACTERS = [
     attributes: ['football_post_2010', 'general_knowledge', 'gaming_tech'],
     attributesDisplay: ['كرة قدم بعد 2010 ⚽', 'معلومات عامة وأمثال 💡', 'جيمنج وتقنية 🎮'],
     bonus: {
-      title: 'جدار الحماية السيبراني',
-      description: 'حماية مضاعف الستريك وتأمين نقاط الفريق من أي خصم أو عقوبة',
+      title: 'جدار الأسد',
+      description: 'بيلغي أول خصم نقاط (مخالفة جولة 2 أو مزاد فاشل جولة 4) — مرة واحدة.',
       firewallProtection: true,
       appliedCategories: ['football_post_2010', 'general_knowledge', 'gaming_tech']
     }
@@ -113,8 +113,8 @@ export const CHARACTERS = [
     attributes: ['health_sciences_lab', 'console_pc_gaming', 'reflex_trivia'],
     attributesDisplay: ['علوم صحية وتحاليل 🧪', 'ألعاب كونسول وبي سي 🎮', 'أسئلة سرعة ورد فعل ⚡'],
     bonus: {
-      title: 'بزر السايبر فائق السرعة',
-      description: 'أفضلية +5 ثواني في الضغط على البزر وأولوية في أسئلة الجيمنج والتحاليل',
+      title: 'قفل السايبر',
+      description: 'امنع الفريق الخصم من المزايدة 10 ثواني في جولة 4 — مرة واحدة.',
       fastBuzzer: true,
       appliedCategories: ['console_pc_gaming', 'reflex_trivia', 'health_sciences_lab']
     }
@@ -133,8 +133,8 @@ export const CHARACTERS = [
     attributes: ['dentistry', 'cars_mechanics', 'fitness_gym'],
     attributesDisplay: ['طب وجراحة أسنان 🦷', 'ميكانيكا سيارات ومحركات 🏎️', 'فيتنس وكمال أجسام 💪'],
     bonus: {
-      title: 'دفعة التوربو السريعة',
-      description: '+15% بونص نقاط إضافية إذا جاوبت في أول 5 ثواني من السؤال!',
+      title: 'توربو علي ×1.5',
+      description: 'أول بطاقة سر صح أو مزاد ناجح بعد التفعيل بيدفع ×1.5 — مرة واحدة.',
       speedBonus: 1.15,
       appliedCategories: ['cars_mechanics', 'fitness_gym', 'dentistry']
     }
@@ -142,8 +142,8 @@ export const CHARACTERS = [
 ];
 
 export const TEAMS = [
-  { id: 'team_a', name: 'فريق الحيتان (Team A)', color: '#00F2FE', score: 0, bank: 0 },
-  { id: 'team_b', name: 'فريق الوحوش (Team B)', color: '#FF4B4B', score: 0, bank: 0 }
+  { id: 'team_a', name: 'فريق الحيتان', color: '#00F2FE', score: 0, bank: 0 },
+  { id: 'team_b', name: 'فريق الوحوش', color: '#FF4B4B', score: 0, bank: 0 }
 ];
 
 export const TEAM_PRESETS = [
@@ -152,6 +152,6 @@ export const TEAM_PRESETS = [
   { id: 'falcons_eagles', nameA: 'صقور الأرينا 🦅', nameB: 'نسور الجيزة 🦅', label: 'الصقور والنسور' },
   { id: 'derby', nameA: 'الأهلي 🔴', nameB: 'الزمالك ⚪', label: 'ديربي القمة' },
   { id: 'wolves_tigers', nameA: 'ذئاب المعادي 🐺', nameB: 'نمور المنيا 🐯', label: 'الذئاب والنمور' },
-  { id: 'classic_ab', nameA: 'تيم أ (Team A) 🔵', nameB: 'تيم ب (Team B) 🔴', label: 'تيم أ وتيم ب' }
+  { id: 'classic_ab', nameA: 'تيم أ 🔵', nameB: 'تيم ب 🔴', label: 'تيم أ وتيم ب' }
 ];
 

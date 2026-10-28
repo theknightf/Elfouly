@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useGame } from '../context/GameContext';
+import { canFreezeNow } from '../game/powers';
 import { CHARACTERS } from '../data/characters';
 import {
   Smartphone, Zap, Vault, Flame, PhoneCall, Lightbulb, CheckSquare, Square, UserPlus
@@ -25,12 +26,17 @@ export default function MobileController() {
     r4ToggleItem,
     r4ResolveBid,
     sendTaunt,
-    showToast
+    showToast,
+    roomCode
   } = useGame();
 
-  const [simulatedPlayerId, setSimulatedPlayerId] = useState(roomState?.players?.[0]?.id || 'p1');
+  // Online: the controller is ALWAYS the viewer's own seat. The "simulate as" picker is an
+  // offline single-device testing aid only (otherwise you would see another player's controls).
+  const isOnline = !!roomCode && !!roomState?.viewerId;
+  const [simulatedPlayerId, setSimulatedPlayerId] = useState(roomState?.viewerId || roomState?.players?.[0]?.id || 'p1');
+  const activePlayerId = isOnline ? roomState.viewerId : simulatedPlayerId;
 
-  const player = roomState?.players?.find(p => p.id === simulatedPlayerId) || roomState?.players?.[0];
+  const player = roomState?.players?.find(p => p.id === activePlayerId) || roomState?.players?.[0];
   const char = player?.character || CHARACTERS[0];
   const round = roomState?.status || 'lobby';
 
@@ -76,9 +82,10 @@ export default function MobileController() {
   const canUseLifelinesInR4 = !!player?.team && r4.highestBidderTeam === player.team;
 
   return (
-    <div className="max-w-md mx-auto px-4 py-4 space-y-4 animate-fadeIn">
+    <div className="max-w-md mx-auto px-3 sm:px-4 py-3 sm:py-4 space-y-4 animate-fadeIn">
       
       {/* Simulation Bar (lets user test phone experience as any character) */}
+      {!isOnline && (
       <div className="bg-arena-card/90 p-3 rounded-2xl border border-white/10 flex items-center justify-between text-xs">
         <div className="flex items-center gap-1.5 font-bold text-gray-300">
           <Smartphone className="w-4 h-4 text-arena-cyan" />
@@ -96,12 +103,13 @@ export default function MobileController() {
           ))}
         </select>
       </div>
+      )}
 
       {/* Mobile Device Frame */}
-      <div className="bg-arena-darker border-4 border-arena-cyan/50 rounded-[38px] p-5 shadow-2xl space-y-5 text-right relative overflow-hidden">
+      <div className="bg-arena-darker sm:border-4 sm:border-arena-cyan/50 sm:rounded-[38px] sm:p-5 sm:shadow-2xl space-y-5 text-right relative overflow-hidden">
         
         {/* Notch / Speaker Bar */}
-        <div className="w-28 h-4 bg-arena-card rounded-full mx-auto border border-white/10 mb-2" />
+        <div className="hidden sm:block w-28 h-4 bg-arena-card rounded-full mx-auto border border-white/10 mb-2" />
 
         {/* Player Profile Header on Mobile */}
         <div className="flex items-center justify-between bg-arena-card/90 p-3 rounded-2xl border border-white/10">
@@ -337,15 +345,17 @@ export default function MobileController() {
                   أنت الحكم الآن — احسم محاولة {activeTeamNameInR2} فقط
                 </div>
                 <button onClick={() => r2AwardPoint(activeTurnTeamInR2)} className="w-full btn-arcade-green py-3 rounded-xl font-black text-xs">
-                  نقطة لـ {activeTeamNameInR2} (+500) 🎯
+                  نقطة لـ {activeTeamNameInR2} (حسب السرعة) 🎯
                 </button>
                 <button onClick={() => r2Foul(activeTurnTeamInR2)} className="w-full btn-arcade-dark py-2.5 rounded-xl font-bold text-xs text-arena-red border border-arena-red/30">
-                  مخالفة على {activeTeamNameInR2} (-200)
+                  مخالفة على {activeTeamNameInR2} (-300 وتنتهي البطاقة)
                 </button>
-                <button onClick={r2TimeFreeze} className="w-full btn-arcade-yellow py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 fill-current" />
-                  <span>تجميد الوقت الفندقي (+10 ثواني) 🛎️</span>
-                </button>
+                {canFreezeNow(roomState, player?.id) && (
+                  <button onClick={r2TimeFreeze} className="w-full btn-arcade-yellow py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 fill-current" />
+                    <span>تجميد الوقت الفندقي (+10 ثواني، مرة واحدة) 🛎️</span>
+                  </button>
+                )}
                 <button onClick={r2SkipCard} className="w-full btn-arcade-dark py-2.5 rounded-xl font-bold text-xs text-gray-300">
                   تخطي البطاقة الحالية
                 </button>

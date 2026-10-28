@@ -1,0 +1,47 @@
+[
+  {
+    "mode": "one_two_bank",
+    "category": "general_knowledge",
+    "question_text": "ما هي عاصمة مصر؟",
+    "correct_answer": "القاهرة"
+  },
+  {
+    "mode": "hat_fi_qoraybi",
+    "category": "general_knowledge",
+    "question_text": "كم عدد أضلاع المثلث؟",
+    "correct_answer": "3",
+    "options": [
+      "2",
+      "3",
+      "4",
+      "5"
+    ]
+  },
+  {
+    "mode": "edini_fi_seri",
+    "category": "general_knowledge",
+    "question_text": "شاورما",
+    "correct_answer": "شاورما",
+    "forbidden_words": [
+      "لحمة",
+      "فراخ",
+      "سيخ",
+      "ثوم"
+    ]
+  },
+  {
+    "mode": "meen_yezawwed",
+    "category": "general_knowledge",
+    "question_text": "كواكب المجموعة الشمسية",
+    "acceptable_answers": [
+      "عطارد",
+      "الزهرة",
+      "الأرض",
+      "المريخ",
+      "المشتري",
+      "زحل",
+      "أورانوس",
+      "نبتون"
+    ]
+  }
+]

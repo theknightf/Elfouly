@@ -31,17 +31,23 @@ export default function TauntChat() {
   };
 
   return (
-    <div className="fixed bottom-4 left-4 z-40 max-w-xs sm:max-w-sm w-full">
+    <div className="fixed left-3 z-40 max-w-xs sm:max-w-sm" style={{ bottom: 'calc(var(--fab-bottom) + env(safe-area-inset-bottom, 0px))' }}>
       {/* Floating Toggle Button */}
       {!isOpen ? (
         <button
           onClick={() => setIsOpen(true)}
-          className="btn-arcade-cyan px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 shadow-2xl cursor-pointer hover:scale-105 transition-all"
+          aria-label="إفيهات وقفشات الساحة"
+          className="relative btn-arcade-cyan px-4 py-2.5 max-sm:w-12 max-sm:h-12 max-sm:p-0 max-sm:justify-center max-sm:rounded-full rounded-2xl text-xs font-black flex items-center gap-2 shadow-2xl cursor-pointer hover:scale-105 transition-all"
         >
           <MessageSquare className="w-4 h-4 fill-current" />
-          <span>إفيهات وقفشات الساحة ({messages.length})</span>
+          <span className="hidden sm:inline">إفيهات ({messages.length})</span>
           {messages.length > 0 && (
-            <span className="w-2 h-2 rounded-full bg-arena-red animate-ping" />
+            <span className="sm:hidden absolute -top-1 -left-1 min-w-5 h-5 px-1 rounded-full bg-arena-red text-white text-[11px] font-black flex items-center justify-center">
+              {messages.length}
+            </span>
+          )}
+          {messages.length > 0 && (
+            <span className="hidden sm:block w-2 h-2 rounded-full bg-arena-red animate-ping" />
           )}
         </button>
       ) : (

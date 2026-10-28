@@ -1,12 +1,17 @@
+// Theme v2 — "Cairo Nights": deep midnight blue, warm gold, sky-blue and rose accents.
 export const themeTokens = {
   colors: {
-    arena: { dark: '#0F1026', darker: '#090A17', card: '#181A3A', cyan: '#00F2FE', red: '#FF4B4B', yellow: '#FFD200', green: '#00E676', purple: '#8B5CF6' },
-    surface: { default: '#151028', low: '#1d1830', card: '#211c35', high: '#2c2640', highest: '#37314b', lowest: '#0f0a22' },
-    primary: { container: '#ffb800', onContainer: '#6b4c00' },
-    outline: '#514532'
+    arena: { dark: '#0C1226', darker: '#070B18', card: '#131B36', cyan: '#4CC9F0', red: '#FF5C7A', yellow: '#FFC857', green: '#3DDC97', purple: '#9B8CFF' },
+    surface: { default: '#0F1630', low: '#141C3A', card: '#182244', high: '#1F2A52', highest: '#27335F', lowest: '#0A1024' },
+    primary: { container: '#FFC857', onContainer: '#3A2A00' },
+    outline: '#2C3A66'
   },
-  fonts: { arabic: ['Cairo', 'Changa', 'Tajawal', 'system-ui', 'sans-serif'], rubik: ['Rubik', 'sans-serif'], pixel: ['Press Start 2P', 'monospace'] },
-  spacing: { screen: 'clamp(0.75rem, 2.5vw, 1.5rem)', section: 'clamp(0.75rem, 2vw, 1.25rem)', card: 'clamp(0.75rem, 3vw, 1.75rem)', lowest: '#0f0a22', bright: '#3b3650', primaryFixedDim: '#ffba20', secondaryContainer: '#00e3fd', secondaryFixedDim: '#00daf3', tertiaryContainer: '#ffb0b3', onSurfaceVariant: '#d5c4ab', fontFamily: 'Cairo, Changa, Tajawal, system-ui, sans-serif', pageBackground: '#090A17' },
+  fonts: {
+    arabic: ['Cairo', 'Tajawal', 'system-ui', 'sans-serif'],
+    rubik: ['Cairo', 'Tajawal', 'system-ui', 'sans-serif'],
+    // The old 8-bit font is retired: numbers and labels use the readable Arabic face.
+    pixel: ['Cairo', 'Tajawal', 'system-ui', 'sans-serif']
+  },
+  spacing: { screen: 'clamp(0.75rem, 2.5vw, 1.5rem)', section: 'clamp(0.75rem, 2vw, 1.25rem)', card: 'clamp(0.75rem, 3vw, 1.75rem)', lowest: '#0A1024', bright: '#2F3B6B', primaryFixedDim: '#FFC857', secondaryContainer: '#4CC9F0', secondaryFixedDim: '#4CC9F0', tertiaryContainer: '#FF9DB0', onSurfaceVariant: '#C5CCE6', fontFamily: 'Cairo, Tajawal, system-ui, sans-serif', pageBackground: '#070B18' },
   direction: 'rtl'
 };
-

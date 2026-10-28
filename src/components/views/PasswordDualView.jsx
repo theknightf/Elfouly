@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGame } from '../../context/GameContext';
+import { canFreezeNow } from '../../game/powers';
 import { useTriviaRoom } from '../../hooks/useTriviaRoom';
 import { sounds } from '../../utils/soundEffects';
 import { Lock, Eye, EyeOff, AlertTriangle, Timer, Award, Snowflake, ShieldAlert, CheckCircle, XCircle } from 'lucide-react';
@@ -28,6 +29,7 @@ export default function PasswordDualView({ isMobile = false }) {
     r2TimeFreeze,
     showToast
   } = useGame();
+  const canFreeze = !!roomState && canFreezeNow(roomState, roomState.viewerId || currentPlayer?.id);
 
   const triviaRoom = useTriviaRoom();
   const {
@@ -192,7 +194,7 @@ export default function PasswordDualView({ isMobile = false }) {
             <div className="pt-2 border-t-2 border-dashed border-white/10">
               <div className="flex items-center justify-center gap-1 mb-2.5">
                 <AlertTriangle className="w-4 h-4 text-rose-400" />
-                <span className="text-xs font-black text-rose-300">الكلمات الممنوعة (لو نطقتها هتتخصم منك نقطة):</span>
+                <span className="text-xs font-black text-rose-300">الكلمات الممنوعة (لو نطقتها: -300 وتنتهي البطاقة):</span>
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">
@@ -223,14 +225,14 @@ export default function PasswordDualView({ isMobile = false }) {
                   className="btn-arcade-green py-3 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow hover:scale-[1.02]"
                 >
                   <CheckCircle className="w-4 h-4" />
-                  <span>[صح +نقطة] خمن صح! 🎉</span>
+                  <span>[صح ✓] خمن صح! (النقاط حسب السرعة) 🎉</span>
                 </button>
                 <button
                   onClick={isClueGiverA ? handleFoulB : handleFoulA}
                   className="btn-arcade-red py-3 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow hover:scale-[1.02]"
                 >
                   <XCircle className="w-4 h-4" />
-                  <span>[مخالفة كلمة ممنوعة -1] ⚠️</span>
+                  <span>[مخالفة: -300 وتنتهي البطاقة] ⚠️</span>
                 </button>
               </div>
             </div>}
@@ -264,13 +266,15 @@ export default function PasswordDualView({ isMobile = false }) {
               <span className="px-4 py-2 rounded-xl bg-surface-container-high border-2 border-[#090614] text-xs font-bold text-white shadow">
                 {isTimerRunning ? '⏱️ العداد شغال تلقائي' : '⏱️ انتهى الوقت'}
               </span>
-              <button
-                onClick={handleFreeze}
-                className="px-4 py-2 rounded-xl bg-sky-950 border-2 border-sky-500 text-xs font-bold text-sky-200 shadow hover:scale-105 cursor-pointer flex items-center gap-1"
-              >
-                <Snowflake className="w-3.5 h-3.5" />
-                <span>تجميد الوقت ❄️</span>
-              </button>
+              {canFreeze && (
+                <button
+                  onClick={handleFreeze}
+                  className="px-4 py-2 rounded-xl bg-sky-950 border-2 border-sky-500 text-xs font-bold text-sky-200 shadow hover:scale-105 cursor-pointer flex items-center gap-1"
+                >
+                  <Snowflake className="w-3.5 h-3.5" />
+                  <span>تجميد الوقت ❄️ (مرة واحدة)</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

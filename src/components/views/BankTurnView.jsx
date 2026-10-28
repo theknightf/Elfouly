@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useGame } from '../../context/GameContext';
 import { useTriviaRoom } from '../../hooks/useTriviaRoom';
 import { RoundTimer } from '../../game/RoundTimer';
+import { BANK_RULES } from '../../game/constants';
+import { categoryLabel } from '../../utils/categoryLabels';
 import { Vault, Flame, CheckCircle, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck, Lock, Zap } from 'lucide-react';
 
 /**
@@ -43,6 +45,7 @@ export default function BankTurnView({ isMobile = false }) {
     defendingTeam
   } = triviaRoom;
 
+  const r1 = roomState?.round1 || {};
   const [revealSecret, setRevealSecret] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
 
@@ -58,10 +61,9 @@ export default function BankTurnView({ isMobile = false }) {
     r1NextQuestion();
   };
 
-  const r1 = roomState?.round1 || {};
   const currentStreak = r1.streak || 0;
   const pendingPoints = r1.pendingPoints || 0;
-  const streakLadder = r1.streakLadder || [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000];
+  const streakLadder = r1.streakLadder || BANK_RULES.STREAK_LADDER;
   const nextStreak = Math.min(currentStreak + 1, 10);
   const nextValue = streakLadder[nextStreak];
   const hasLiveQuestion = !!r1.currentQuestion;
@@ -108,10 +110,10 @@ export default function BankTurnView({ isMobile = false }) {
   };
 
   return (
-    <div className={`space-y-4 ${isMobile ? 'text-right' : ''}`}>
+    <div className={`flex flex-col gap-4 ${isMobile ? 'text-right' : ''}`}>
       
       {/* Egyptian Arcade Header Banner (Stitch Screen 5) */}
-      <div className="relative bg-surface-container-low border-[3px] border-[#090614] rounded-2xl p-3 shadow-[0_4px_0_0_#090614] overflow-hidden flex items-center justify-between">
+      <div className="max-md:order-last relative bg-surface-container-low border-[3px] border-[#090614] rounded-2xl p-3 shadow-[0_4px_0_0_#090614] overflow-hidden flex items-center justify-between">
         <div className="flex items-center gap-2.5 z-10">
           <div className="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center border-2 border-[#090614] shadow-[0_2px_0_#090614]">
             <span className="text-xl">🏺</span>
@@ -136,12 +138,12 @@ export default function BankTurnView({ isMobile = false }) {
       </div>
 
       {/* Teams Scoreboard & In-Bank Safety Gauge */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="max-md:order-last grid grid-cols-2 gap-3">
         {/* Active Answering Team (Blue) */}
         <div className="bg-surface-container border-[3px] border-[#090614] rounded-2xl p-3 shadow-[0_4px_0_0_#090614] relative overflow-hidden">
           <div className="absolute top-0 right-0 left-0 h-1 bg-arena-cyan" />
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-bold text-arena-cyan">فريق {activeTeam.name.split('(')[0]}</span>
+            <span className="text-xs font-bold text-arena-cyan">{activeTeam.name.split('(')[0].trim()}</span>
             <span className="font-pixel text-[8px] text-arena-cyan bg-surface-container-lowest px-1.5 py-0.5 rounded border border-arena-cyan/40">
               دورهم الآن
             </span>
@@ -156,7 +158,7 @@ export default function BankTurnView({ isMobile = false }) {
         <div className="bg-surface-container border-[3px] border-[#090614] rounded-2xl p-3 shadow-[0_4px_0_0_#090614] relative opacity-90">
           <div className="absolute top-0 right-0 left-0 h-1 bg-arena-red" />
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-bold text-arena-red">فريق {defendingTeam.name.split('(')[0]}</span>
+            <span className="text-xs font-bold text-arena-red">{defendingTeam.name.split('(')[0].trim()}</span>
             <span className="font-pixel text-[8px] text-gray-400 bg-surface-container-lowest px-1.5 py-0.5 rounded">
               ينتظر
             </span>
@@ -167,6 +169,12 @@ export default function BankTurnView({ isMobile = false }) {
           </div>
         </div>
       </div>
+
+      {r1.steal && (
+        <div className="bg-arena-red/15 border-2 border-arena-red rounded-2xl p-3 text-center font-black text-arena-yellow" role="status">
+          🥷 فرصة سرقة! نفس السؤال راح للفريق التاني — إجابة صحيحة بتديهم ×1 (+{streakLadder[1]} نقطة)
+        </div>
+      )}
 
       {/* Current Unbanked Pot & Streak Display */}
       <div className="bg-gradient-to-r from-surface-container-high via-surface-container to-surface-container-high border-[3px] border-[#090614] rounded-2xl p-3.5 shadow-[0_4px_0_0_#090614] flex items-center justify-between">
@@ -194,7 +202,7 @@ export default function BankTurnView({ isMobile = false }) {
       <div className="bg-surface-container-high border-[3.5px] border-[#090614] rounded-3xl p-6 md:p-7 shadow-[0_6px_0_0_#090614] space-y-3 relative overflow-hidden">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/30">
-            {activeQuestion.categoryName || 'سؤال عام'}
+            {categoryLabel(activeQuestion.categoryName, 'سؤال عام')}
           </span>
           <span className="font-pixel text-[10px] text-arena-yellow">
             السؤال التالي: +{nextValue} نقطة
@@ -303,7 +311,7 @@ export default function BankTurnView({ isMobile = false }) {
       </div>
 
       {/* ================= THE CORE '1 تو' ACTION HUBS: BANK vs DOUBLE ================= */}
-      {isAnsweringTeam && (
+      {isAnsweringTeam && !r1.steal && (
         <div className="space-y-2.5">
           <div className="text-center">
             <p className="font-pixel text-[9px] text-arena-yellow uppercase tracking-wider">

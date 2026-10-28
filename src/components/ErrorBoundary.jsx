@@ -1,3 +1,4 @@
+import { reportClientError } from '../utils/reportClientError';
 import React from 'react';
 import { RotateCcw, Home } from 'lucide-react';
 
@@ -13,6 +14,7 @@ export class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('Quiz Arena ErrorBoundary caught error:', error, errorInfo);
+    reportClientError(error, { source: 'react-error-boundary' });
     this.setState({ errorInfo });
   }
 

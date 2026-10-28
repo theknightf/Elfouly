@@ -5,6 +5,8 @@ import { sounds } from '../../utils/soundEffects';
 import { Shield, Radio, CheckCircle, XCircle, Eye, EyeOff, Zap, Trophy, Flame } from 'lucide-react';
 import { calculateBonus, isGeneralCategory } from '../../utils/penaltyRules';
 import { RoundTimer } from '../../game/RoundTimer';
+import { PENALTY_RULES } from '../../game/constants';
+import { categoryLabel } from '../../utils/categoryLabels';
 
 /**
  * PenaltyDuelView
@@ -29,6 +31,7 @@ export default function PenaltyDuelView({ isMobile = false }) {
     r3RecordShot,
     r3SubmitAnswer,
     r3NextShot,
+    isHost,
     isConnected,
     showToast
   } = useGame();
@@ -72,6 +75,9 @@ export default function PenaltyDuelView({ isMobile = false }) {
   const currentGoalie = roomState?.players?.find(p => p.id === r3.currentGoalieId) || { name: 'الحارس' };
 
   const isIntercepted = !!r3.interceptBuzzedBy;
+  const shotSeconds = r3.timer || 20;
+  const unlockInSeconds = Math.max(0, timeLeft - (shotSeconds - PENALTY_RULES.INTERCEPT_DELAY_SECONDS));
+  const interceptLocked = !isIntercepted && !!r3.shotStartedAt && unlockInSeconds > 0;
 
   useEffect(() => {
     if (r3.answerFeedback) {
@@ -175,7 +181,7 @@ export default function PenaltyDuelView({ isMobile = false }) {
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-arena-cyan bg-arena-cyan/10 px-3 py-1 rounded-full border border-arena-cyan/30">
-              {activeQuestion.categoryName || activeQuestion.category || 'كرة قدم بعد 2010'}
+              {categoryLabel(activeQuestion.categoryName || activeQuestion.category) || 'كرة قدم بعد 2010'}
             </span>
             {isGeneral ? (
               <span className="text-[10px] font-bold text-sky-300 bg-sky-500/20 px-2.5 py-0.5 rounded-full border border-sky-400/40">
@@ -252,15 +258,15 @@ export default function PenaltyDuelView({ isMobile = false }) {
 
           <button
             onClick={handleGoalieBuzz}
-            disabled={isIntercepted}
+            disabled={isIntercepted || interceptLocked}
             className={`w-full py-6 rounded-3xl font-black text-lg md:text-xl flex items-center justify-center gap-3 transition-all ${
-              isIntercepted
+              isIntercepted || interceptLocked
                 ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
                 : 'btn-arcade-yellow shadow-2xl shadow-arena-yellow/30 hover:scale-[1.02] cursor-pointer animate-pulse'
             }`}
           >
             <Shield className="w-7 h-7 fill-current" />
-            <span>[صد! / Intercept] 🧤</span>
+            <span>{interceptLocked ? `الصد يفتح بعد ${unlockInSeconds} ث ⏳` : '[صد! / Intercept] 🧤'}</span>
           </button>
 
           <p className="text-[11px] text-gray-400">
@@ -293,7 +299,7 @@ export default function PenaltyDuelView({ isMobile = false }) {
             <div className="text-xs text-gray-400 font-bold text-center">
               تأكيد نتيجة الركلة (Goal / Saved):
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3">
               <button
                 onClick={() => handleRefereeRecord('goal')}
                 className="btn-arcade-green py-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 cursor-pointer shadow hover:scale-[1.02]"

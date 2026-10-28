@@ -241,6 +241,97 @@ async function run() {
       }, /صلاحية/);
     });
 
+    await test('Round 1 wrong answer opens a one-time steal for the other team at x1', async () => {
+      const sockets = [await opened(), await opened(), await opened(), await opened()];
+      const { roomCode, state } = await setupFourPlayers(sockets, 'round1');
+      const r1 = state.round1;
+      const originalTeam = r1.activeTeam;
+      const stealTeam = originalTeam === 'team_a' ? 'team_b' : 'team_a';
+      const referee = sockets.find(socket => socket.id === r1.refereePlayerId);
+      assert(referee, 'Could not resolve Round 1 referee');
+
+      const stealPromise = waitForRoomState(
+        sockets[0],
+        room => room.status === 'round1' && !!room.round1.steal
+      );
+      referee.emit('r1_action_break', { roomCode, actionToken: r1.actionToken });
+      const stealing = await stealPromise;
+      assert(stealing.round1.activeTeam === stealTeam, 'Steal did not pass to the other team');
+      assert(stealing.round1.pendingPoints === 0 && stealing.round1.streak === 0, 'Unbanked streak was not lost');
+      assert(stealing.round1.currentQuestionIndex === r1.currentQuestionIndex, 'Steal must reuse the same question');
+      assert(stealing.round1.totalQuestionsAnswered === 0, 'Steal must not consume a quota slot yet');
+
+      const stealReferee = sockets.find(socket => socket.id === stealing.round1.refereePlayerId);
+      const stealerPlayer = stealing.players.find((p: any) => p.id === stealing.round1.refereePlayerId);
+      assert(stealReferee && stealerPlayer?.team === originalTeam, 'Steal judge must come from the team that missed');
+
+      const resolvedPromise = waitForRoomState(
+        sockets[0],
+        room => room.status === 'round1' && !room.round1.steal && room.round1.totalQuestionsAnswered === 1
+      );
+      stealReferee.emit('r1_action_score', { roomCode, actionToken: stealing.round1.actionToken });
+      const resolved = await resolvedPromise;
+      assert(resolved.teams[stealTeam].score === 100, 'Correct steal should award x1 (100) to the stealing team');
+      assert(resolved.round1.activeTeam === originalTeam, 'Turn did not return to the original team after the steal');
+      assert(resolved.round1.currentQuestionIndex === r1.currentQuestionIndex + 1, 'Next question was not dispatched');
+    });
+
+    await test('Rematch: going back to the lobby resets scores, powers and round state', async () => {
+      const sockets = [await opened(), await opened(), await opened(), await opened()];
+      const { roomCode, state } = await setupFourPlayers(sockets, 'round1');
+      const r1 = state.round1;
+      const referee = sockets.find(socket => socket.id === r1.refereePlayerId);
+      assert(referee, 'Could not resolve the referee');
+
+      // Score a point through a wrong answer followed by a correct steal (+100 for the other team).
+      const stealPromise = waitForRoomState(sockets[0], room => !!room.round1.steal);
+      referee.emit('r1_action_break', { roomCode, actionToken: r1.actionToken });
+      const stealing = await stealPromise;
+      const stealReferee = sockets.find(socket => socket.id === stealing.round1.refereePlayerId);
+      assert(stealReferee, 'Could not resolve the steal referee');
+      const scoredPromise = waitForRoomState(sockets[0], room => room.teams.team_a.score + room.teams.team_b.score > 0);
+      stealReferee.emit('r1_action_score', { roomCode, actionToken: stealing.round1.actionToken });
+      await scoredPromise;
+
+      const lobbyPromise = waitForRoomState(sockets[0], room => room.status === 'lobby');
+      sockets[0].emit('change_round', { roomCode, targetRound: 'lobby' });
+      const lobby = await lobbyPromise;
+      assert(lobby.teams.team_a.score === 0 && lobby.teams.team_b.score === 0, 'Scores must be zero after returning to the lobby');
+      assert(lobby.round1.totalQuestionsAnswered === 0, 'Round 1 progress must be reset');
+      assert(lobby.players.every((player: any) => !player.powerUsed), 'Powers must be available again');
+    });
+
+    await test('A judge who reloads the page gets the judge seat back (and the token never leaks)', async () => {
+      const sockets = [await opened(), await opened(), await opened(), await opened()];
+      const created = await createRoom(sockets[0], 'P1', CHARACTERS[0].id);
+      await joinRoom(sockets[1], created.roomCode, 'P2', CHARACTERS[1].id, 'team_a');
+      const joinedB1: any = await joinRoom(sockets[2], created.roomCode, 'P3', CHARACTERS[2].id, 'team_b');
+      const joinedB2: any = await joinRoom(sockets[3], created.roomCode, 'P4', CHARACTERS[3].id, 'team_b');
+      const tokens: Record<string, string> = { [sockets[2].id as string]: joinedB1.playerToken, [sockets[3].id as string]: joinedB2.playerToken };
+      const started = waitForRoomState(sockets[0], room => room.status === 'round1' && !!room.round1.refereePlayerId);
+      sockets[0].emit('change_round', { roomCode: created.roomCode, targetRound: 'round1' });
+      const state = await started;
+
+      const judgeId: string = state.round1.refereePlayerId;
+      const judgeSocket = sockets.find(socket => socket.id === judgeId);
+      assert(judgeSocket && tokens[judgeId], 'The Round 1 judge should be a Team B player');
+
+      // The judge's page reloads: the connection drops, and after a few seconds the seat is handed to someone else.
+      const failover = waitForRoomState(sockets[0], room => !!room.round1.refereePlayerId && room.round1.refereePlayerId !== judgeId, 12000);
+      judgeSocket.disconnect();
+      const afterFailover = await failover.catch(() => { throw new Error('STEP failover: the seat was not handed to another player'); });
+      assert(!JSON.stringify(afterFailover).includes(tokens[judgeId]), 'A player token leaked in the room snapshot');
+
+      // ...they come back with their private token while the same question is open.
+      const returned = await opened();
+      const rejoined = once<any>(returned, 'rejoined_room');
+      const restoredPromise = waitForRoomState(sockets[0], room => room.round1.refereePlayerId === returned.id, 6000);
+      returned.emit('rejoin_room', { roomCode: created.roomCode, playerToken: tokens[judgeId] });
+      await rejoined.catch(() => { throw new Error('STEP rejoin: rejoined_room never arrived'); });
+      const restored = await restoredPromise.catch(() => { throw new Error('STEP restore: the seat was not given back'); });
+      assert(restored.round1.refereePlayerId === returned.id, 'The returning judge did not get the seat back');
+    });
+
     await test('Round 1 Bank / Continue belongs to the opposing team only', async () => {
       const sockets = [await opened(), await opened(), await opened(), await opened()];
       const { roomCode, state } = await setupFourPlayers(sockets, 'round1');
@@ -342,6 +433,129 @@ async function run() {
       const settledPromise = waitForRoomState(sockets[0], room => room.round3.turnIndex === 1);
       judge.emit('r3_record_shot', { roomCode, result: 'goal' });
       await settledPromise;
+    });
+
+    await test('Powers: Foly re-roll and Touny shield work once in Round 1', async () => {
+      const sockets = [await opened(), await opened(), await opened(), await opened()];
+      const { roomCode, state } = await setupFourPlayers(sockets, 'round1');
+      const foly = sockets[0];
+      const touny = sockets[1];
+      const r1 = state.round1;
+      assert(r1.answeringPlayerId === foly.id, 'Foly should be the first answering player');
+
+      // Touny is not the answering player, but the shield is for his team's turn.
+      await expectErrorMessage(sockets[3], () => {
+        sockets[3].emit('use_power', { roomCode });
+      }, /مش متاحة/);
+
+      const rerolledPromise = waitForRoomState(
+        foly,
+        room => room.round1.actionToken !== r1.actionToken && !!room.round1.currentQuestion
+      );
+      foly.emit('use_power', { roomCode });
+      const rerolled = await rerolledPromise;
+      assert(rerolled.round1.currentQuestionIndex === r1.currentQuestionIndex, 'Re-roll must not consume a quota slot');
+      assert(rerolled.round1.totalQuestionsAnswered === 0, 'Re-roll must not count as an answered question');
+
+      await expectErrorMessage(foly, () => {
+        foly.emit('use_power', { roomCode });
+      }, /استخدمت/);
+
+      const armedPromise = waitForRoomState(foly, room => room.powerEffects?.team_a?.shield === true);
+      touny.emit('use_power', { roomCode });
+      await armedPromise;
+
+      const referee = sockets.find(socket => socket.id === rerolled.round1.refereePlayerId);
+      assert(referee, 'Could not resolve the referee');
+      const afterBreakPromise = waitForRoomState(foly, room => room.round1.totalQuestionsAnswered === 1);
+      referee.emit('r1_action_break', { roomCode, actionToken: rerolled.round1.actionToken });
+      const afterBreak = await afterBreakPromise;
+      assert(!afterBreak.round1.steal, 'A shielded wrong answer must not open a steal');
+      assert(afterBreak.round1.activeTeam === 'team_a', 'Shield must keep the turn with the shielded team');
+      assert(afterBreak.powerEffects.team_a.shield === false, 'Shield must be spent after absorbing one wrong answer');
+    });
+
+    await test('Powers: Barbakh intercepts instantly in Round 3 (no 10 s wait)', async () => {
+      const sockets = [await opened(), await opened(), await opened(), await opened()];
+      const { roomCode, state } = await setupFourPlayers(sockets, 'round3');
+      const barbakh = sockets[2];
+      assert(state.round3.currentGoalieId === barbakh.id, 'Barbakh should be the first goalie');
+
+      const shootoutPromise = waitForRoomState(sockets[0], room => room.round3.phase === 'shootout');
+      sockets[0].emit('r3_start_shootout', { roomCode });
+      await shootoutPromise;
+
+      const interceptedPromise = waitForRoomState(sockets[0], room => room.round3.interceptBuzzedBy === barbakh.id);
+      barbakh.emit('use_power', { roomCode });
+      await interceptedPromise;
+    });
+
+    await test('Round 3 keeper can only intercept after the 10 s delay', async () => {
+      const sockets = [await opened(), await opened(), await opened(), await opened()];
+      const { roomCode, state } = await setupFourPlayers(sockets, 'round3');
+      const goalie = sockets.find(socket => socket.id === state.round3.currentGoalieId);
+      assert(goalie, 'Round 3 goalie was not assigned');
+
+      const shootoutPromise = waitForRoomState(sockets[0], room => room.round3.phase === 'shootout');
+      sockets[0].emit('r3_start_shootout', { roomCode });
+      await shootoutPromise;
+
+      await expectErrorMessage(goalie, () => {
+        goalie.emit('r3_intercept_buzz', { roomCode });
+      }, /الصد يفتح بعد/);
+
+      await delay(10500);
+      const interceptedPromise = waitForRoomState(sockets[0], room => !!room.round3.interceptBuzzedBy);
+      goalie.emit('r3_intercept_buzz', { roomCode });
+      const intercepted = await interceptedPromise;
+      assert(intercepted.round3.interceptBuzzedBy === goalie.id, 'Late intercept was not accepted');
+    });
+
+    await test('Final tie-break: level after Round 4 plays sudden-death kicks until the totals differ', async () => {
+      const sockets = [await opened(), await opened(), await opened(), await opened()];
+      const host = sockets[0];
+      const { roomCode, state } = await setupFourPlayers(sockets, 'round4');
+      assert(state.teams.team_a.score === state.teams.team_b.score, 'Scores should start level');
+
+      const tiePromise = waitForRoomState(host, room => room.status === 'round3' && !!room.round3.finalTieBreak);
+      host.emit('change_round', { roomCode, targetRound: 'game_over' });
+      const tied = await tiePromise;
+      assert(tied.round3.isSuddenDeath && tied.round3.turnIndex === 10, 'Final tie-break must start in sudden death');
+      assert(!tied.round3.isComplete, 'Final tie-break must not start complete');
+
+      const playKick = async (expectedTurnIndex: number, result: 'goal' | 'missed', fresh: any) => {
+        const kickerId = fresh.round3.currentKickerId;
+        const judgeId = fresh.round3.refereePlayerId;
+        const kicker = sockets.find(socket => socket.id === kickerId);
+        const judge = sockets.find(socket => socket.id === judgeId);
+        assert(kicker && judge, 'Final tie-break roles were not assigned');
+        const startPromise = waitForRoomState(host, room => room.round3.phase === 'shootout');
+        host.emit('r3_start_shootout', { roomCode });
+        const started = await startPromise;
+        const option = started.round3.currentQuestion.options[0];
+        const lockedPromise = waitForRoomState(host, room => !!room.round3.pendingAnswer);
+        kicker.emit('r3_submit_answer', { roomCode, option });
+        await lockedPromise;
+        const settledPromise = waitForRoomState(host, room => room.round3.turnIndex === expectedTurnIndex + 1);
+        judge.emit('r3_record_shot', { roomCode, result });
+        return settledPromise;
+      };
+
+      // Team A scores, Team B misses: totals differ after the pair -> decided.
+      const afterA = await playKick(10, 'goal', tied);
+      assert(!afterA.round3.isComplete, 'A single kick must not end the final tie-break');
+      const selectionPromise = waitForRoomState(host, room => room.round3.phase === 'duelist_selection');
+      host.emit('r3_next_shot', { roomCode });
+      const selection = await selectionPromise;
+      const completePromise = waitForRoomState(host, room => room.round3.isComplete === true);
+      await playKick(11, 'missed', selection);
+      const done = await completePromise;
+      assert(done.round3.finalTieBreakDone === true, 'Final tie-break was not marked done');
+      assert(done.teams.team_a.score > done.teams.team_b.score, 'The scoring team must lead after the tie-break');
+
+      const overPromise = waitForRoomState(host, room => room.status === 'game_over');
+      host.emit('change_round', { roomCode, targetRound: 'game_over' });
+      await overPromise;
     });
 
     await test('Round 4 rejects stale bids, protects the checklist, and enforces resolution', async () => {
@@ -456,8 +670,42 @@ async function run() {
       );
       referee.emit('r4_resolve_bid', { roomCode, success: true, topicId });
       const resolved = await resolvedPromise;
-      assert(resolved.teams[winningTeam].score === scoreBefore + required * 400, 'Auction reward was not applied');
+      const rivalTeamKey = winningTeam === 'team_a' ? 'team_b' : 'team_a';
+      const expectedMultiplier = scoreBefore < refState.teams[rivalTeamKey].score ? 2 : 1;
+      assert(
+        resolved.teams[winningTeam].score === scoreBefore + required * 200 * expectedMultiplier,
+        'Auction reward (bid x 200, x2 only when trailing) was not applied'
+      );
       assert(resolved.round4.topicId !== topicId, 'Auction topic did not rotate after resolution');
+    });
+
+    await test('Round 4 bids can never exceed the number of valid answers', async () => {
+      const sockets = [await opened(), await opened(), await opened(), await opened()];
+      const { roomCode, state } = await setupFourPlayers(sockets, 'round4');
+      const topicId = state.round4.topicId;
+      const max = state.round4.currentTopic.maxPossible;
+      assert(Number.isInteger(max) && max >= 5, `Topic must expose maxPossible (got ${max})`);
+      assert(state.round4.highestBid < max, 'The opening bid must leave room to bid');
+
+      // Teams must alternate (the leading team cannot outbid itself).
+      const teamSockets = [sockets[0], sockets[2]]; // team_a host, team_b first player
+      let bid = state.round4.highestBid;
+      let turn = 0;
+      while (bid + 1 <= max) {
+        const increment = [5, 2, 1].find(step => bid + step <= max) as number;
+        const bidder = teamSockets[turn % 2];
+        const raised = waitForRoomState(sockets[0], room => room.round4.highestBid === bid + increment);
+        bidder.emit('r4_bid', { roomCode, increment, expectedBid: bid, topicId });
+        await raised;
+        bid += increment;
+        turn += 1;
+      }
+      assert(bid === max, 'Bidding should be able to reach exactly the number of valid answers');
+
+      const other = teamSockets[turn % 2];
+      await expectErrorMessage(other, () => {
+        other.emit('r4_bid', { roomCode, increment: 1, expectedBid: bid, topicId });
+      }, /الحد الأقصى/);
     });
 
     await test('Chat uses server identity, sanitizes content, and rejects non-members', async () => {

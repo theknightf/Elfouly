@@ -40,7 +40,7 @@ async function runUiAudit() {
   check('1. Typography & RTL', 'RTL Layout Attribute', indexHtml.includes('dir="rtl"'), 'HTML root has dir="rtl" for Arabic layout');
   check('1. Typography & RTL', 'Arabic Lang Tag', indexHtml.includes('lang="ar"'), 'HTML root has lang="ar"');
   check('1. Typography & RTL', 'Google Fonts Tajawal/Cairo/Readex', indexHtml.includes('Tajawal') && indexHtml.includes('Cairo'), 'Tajawal and Cairo loaded via Google Fonts CDN');
-  check('1. Typography & RTL', 'Mobile Viewport Meta', indexHtml.includes('viewport') && indexHtml.includes('user-scalable=no'), 'Viewport configured with mobile-friendly constraints');
+  check('1. Typography & RTL', 'Mobile Viewport Meta', indexHtml.includes('viewport') && indexHtml.includes('viewport-fit=cover') && !indexHtml.includes('user-scalable=no'), 'Viewport covers notch safe areas and keeps pinch-zoom available');
 
   // 2. Audit CSS Arcade Theme & 3D Tactile Buttons
   const indexCss = fs.readFileSync(path.resolve('src/index.css'), 'utf-8');

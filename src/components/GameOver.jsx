@@ -12,6 +12,9 @@ export default function GameOver() {
     showToast
   } = useGame();
 
+  // Team names carry a "(Team A)" suffix that scrambles RTL punctuation: show the short name.
+  const shortName = (name) => String(name || '').split('(')[0].trim();
+
   const teamA = roomState?.teams?.team_a || { name: 'فريق الحيتان', score: 0, bank: 0 };
   const teamB = roomState?.teams?.team_b || { name: 'فريق الوحوش', score: 0, bank: 0 };
   const isHostPlayer = !!currentPlayer?.isHost;
@@ -34,20 +37,20 @@ export default function GameOver() {
   const mvp = players.find(p => p.character?.id === 'fares_elfouly') || players[0];
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-8 animate-fadeIn text-center">
+    <div className="max-w-4xl mx-auto px-4 py-5 sm:py-8 space-y-5 sm:space-y-8 animate-fadeIn text-center">
       
       {/* Crown & Victory Header */}
       <div className="space-y-3">
-        <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl bg-gradient-to-tr from-arena-yellow via-amber-400 to-yellow-200 border-4 border-white shadow-[0_0_40px_rgba(255,210,0,0.6)] animate-bounce-short">
-          <Crown className="w-14 h-14 text-arena-darker fill-current" />
+        <div className="inline-flex items-center justify-center w-16 h-16 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-tr from-arena-yellow via-amber-400 to-yellow-200 border-4 border-white shadow-[0_0_40px_rgba(255,210,0,0.6)] animate-bounce-short">
+          <Crown className="w-9 h-9 sm:w-14 sm:h-14 text-arena-darker fill-current" />
         </div>
 
         <div className="text-sm font-black text-arena-cyan uppercase tracking-widest">
           صافرة نهاية الماتش التاريخي
         </div>
 
-        <h1 className="text-4xl md:text-6xl font-black text-white tracking-tight">
-          مبروك لـ <span className={isTeamAWinner ? 'text-arena-cyan' : 'text-arena-red'}>{winner.name}</span>! 🏆
+        <h1 className="text-3xl sm:text-4xl md:text-6xl font-black text-white tracking-tight">
+          مبروك لـ <span className={isTeamAWinner ? 'text-arena-cyan' : 'text-arena-red'}>{shortName(winner.name)}</span>! 🏆
         </h1>
 
         <p className="text-base text-gray-300 max-w-lg mx-auto">
@@ -70,7 +73,7 @@ export default function GameOver() {
           </div>
 
           <div className="text-3xl mt-4 mb-2">🐬</div>
-          <h2 className="text-2xl font-black text-white">{winner.name}</h2>
+          <h2 className="text-2xl font-black text-white">{shortName(winner.name)}</h2>
           <div className="text-5xl font-black font-mono my-4 text-arena-yellow">
             {winner.score.toLocaleString()} <span className="text-sm font-sans text-gray-400">نقطة</span>
           </div>
@@ -89,7 +92,7 @@ export default function GameOver() {
           </div>
 
           <div className="text-3xl mt-4 mb-2">🦁</div>
-          <h2 className="text-xl font-black text-gray-200">{loser.name}</h2>
+          <h2 className="text-xl font-black text-gray-200">{shortName(loser.name)}</h2>
           <div className="text-4xl font-black font-mono my-4 text-gray-400">
             {loser.score.toLocaleString()} <span className="text-sm font-sans text-gray-500">نقطة</span>
           </div>

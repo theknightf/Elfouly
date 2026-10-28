@@ -43,9 +43,15 @@ import {
   drawLocalQuestion,
   drawLocalR1Question,
   buildLocalR1TurnPlan,
-  drawLocalCategoryQuestion
+  drawLocalCategoryQuestion,
+  getServedIds,
+  markServed
 } from '../utils/localQuestionEngine';
 import { calculateBonus, isGeneralCategory } from '../utils/penaltyRules.js';
+import { TurnManager } from '../game/TurnManager.js';
+import { buildPlayerCharacter, cleanText } from '../game/characterBuilder.js';
+import { applyPower, resetPowers, takeShield, applyFirewall, applyTurbo, bidLockedMs } from '../game/powers.js';
+import { BANK_RULES, PASSWORD_RULES, PENALTY_RULES, passwordCardPoints, isInterceptUnlocked, auctionOutcome, isShootoutOver, needsFinalTieBreak, suddenDeathWinner } from '../game/constants.js';
 
 const ROOM_CODE_ALPHABET = '0123456789';
 const MAX_PLAYERS = 4;
@@ -54,7 +60,7 @@ const MAX_CHAT_LENGTH = 240;
 const R1_TOTAL_QUESTIONS = 48;
 const R1_SUB_BATCH_SIZE = 6;
 const R1_SEGMENT_SIZE = 12;
-const R1_STREAK_LADDER = [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000];
+const R1_STREAK_LADDER = [...BANK_RULES.STREAK_LADDER];
 const R2_TOTAL_CARDS = 5;
 const R2_TIME_FREEZE_SECONDS = 10;
 const R3_TOTAL_SHOTS = 10;
@@ -201,7 +207,9 @@ function normalizeR4Topic(raw, index = 0) {
         topic: raw.question_text || raw.question || '',
         validItems,
         category: raw.category || 'عام',
-        minBid: 3,
+        minBid: Math.max(1, Math.min(3, validItems.length - 1)),
+        // A bid above the number of valid answers can never be fulfilled.
+        maxPossible: validItems.length,
         hint: 'اذكر عناصر صحيحة من القائمة المعتمدة — الحكم الخصم هو اللي يتحقق منها.'
       };
     }
@@ -347,8 +355,8 @@ function createInitialState(roomCode, hostId) {
     tournamentStructure: TOURNAMENT_STRUCTURE,
     players: [],
     teams: {
-      team_a: { id: 'team_a', name: 'فريق الحيتان (Team A)', score: 0, bank: 0, penaltyScore: 0 },
-      team_b: { id: 'team_b', name: 'فريق الوحوش (Team B)', score: 0, bank: 0, penaltyScore: 0 }
+      team_a: { id: 'team_a', name: 'فريق الحيتان', score: 0, bank: 0, penaltyScore: 0 },
+      team_b: { id: 'team_b', name: 'فريق الوحوش', score: 0, bank: 0, penaltyScore: 0 }
     },
     round1: {
       activeTeam: 'team_a',
@@ -364,6 +372,7 @@ function createInitialState(roomCode, hostId) {
       currentQuestionIndex: 0,
       streak: 0,
       pendingPoints: 0,
+      steal: null,
       lastDecision: null,
       streakLadder: R1_STREAK_LADDER,
       currentQuestion: null,
@@ -464,10 +473,20 @@ export function createSupabaseSocket(customClient = null) {
     },
 
     emit(event, payload = {}) {
-      Promise.resolve(handleClientAction(event, payload)).catch(err => {
-        console.error(`[SupabaseSocket] Unhandled error in action "${event}":`, err);
-        emitError('تعذر تنفيذ العملية، تأكد من الاتصال بالإنترنت', event);
-      });
+      // Double-tapping create/join/leave must not run the action twice.
+      const serialized = event === 'create_room' || event === 'join_room' || event === 'leave_room';
+      if (serialized) {
+        if (lobbyActionBusy) return socket;
+        lobbyActionBusy = true;
+      }
+      Promise.resolve(handleClientAction(event, payload))
+        .catch(err => {
+          console.error(`[SupabaseSocket] Unhandled error in action "${event}":`, err);
+          emitError('تعذر تنفيذ العملية، تأكد من الاتصال بالإنترنت', event);
+        })
+        .finally(() => {
+          if (serialized) lobbyActionBusy = false;
+        });
       return socket;
     },
 
@@ -615,7 +634,10 @@ export function createSupabaseSocket(customClient = null) {
             round3: publicRoom.round3,
             round4: publicRoom.round4,
             countdown: publicRoom.countdown,
-            messages: publicRoom.messages
+            messages: publicRoom.messages,
+            singleJudgeId: newRoomState.singleJudgeId ?? null,
+            // Questions already served in this room: every device must skip them.
+            served: getServedIds(newRoomState.code)
           },
           updated_at: new Date().toISOString()
         })
@@ -761,6 +783,7 @@ export function createSupabaseSocket(customClient = null) {
       .maybeSingle();
     if (error || !row) return null;
 
+    markServed(roomCode, row.state?.served);
     const base = createInitialState(roomCode, row.host_id);
     return {
       ...base,
@@ -768,6 +791,7 @@ export function createSupabaseSocket(customClient = null) {
       players: row.players || [],
       teams: row.teams || base.teams,
       countdown: row.state?.countdown ?? null,
+      singleJudgeId: row.state?.singleJudgeId ?? null,
       messages: row.state?.messages || [],
       round1: { ...base.round1, ...(row.state?.round1 || {}) },
       round2: { ...base.round2, ...(row.state?.round2 || {}) },
@@ -868,7 +892,7 @@ export function createSupabaseSocket(customClient = null) {
 
   function buildR1Plan(room) {
     const answering = findPlayer(room, room.round1.answeringPlayerId);
-    const plan = buildLocalR1TurnPlan(answering?.character?.id);
+    const plan = buildLocalR1TurnPlan(answering?.character?.attributes ?? answering?.character?.id);
     room.round1.turnPlan = plan;
     room.round1.turnPlanIndex = 0;
     return plan;
@@ -890,7 +914,7 @@ export function createSupabaseSocket(customClient = null) {
       roomId: room.code,
       mode: 'one_two_bank',
       slotType: slot.slotType,
-      characterId: findPlayer(room, r1.answeringPlayerId)?.character?.id
+      characterId: findPlayer(room, r1.answeringPlayerId)?.character?.attributes ?? findPlayer(room, r1.answeringPlayerId)?.character?.id
     });
     const question = normalizeR1Question(raw, slot.slotType);
     if (!question) {
@@ -904,6 +928,46 @@ export function createSupabaseSocket(customClient = null) {
     r1.actionToken = `act_${Math.random().toString(36).substring(2, 12)}`;
     r1.isTimerRunning = true;
     return true;
+  }
+
+  // Steal: after a wrong answer the same question goes once to the other team at x1.
+  function beginR1Steal(room) {
+    const r1 = room.round1;
+    const fromTeam = r1.activeTeam;
+    const team = fromTeam === 'team_a' ? 'team_b' : 'team_a';
+    const stealers = room.players.filter(p => p.team === team);
+    r1.steal = { fromTeam, fromPlayerId: r1.answeringPlayerId, team };
+    r1.activeTeam = team;
+    r1.answeringPlayerId = stealers[0]?.id || null;
+    assignReferee(room, 'round1', { rotate: true });
+    r1.actionToken = `act_${Math.random().toString(36).substring(2, 12)}`;
+    r1.isTimerRunning = true;
+    r1.lastResult = { outcome: 'steal_open', team, at: Date.now() };
+  }
+
+  function resolveR1Steal(room, correct) {
+    const r1 = room.round1;
+    const steal = r1.steal;
+    if (!steal) return;
+    r1.steal = null;
+    r1.actionToken = null;
+    if (correct) {
+      const points = r1.streakLadder[1] || 0;
+      room.teams[steal.team].bank += points;
+      room.teams[steal.team].score += points;
+      r1.lastResult = { outcome: 'steal_correct', team: steal.team, points, at: Date.now() };
+      broadcastToRoom('sound_trigger', { sound: 'correct', streak: 1 });
+    } else {
+      r1.lastResult = { outcome: 'steal_failed', team: steal.team, at: Date.now() };
+      broadcastToRoom('sound_trigger', { sound: 'buzzer' });
+    }
+    r1.activeTeam = steal.fromTeam;
+    r1.answeringPlayerId = steal.fromPlayerId;
+    assignReferee(room, 'round1', { rotate: true });
+    advanceR1Quota(room);
+    if (r1.totalQuestionsAnswered < R1_TOTAL_QUESTIONS) {
+      dispatchR1Question(room);
+    }
   }
 
   function advanceR1Quota(room) {
@@ -1052,17 +1116,16 @@ export function createSupabaseSocket(customClient = null) {
       } else {
         // Evaluate complete 2-kick rounds in sudden death
         if (r3.turnIndex % 2 === 0) {
-          const lastTwo = r3.shotsHistory.slice(-2);
-          const shotA = lastTwo.find(s => s.team === 'team_a');
-          const shotB = lastTwo.find(s => s.team === 'team_b');
-          const roundPtsA = (shotA?.result === 'goal' ? 1 : 0) + (shotB?.result === 'saved' ? 1 : 0);
-          const roundPtsB = (shotB?.result === 'goal' ? 1 : 0) + (shotA?.result === 'saved' ? 1 : 0);
+          const winnerTeam = suddenDeathWinner({
+            lastTwoShots: r3.shotsHistory.slice(-2),
+            finalTieBreak: !!r3.finalTieBreak,
+            scoreA: room.teams.team_a.score,
+            scoreB: room.teams.team_b.score
+          });
 
-          if (roundPtsA !== roundPtsB) {
+          if (winnerTeam) {
             r3.isComplete = true;
-            const teamAName = room.teams?.team_a?.name || 'فريق A';
-            const teamBName = room.teams?.team_b?.name || 'فريق B';
-            const winner = roundPtsA > roundPtsB ? teamAName : teamBName;
+            const winner = room.teams?.[winnerTeam]?.name || winnerTeam;
             broadcastToRoom('notification', {
               title: '🏆 حُسمت في الموت المفاجئ!',
               message: `فاز ${winner} بعد شوط الموت المفاجئ!`
@@ -1082,10 +1145,13 @@ export function createSupabaseSocket(customClient = null) {
         r3.phase = 'complete';
         r3.currentKickerId = null;
         r3.currentGoalieId = null;
+        if (r3.finalTieBreak) r3.finalTieBreakDone = true;
         broadcastToRoom('sound_trigger', { sound: 'whistle' });
         broadcastToRoom('notification', {
-          title: '🏁 خلصت ركلات الجزاء!',
-          message: 'تم حسم ركلات الجزاء الترجيحية! الانتقال لجولة المزاد مين يزوّد.'
+          title: r3.finalTieBreak ? '🏁 انحسمت البطولة بركلة الحسم!' : '🏁 خلصت ركلات الجزاء!',
+          message: r3.finalTieBreak
+            ? 'تم حسم التعادل! الانتقال لتتويج بطل الساحة 👑'
+            : 'تم حسم ركلات الجزاء الترجيحية! الانتقال لجولة المزاد مين يزوّد.'
         });
         return true;
       }
@@ -1117,12 +1183,45 @@ export function createSupabaseSocket(customClient = null) {
   // ------------------------------------------------------------------
   // Client actions
   // ------------------------------------------------------------------
+  let lobbyActionBusy = false;
+
+  // Start-match countdown (host only): timers so it can be cancelled and never runs twice.
+  let countdownTimers = [];
+  function cancelCountdown(reason) {
+    if (!countdownTimers.length) return false;
+    countdownTimers.forEach(timer => clearTimeout(timer));
+    countdownTimers = [];
+    broadcastToRoom('countdown_cancelled', { reason });
+    return true;
+  }
+
+  // Two players with the same name are indistinguishable in the UI: add " 2", " 3"...
+  function uniqueName(room, name, excludeId = null) {
+    const taken = new Set(room.players.filter(p => p.id !== excludeId).map(p => String(p.name).toLowerCase()));
+    let candidate = name;
+    let n = 2;
+    while (taken.has(candidate.toLowerCase())) {
+      const suffix = ` ${n++}`;
+      candidate = name.slice(0, 20 - suffix.length) + suffix;
+    }
+    return candidate;
+  }
+
   async function handleClientAction(event, payload) {
     switch (event) {
       case 'create_room': {
-        const { playerName, characterId } = payload;
+        const { playerName, characterId, customCharacter, specialties } = payload;
         const cleanName = sanitizeName(playerName) || 'كابتن الساحة';
-        const character = CHARACTERS.find(char => char.id === characterId) || CHARACTERS[0];
+        const built = buildPlayerCharacter({
+          characterId: customCharacter ? undefined : (characterId || CHARACTERS[0].id),
+          custom: customCharacter,
+          specialties
+        });
+        if (built.error) {
+          emitError(built.error, 'create_room');
+          return;
+        }
+        const character = built.character;
         const roomCode = generateRoomCode();
         const playerToken = createToken();
 
@@ -1204,14 +1303,17 @@ export function createSupabaseSocket(customClient = null) {
       }
 
       case 'join_room': {
-        const { roomCode, playerName, characterId, teamPreference } = payload;
+        const { roomCode, playerName, characterId, teamPreference, customCharacter, specialties } = payload;
         const cleanCode = normalizeRoomCode(roomCode);
         const cleanName = sanitizeName(playerName) || 'لاعب';
+
+        // Already seated in this room (e.g. a second tap on "join"): nothing to do.
+        if (localPlayer && cachedRoomState?.code === cleanCode) return;
 
         const room = await loadRoomFromDb(cleanCode);
         if (!room) {
           trigger('action_error', {
-            message: 'كود الغرفة غير موجود يا بطل! اتأكد من الكود — Room not found.',
+            message: 'كود الغرفة غير موجود يا بطل! اتأكد من الكود',
             field: 'roomCode',
             action: 'join_room'
           });
@@ -1220,7 +1322,7 @@ export function createSupabaseSocket(customClient = null) {
 
         if (room.status !== 'lobby' && room.status !== 'waiting') {
           trigger('action_error', {
-            message: 'الماتش بدأ بالفعل! مينفعش تنضم دلوقتي — Match already started.',
+            message: 'الماتش بدأ بالفعل! مينفعش تنضم دلوقتي',
             field: 'roomCode',
             action: 'join_room'
           });
@@ -1229,7 +1331,7 @@ export function createSupabaseSocket(customClient = null) {
 
         if (room.players.length >= MAX_PLAYERS) {
           trigger('action_error', {
-            message: `الغرفة ممتلئة بالفعل (${MAX_PLAYERS}/${MAX_PLAYERS})! — Room is full.`,
+            message: `الغرفة ممتلئة بالفعل (${MAX_PLAYERS}/${MAX_PLAYERS})!`,
             field: 'roomCode',
             action: 'join_room'
           });
@@ -1237,9 +1339,16 @@ export function createSupabaseSocket(customClient = null) {
         }
 
         // Character ownership is NOT exclusive: players may share a character.
-        const character = CHARACTERS.find(char => char.id === characterId)
-          || CHARACTERS[room.players.length % CHARACTERS.length]
-          || CHARACTERS[0];
+        const builtCharacter = buildPlayerCharacter({
+          characterId: customCharacter ? undefined : (characterId || (CHARACTERS[room.players.length % CHARACTERS.length] || CHARACTERS[0]).id),
+          custom: customCharacter,
+          specialties
+        });
+        if (builtCharacter.error) {
+          emitError(builtCharacter.error, 'join_room');
+          return;
+        }
+        const character = builtCharacter.character;
 
         const teamACount = room.players.filter(player => player.team === 'team_a').length;
         const teamBCount = room.players.filter(player => player.team === 'team_b').length;
@@ -1258,7 +1367,7 @@ export function createSupabaseSocket(customClient = null) {
         const playerToken = createToken();
         const player = {
           id: socketId,
-          name: cleanName,
+          name: uniqueName(room, cleanName),
           character,
           team: assignedTeam,
           isHost: false,
@@ -1283,6 +1392,108 @@ export function createSupabaseSocket(customClient = null) {
           player,
           room: sanitizeForViewer(room, socketId)
         });
+        break;
+      }
+
+      // ---- Host team management (parity with the Socket.IO server) ----
+      case 'kick_player':
+      case 'update_team_names':
+      case 'reassign_player_team':
+      case 'reorder_team_players':
+      case 'swap_teams':
+      case 'set_match_judge': {
+        const room = await currentRoom();
+        if (!room || !isCurrentRoom(payload.roomCode)) return;
+        if (!isHost(room)) {
+          emitError('إدارة الفرق والحكم للهوست (كابتن الغرفة) بس.', event);
+          return;
+        }
+        const inLobby = room.status === 'lobby' || room.status === 'waiting';
+        if (event !== 'update_team_names' && event !== 'set_match_judge' && !inLobby) {
+          emitError('تعديل الفرق متاح في صالة الانتظار قبل بدء الماتش بس.', event);
+          return;
+        }
+
+        if (event === 'kick_player') {
+          const target = room.players.find(candidate => candidate.id === payload.playerId);
+          if (!target || target.id === localPlayer?.id) {
+            emitError('مينفعش تطرد الهوست نفسه.', event);
+            return;
+          }
+          room.players = room.players.filter(candidate => candidate.id !== target.id);
+        } else if (event === 'update_team_names') {
+          const names = payload.names && typeof payload.names === 'object' ? payload.names : {};
+          const nameA = cleanText(names.team_a, 30);
+          const nameB = cleanText(names.team_b, 30);
+          if (nameA) room.teams.team_a.name = nameA;
+          if (nameB) room.teams.team_b.name = nameB;
+        } else if (event === 'reassign_player_team') {
+          const target = room.players.find(candidate => candidate.id === payload.playerId);
+          if (!target || !['team_a', 'team_b'].includes(payload.team)) return;
+          const count = room.players.filter(candidate => candidate.team === payload.team).length;
+          if (target.team !== payload.team && count >= TEAM_PLAYERS) {
+            emitError('الفريق المقابل مكتمل (2/2)!', event);
+            return;
+          }
+          target.team = payload.team;
+        } else if (event === 'reorder_team_players') {
+          const { team, fromIndex, toIndex } = payload;
+          if (!['team_a', 'team_b'].includes(team) || !Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return;
+          const indices = [];
+          room.players.forEach((candidate, index) => { if (candidate.team === team) indices.push(index); });
+          if (fromIndex < 0 || toIndex < 0 || fromIndex >= indices.length || toIndex >= indices.length) return;
+          const a = indices[fromIndex];
+          const b = indices[toIndex];
+          [room.players[a], room.players[b]] = [room.players[b], room.players[a]];
+        } else if (event === 'swap_teams') {
+          room.players.forEach(candidate => { candidate.team = candidate.team === 'team_a' ? 'team_b' : 'team_a'; });
+        } else if (event === 'set_match_judge') {
+          const judgeId = payload.judgeId ?? null;
+          if (judgeId !== null && !room.players.some(candidate => candidate.id === judgeId && !candidate.isBot)) {
+            emitError('الحكم لازم يكون لاعب حقيقي موجود في الغرفة.', event);
+            return;
+          }
+          room.singleJudgeId = judgeId;
+        }
+        await persistAndBroadcast(room);
+        break;
+      }
+
+      case 'leave_room': {
+        const room = await currentRoom().catch(() => null);
+        const me = room ? findPlayer(room) : null;
+        if (room && me) {
+          if (room.status === 'lobby' || room.status === 'waiting') {
+            room.players = room.players.filter(candidate => candidate.id !== me.id);
+            const humansLeft = room.players.filter(candidate => !candidate.isBot);
+            if (humansLeft.length === 0) {
+              await supabase.from('rooms').delete().eq('room_id', room.code);
+            } else {
+              if (me.isHost) {
+                const nextHost = humansLeft[0];
+                room.players.forEach(candidate => { candidate.isHost = false; });
+                nextHost.isHost = true;
+                room.hostId = nextHost.id;
+              }
+              await persistAndBroadcast(room);
+            }
+          } else {
+            me.connected = false;
+            me.lastSeen = Date.now();
+            await persistAndBroadcast(room);
+          }
+        }
+        if (channel) {
+          supabase.removeChannel(channel);
+          channel = null;
+        }
+        if (judgeChannel) {
+          supabase.removeChannel(judgeChannel);
+          judgeChannel = null;
+        }
+        localPlayer = null;
+        cachedRoomState = null;
+        trigger('left_room', { roomCode: payload.roomCode || null });
         break;
       }
 
@@ -1325,16 +1536,28 @@ export function createSupabaseSocket(customClient = null) {
       }
 
       case 'update_player_profile': {
-        const { characterId, team, playerName } = payload;
+        const { characterId, team, playerName, customCharacter, specialties } = payload;
         const room = await currentRoom();
         if (!room) return;
         const player = findPlayer(room);
         if (!player) return;
+        if (room.status !== 'lobby' && room.status !== 'waiting') {
+          emitError('لا يمكن تغيير الفريق أو الشخصية بعد انطلاق الماتش.', 'update_player_profile');
+          return;
+        }
 
-        if (characterId) {
-          const character = CHARACTERS.find(char => char.id === characterId);
+        if (customCharacter || characterId || specialties) {
+          const built = buildPlayerCharacter({
+            characterId: customCharacter ? undefined : (characterId || player.character?.id),
+            custom: customCharacter,
+            specialties
+          });
+          if (built.error) {
+            emitError(built.error, 'update_player_profile');
+            return;
+          }
           // Character ownership is NOT exclusive.
-          if (character) player.character = character;
+          player.character = built.character;
         }
         if (team && team !== player.team) {
           const count = room.players.filter(other => other.team === team).length;
@@ -1344,7 +1567,8 @@ export function createSupabaseSocket(customClient = null) {
           }
           player.team = team;
         }
-        if (playerName) player.name = sanitizeName(playerName);
+        const newName = sanitizeName(playerName);
+        if (newName) player.name = uniqueName(room, newName, player.id);
         localPlayer = player;
         await persistAndBroadcast(room);
         trigger('profile_updated', { player: { ...player, playerToken: undefined, playerTokenHash: undefined } });
@@ -1385,12 +1609,42 @@ export function createSupabaseSocket(customClient = null) {
         break;
       }
 
+      case 'cancel_match_countdown': {
+        const cleanCode = normalizeRoomCode(payload.roomCode || currentRoomCode);
+        const room = await loadRoomFromDb(cleanCode);
+        if (!room || !isHost(room)) return;
+        if (cancelCountdown('الهوست لغى العد التنازلي.')) {
+          room.countdown = null;
+          await persistAndBroadcast(room);
+        }
+        break;
+      }
+
       case 'start_match_countdown': {
         const cleanCode = normalizeRoomCode(payload.roomCode || currentRoomCode);
         const room = await loadRoomFromDb(cleanCode);
         if (!room) return;
         if (!isHost(room)) {
-          emitError('Starting the match is reserved for the room host.', 'start_match_countdown');
+          emitError('بدء الماتش للهوست (كابتن الغرفة) بس.', 'start_match_countdown');
+          return;
+        }
+        if (room.status !== 'lobby' && room.status !== 'waiting') {
+          emitError('الماتش بدأ بالفعل، مينفعش تشغّل عد تنازلي جديد.', 'start_match_countdown');
+          return;
+        }
+        if (countdownTimers.length) return; // already counting
+
+        const readiness = (candidate) => {
+          const teamAPlayers = candidate.players.filter(player => player.team === 'team_a').length;
+          const teamBPlayers = candidate.players.filter(player => player.team === 'team_b').length;
+          if (candidate.players.length !== MAX_PLAYERS || teamAPlayers !== TEAM_PLAYERS || teamBPlayers !== TEAM_PLAYERS) {
+            return `العدد مش مكتمل! لازم ${MAX_PLAYERS} لاعبين بالظبط والتوزيع ${TEAM_PLAYERS} ضد ${TEAM_PLAYERS} (${candidate.players.length}/${MAX_PLAYERS}).`;
+          }
+          return null;
+        };
+        const notReady = readiness(room);
+        if (notReady) {
+          emitError(notReady, 'start_match_countdown');
           return;
         }
         cachedRoomState = room;
@@ -1398,44 +1652,69 @@ export function createSupabaseSocket(customClient = null) {
         broadcastToRoom('countdown_tick', { count: 3 });
         broadcastToRoom('sound_trigger', { sound: 'whistle' });
 
-        setTimeout(() => {
+        countdownTimers.push(setTimeout(() => {
           broadcastToRoom('countdown_tick', { count: 2 });
           broadcastToRoom('sound_trigger', { sound: 'whistle' });
-        }, 1000);
+        }, 1000));
 
-        setTimeout(() => {
+        countdownTimers.push(setTimeout(() => {
           broadcastToRoom('countdown_tick', { count: 1 });
           broadcastToRoom('sound_trigger', { sound: 'whistle' });
-        }, 2000);
+        }, 2000));
 
-        setTimeout(async () => {
+        countdownTimers.push(setTimeout(async () => {
+          countdownTimers = [];
+          // Someone may have left or switched teams during the countdown: check again with fresh data.
+          const fresh = await loadRoomFromDb(cleanCode);
+          const stillNotReady = fresh ? readiness(fresh) : 'الغرفة اختفت.';
+          if (!fresh || (fresh.status !== 'lobby' && fresh.status !== 'waiting') || stillNotReady) {
+            broadcastToRoom('countdown_cancelled', { reason: stillNotReady || 'تم إلغاء العد التنازلي.' });
+            return;
+          }
+
           broadcastToRoom('countdown_tick', { count: 0 });
-          room.countdown = 0;
-          room.status = 'round1';
+          fresh.countdown = 0;
+          fresh.status = 'round1';
 
-          const teamA = room.players.filter(player => player.team === 'team_a');
-          room.round1.activeTeam = 'team_a';
-          room.round1.answeringPlayerId = teamA[0]?.id || room.players[0]?.id;
-          assignReferee(room, 'round1');
-          dispatchR1Question(room);
-          publishSecrets(room);
+          const teamA = fresh.players.filter(player => player.team === 'team_a');
+          fresh.round1.activeTeam = 'team_a';
+          fresh.round1.answeringPlayerId = teamA[0]?.id || fresh.players[0]?.id;
+          resetPowers(fresh);
+          assignReferee(fresh, 'round1');
+          dispatchR1Question(fresh);
+          publishSecrets(fresh);
 
-          await persistAndBroadcast(room);
-          broadcastToRoom('match_started', { roomCode: room.code });
-        }, 3000);
+          await persistAndBroadcast(fresh);
+          broadcastToRoom('match_started', { roomCode: fresh.code });
+        }, 3000));
         break;
       }
 
       case 'change_round': {
-        const { targetRound } = payload;
+        let { targetRound } = payload;
         const room = await currentRoom();
         if (!room) return;
         if (!isCurrentRoom(payload.roomCode)) return;
         if (!isHost(room)) {
-          emitError('Round changes are reserved for the room host.', 'change_round');
+          emitError('الانتقال بين الجولات للهوست (كابتن الغرفة) بس.', 'change_round');
           return;
         }
 
+        let finalTieBreak = false;
+        if (targetRound === 'game_over' && needsFinalTieBreak(room.teams, room.status, room.round3)) {
+          targetRound = 'round3';
+          finalTieBreak = true;
+        }
+        // Back to the lobby after (or during) a match: every score, round state and power starts from zero.
+        if (targetRound === 'lobby' && room.status !== 'lobby' && room.status !== 'waiting') {
+          const fresh = createInitialState(room.code, room.hostId);
+          for (const key of ['round1', 'round2', 'round3', 'round4']) room[key] = fresh[key];
+          for (const teamKey of ['team_a', 'team_b']) {
+            room.teams[teamKey] = { ...fresh.teams[teamKey], name: room.teams[teamKey].name };
+          }
+          for (const candidate of room.players) candidate.scoreContribution = 0;
+          resetPowers(room);
+        }
         room.status = targetRound;
 
         if (targetRound === 'round1') {
@@ -1450,6 +1729,7 @@ export function createSupabaseSocket(customClient = null) {
           room.round1.pendingPoints = 0;
           room.round1.turnPlan = null;
           room.round1.turnPlanIndex = 0;
+          resetPowers(room);
           assignReferee(room, 'round1');
           dispatchR1Question(room);
         } else if (targetRound === 'round2') {
@@ -1469,6 +1749,17 @@ export function createSupabaseSocket(customClient = null) {
           room.round3.currentQuestion = null;
           room.round3.shotsHistory = [];
           room.round3.isComplete = false;
+          room.round3.isSuddenDeath = finalTieBreak;
+          room.round3.suddenDeathRound = finalTieBreak ? 1 : 0;
+          room.round3.finalTieBreak = finalTieBreak;
+          room.round3.finalTieBreakDone = false;
+          if (finalTieBreak) {
+            room.round3.turnIndex = R3_TOTAL_SHOTS;
+            broadcastToRoom('notification', {
+              title: '⚡ تعادل في النتيجة النهائية!',
+              message: 'ركلة حسم لكل فريق — اللي يتقدم يكسب البطولة!'
+            });
+          }
           room.round3.tieBreakActive = false;
           room.round3.tieBreakData = null;
           room.round3.interceptBuzzedBy = null;
@@ -1546,9 +1837,7 @@ export function createSupabaseSocket(customClient = null) {
         r3.phase = 'duelist_selection';
         r3.shotState = 'selection';
         r3.lastShotResult = null;
-        r3.turnIndex = (r3.turnIndex || 0) + 1;
-        r3.kickerTeam = r3.kickerTeam === 'team_a' ? 'team_b' : 'team_a';
-        dispatchR3Shot(room);
+        // settleR3Shot already advanced turnIndex, kicker team, kicker/goalie and judge.
         publishSecrets(room);
         await persistAndBroadcast(room);
         break;
@@ -1568,6 +1857,12 @@ export function createSupabaseSocket(customClient = null) {
         if (!r1.currentQuestion || !r1.actionToken || r1.actionToken !== payload.actionToken) {
           emitError('انتهت صلاحية السؤال ده — اطلب سؤال جديد.', 'r1_action_score');
           return;
+        }
+        if (r1.steal) {
+          resolveR1Steal(room, true);
+          await persistAndBroadcast(room);
+          publishSecrets(room);
+          break;
         }
         r1.actionToken = null;
 
@@ -1600,25 +1895,34 @@ export function createSupabaseSocket(customClient = null) {
           emitError('انتهت صلاحية السؤال ده — اطلب سؤال جديد.', 'r1_action_break');
           return;
         }
+        if (r1.steal) {
+          resolveR1Steal(room, false);
+          await persistAndBroadcast(room);
+          publishSecrets(room);
+          break;
+        }
         r1.actionToken = null;
+        let openSteal = false;
 
-        const answering = findPlayer(room, r1.answeringPlayerId);
-        if (answering?.character?.id === 'abdelrahman_eltouny' && r1.streak > 1) {
-          r1.streak = Math.max(1, r1.streak - 1);
-          r1.pendingPoints = r1.streakLadder[r1.streak] || 0;
+        if (takeShield(room, r1.activeTeam)) {
           broadcastToRoom('notification', {
             title: '🛡️ درع بيلافيتا!',
-            message: 'درع التوني خفّى كسر الستريك.'
+            message: 'الدرع امتص الإجابة الغلط — الستريك والنقاط سليمة!'
           });
         } else {
           r1.streak = 0;
           r1.pendingPoints = 0;
           broadcastToRoom('sound_trigger', { sound: 'buzzer' });
+          openSteal = room.players.some(p => p.team !== r1.activeTeam);
         }
 
-        advanceR1Quota(room);
-        if (r1.totalQuestionsAnswered < R1_TOTAL_QUESTIONS) {
-          dispatchR1Question(room);
+        if (openSteal) {
+          beginR1Steal(room);
+        } else {
+          advanceR1Quota(room);
+          if (r1.totalQuestionsAnswered < R1_TOTAL_QUESTIONS) {
+            dispatchR1Question(room);
+          }
         }
         await persistAndBroadcast(room);
         publishSecrets(room);
@@ -1732,8 +2036,9 @@ export function createSupabaseSocket(customClient = null) {
           return;
         }
         r2.actionToken = null;
-        room.teams[team].score += 500;
-        r2.lastResult = { outcome: 'correct', team, by: player.id, at: Date.now() };
+        const awarded = applyTurbo(room, team, passwordCardPoints(r2.endTime, r2.timer));
+        room.teams[team].score += awarded;
+        r2.lastResult = { outcome: 'correct', team, points: awarded, by: player.id, at: Date.now() };
         r2.currentWordIndex += 1;
 
         if (r2.currentWordIndex >= R2_TOTAL_CARDS) {
@@ -1817,7 +2122,7 @@ export function createSupabaseSocket(customClient = null) {
         }
         r2.actionToken = null;
         r2.fouls[team] = (r2.fouls[team] || 0) + 1;
-        room.teams[team].score = Math.max(0, room.teams[team].score - 200);
+        room.teams[team].score = Math.max(0, room.teams[team].score - applyFirewall(room, team, PASSWORD_RULES.FOUL_PENALTY));
         r2.lastResult = { outcome: 'foul', team, by: player.id, at: Date.now() };
         r2.actionToken = null;
         r2.currentWordIndex += 1;
@@ -1835,32 +2140,53 @@ export function createSupabaseSocket(customClient = null) {
         break;
       }
 
-      case 'r2_time_freeze': {
+      case 'r2_time_freeze':
+      case 'use_power': {
         const room = await currentRoom();
         if (!room) return;
         if (!isCurrentRoom(payload.roomCode)) return;
-        const r2 = room.round2;
         const player = findPlayer(room);
         if (!player) return;
-        if (player.id !== getRoundRefereeId(room, 'round2')) {
-          emitError('تجميد الوقت محصور بالحكم المكلّف.', 'r2_time_freeze');
+        const hooks = {
+          rerollR1: (r) => {
+            const r1 = r.round1;
+            const backup = {
+              currentQuestion: r1.currentQuestion,
+              actionToken: r1.actionToken,
+              isTimerRunning: r1.isTimerRunning,
+              turnPlanIndex: r1.turnPlanIndex,
+              currentQuestionIndex: r1.currentQuestionIndex
+            };
+            r1.turnPlanIndex = Math.max(0, r1.turnPlanIndex - 1);
+            r1.currentQuestionIndex = Math.max(0, r1.currentQuestionIndex - 1);
+            if (dispatchR1Question(r)) return true;
+            Object.assign(r1, backup);
+            return false;
+          },
+          rerollR3: (r) => {
+            const r3 = r.round3;
+            const previous = r3.currentQuestion;
+            if (!dispatchR3Question(r)) {
+              r3.currentQuestion = previous;
+              return false;
+            }
+            r3.shotStartedAt = Date.now();
+            r3.endTime = r3.shotStartedAt + (r3.timer || 20) * 1000;
+            return true;
+          }
+        };
+        const result = applyPower(room, player.id, hooks);
+        if (!result.ok) {
+          emitError(result.reason, event);
           return;
         }
-        if (r2.isComplete || !r2.currentWord) {
-          emitError('مفيش بطاقة شغالة دلوقتي.', 'r2_time_freeze');
-          return;
-        }
-        if (r2.timeFreezeUsed) {
-          emitError('تجميد الوقت اتستخدم مرة واحدة في البطاقة دي.', 'r2_time_freeze');
-          return;
-        }
-        r2.timeFreezeUsed = true;
-        r2.timer += R2_TIME_FREEZE_SECONDS;
+        broadcastToRoom('sound_trigger', { sound: 'whistle' });
         broadcastToRoom('notification', {
-          title: '⏱️ تجميد الوقت',
-          message: `اتضاف ${R2_TIME_FREEZE_SECONDS} ثانية لوقت البطاقة.`
+          title: `${result.power.icon} قدرة خاصة!`,
+          message: `${player.name} استخدم "${result.power.title}"`
         });
         await persistAndBroadcast(room);
+        publishSecrets(room);
         break;
       }
 
@@ -1872,7 +2198,7 @@ export function createSupabaseSocket(customClient = null) {
         const r3 = room.round3;
         const player = findPlayer(room);
         if (!player) return;
-        if (r3.isComplete || r3.turnIndex >= R3_TOTAL_SHOTS) return;
+        if (isShootoutOver(r3)) return;
         if (r3.phase !== 'duelist_selection') {
           emitError('اختيار المبارزين متاح وقت اختيار الثنائيات بس.', 'r3_select_duelists');
           return;
@@ -1923,7 +2249,7 @@ export function createSupabaseSocket(customClient = null) {
           emitError('بدء التسديد محصور بممثل الفريق الضارب أو الحكم المكلّف.', 'r3_start_shootout');
           return;
         }
-        if (r3.isComplete || r3.turnIndex >= R3_TOTAL_SHOTS) return;
+        if (isShootoutOver(r3)) return;
         if (r3.phase !== 'duelist_selection') {
           emitError('التسديد اتبدأ بالفعل للركلة دي.', 'r3_start_shootout');
           return;
@@ -1964,6 +2290,10 @@ export function createSupabaseSocket(customClient = null) {
           return;
         }
         if (r3.interceptBuzzedBy) return;
+        if (!isInterceptUnlocked(r3.shotStartedAt)) {
+          emitError(`الصد يفتح بعد ${PENALTY_RULES.INTERCEPT_DELAY_SECONDS} ثواني من بداية الركلة.`, 'r3_intercept_buzz');
+          return;
+        }
         r3.interceptBuzzedBy = socket.id;
         r3.interceptAt = Date.now();
         broadcastToRoom('sound_trigger', { sound: 'buzzer' });
@@ -2094,7 +2424,17 @@ export function createSupabaseSocket(customClient = null) {
           emitError('فريقك صاحب أعلى مزايدة بالفعل.', 'r4_bid');
           return;
         }
+        const lockedMs = bidLockedMs(room, player.team);
+        if (lockedMs > 0) {
+          emitError(`فريقك مقفول عن المزايدة ${Math.ceil(lockedMs / 1000)} ثواني بسبب قدرة الخصم.`, 'r4_bid');
+          return;
+        }
 
+        const maxPossible = r4.currentTopic?.maxPossible;
+        if (Number.isInteger(maxPossible) && r4.highestBid + payload.increment > maxPossible) {
+          emitError(`الحد الأقصى للمزايدة في الموضوع ده ${maxPossible} (عدد الإجابات الصحيحة المتاحة).`, 'r4_bid');
+          return;
+        }
         r4.highestBid += payload.increment;
         r4.highestBidderTeam = player.team;
         r4.highestBidderPlayerId = player.id;
@@ -2276,20 +2616,29 @@ export function createSupabaseSocket(customClient = null) {
         }
 
         r4.phase = 'resolved';
+        const rivalTeam = winningTeam === 'team_a' ? 'team_b' : 'team_a';
+        const outcome = auctionOutcome({
+          bid: r4.highestBid,
+          success: payload.success,
+          winnerScore: room.teams[winningTeam].score,
+          rivalScore: room.teams[rivalTeam].score
+        });
+        if (outcome.delta > 0) outcome.delta = applyTurbo(room, winningTeam, outcome.delta);
+        else if (outcome.delta < 0) outcome.delta = -applyFirewall(room, winningTeam, -outcome.delta);
+        room.teams[winningTeam].score += outcome.delta;
+        r4.lastResult = { team: winningTeam, success: payload.success, ...outcome, at: Date.now() };
         if (payload.success) {
-          const reward = r4.highestBid * 400;
-          room.teams[winningTeam].score += reward;
           broadcastToRoom('sound_trigger', { sound: 'goal_roar' });
           broadcastToRoom('confetti_trigger', {});
           broadcastToRoom('notification', {
             title: 'أنا قدها ونص! 🏆',
-            message: `${room.teams[winningTeam].name} حقق الرقم المطلوب وكسب ${reward} نقطة!`
+            message: `${room.teams[winningTeam].name} حقق الرقم المطلوب وكسب ${outcome.delta} نقطة${outcome.multiplier > 1 ? ' (×2 للفريق المتأخر 🔥)' : ''}!`
           });
         } else {
           broadcastToRoom('sound_trigger', { sound: 'buzzer' });
           broadcastToRoom('notification', {
             title: 'المزاد لم يكتمل',
-            message: `${room.teams[winningTeam].name} لم يوفِ بالمزاد.`
+            message: `${room.teams[winningTeam].name} لم يوفِ بالمزاد وخسر ${-outcome.delta} نقطة.`
           });
         }
 

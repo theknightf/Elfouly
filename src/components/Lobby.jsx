@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { CHARACTERS, TEAM_PRESETS } from '../data/characters';
 import HostTeamManager from './HostTeamManager';
+import CharacterEditor from './CharacterEditor';
+import { MAX_SPECIALTIES } from '../game/characterBuilder';
 import {
   CheckCircle,
   Clock,
@@ -16,7 +18,8 @@ import {
   Loader2,
   WifiOff,
   AlertTriangle,
-  Edit3
+  Edit3,
+  LogOut
 } from 'lucide-react';
 
 export default function Lobby() {
@@ -30,8 +33,10 @@ export default function Lobby() {
     connectionStatusMessage,
     reconnect,
     isHost,
+    leaveRoom,
     countdown,
     startMatchCountdown,
+    cancelMatchCountdown,
     updatePlayerProfile,
     updateTeamNames,
     actionError,
@@ -44,6 +49,29 @@ export default function Lobby() {
 
   const [selectedCharId, setSelectedCharId] = useState(me?.character?.id || '');
   const [selectedTeam, setSelectedTeam] = useState(me?.team || '');
+
+  // Draft of "the categories I know" and "my own character" (saved with the button below).
+  const DEFAULT_CATCHPHRASE = 'أنا هنا عشان أكسب!';
+  const defaultCustom = { name: '', avatar: '🦅', color: '#4CC9F0', powerId: 'shield', catchphrase: '' };
+  const customFromCharacter = (character) => (character?.isCustom
+    ? {
+        name: character.name,
+        avatar: character.avatar,
+        color: character.color,
+        powerId: character.powerId,
+        catchphrase: character.catchphrase === DEFAULT_CATCHPHRASE ? '' : (character.catchphrase || '')
+      }
+    : defaultCustom);
+  const [isCustom, setIsCustom] = useState(Boolean(me?.character?.isCustom));
+  const [specialties, setSpecialties] = useState(me?.character?.attributes || []);
+  const [custom, setCustom] = useState(customFromCharacter(me?.character));
+  const savedCharacterKey = JSON.stringify([me?.character?.id, me?.character?.attributes, me?.character?.name, me?.character?.powerId]);
+  useEffect(() => {
+    setIsCustom(Boolean(me?.character?.isCustom));
+    setSpecialties(me?.character?.attributes || []);
+    setCustom(customFromCharacter(me?.character));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedCharacterKey]);
 
   useEffect(() => {
     if (me?.character?.id) setSelectedCharId(me.character.id);
@@ -63,21 +91,40 @@ export default function Lobby() {
     return (team === 'team_a' ? teamACount : teamBCount) >= 2;
   };
 
-  const isDirty =
-    selectedCharId !== me?.character?.id ||
-    selectedTeam !== me?.team;
+  const savedSignature = me?.character
+    ? JSON.stringify(me.character.isCustom
+      ? ['c', me.character.name, me.character.avatar, me.character.color, me.character.powerId,
+        me.character.catchphrase === DEFAULT_CATCHPHRASE ? '' : (me.character.catchphrase || ''), me.character.attributes]
+      : ['b', me.character.id, me.character.attributes])
+    : '';
+  const draftSignature = JSON.stringify(isCustom
+    ? ['c', custom.name.trim(), custom.avatar, custom.color, custom.powerId, custom.catchphrase.trim(), specialties]
+    : ['b', selectedCharId, specialties]);
+  const isDirty = draftSignature !== savedSignature || selectedTeam !== me?.team;
+  const draftValid = specialties.length >= 1 && (!isCustom || (custom.name.trim().length > 0 && Boolean(custom.powerId)));
 
-  const canSave = isConnected && isDirty && Boolean(selectedCharId) && Boolean(selectedTeam);
+  const canSave = isConnected && isDirty && draftValid && Boolean(selectedTeam);
+
+  const toggleSpecialty = (id) => setSpecialties(previous => (
+    previous.includes(id)
+      ? previous.filter(item => item !== id)
+      : previous.length >= MAX_SPECIALTIES ? previous : [...previous, id]
+  ));
   const allHumansConnected = players.every(player => player.isBot || player.connected !== false);
   const canStart = isConnected && players.length === 4 && teamACount === 2 && teamBCount === 2 && allHumansConnected;
 
   const handleSelectCharacter = (character) => {
     setSelectedCharId(character.id);
+    setIsCustom(false);
+    setSpecialties([...character.attributes]);
   };
 
   const handleSaveProfile = () => {
     if (!canSave) return;
-    updatePlayerProfile(selectedCharId, selectedTeam);
+    const extras = isCustom
+      ? { customCharacter: { ...custom, name: custom.name.trim(), catchphrase: custom.catchphrase.trim(), specialties } }
+      : { specialties };
+    updatePlayerProfile(isCustom ? undefined : selectedCharId, selectedTeam, extras);
   };
 
   const handleCopyCode = () => {
@@ -129,6 +176,16 @@ export default function Lobby() {
             <div className="text-lg md:text-2xl font-black text-white">
               {countdown === 0 ? 'بدء جولة 1 تو (Bank Mode)!' : 'الجميع ينتقل للساحة بعد قليل...'}
             </div>
+
+            {isHost && countdown > 0 && (
+              <button
+                type="button"
+                onClick={cancelMatchCountdown}
+                className="mt-2 rounded-xl border border-white/20 px-5 py-2 text-sm font-black text-gray-200 hover:border-arena-red hover:text-arena-red transition-colors cursor-pointer"
+              >
+                إلغاء البدء
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -213,6 +270,16 @@ export default function Lobby() {
                 <span>مشاركة اللينك</span>
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('تخرج من الغرفة؟')) leaveRoom();
+              }}
+              className="w-full py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer text-gray-300 border border-white/10 hover:border-arena-red hover:text-arena-red transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>خروج من الغرفة</span>
+            </button>
           </div>
         </div>
       </div>
@@ -304,8 +371,8 @@ export default function Lobby() {
 
           <div className="inline-flex items-center gap-2 rounded-xl bg-arena-darker border border-white/10 px-3 py-2">
             <span className="text-[10px] text-gray-400 font-bold">اختيارك:</span>
-            <span className="text-xs font-black" style={{ color: selectedChar.color }}>
-              {selectedChar.avatar} {selectedChar.name}
+            <span className="text-xs font-black" style={{ color: isCustom ? custom.color : selectedChar.color }}>
+              {isCustom ? custom.avatar : selectedChar.avatar} {isCustom ? (custom.name || 'شخصيتك الجديدة') : selectedChar.name}
             </span>
           </div>
         </div>
@@ -361,6 +428,21 @@ export default function Lobby() {
             );
           })}
         </div>
+
+        <CharacterEditor
+          specialties={specialties}
+          onToggleSpecialty={toggleSpecialty}
+          isCustom={isCustom}
+          onToggleCustom={() => setIsCustom(previous => !previous)}
+          custom={custom}
+          onCustomChange={patch => setCustom(previous => ({ ...previous, ...patch }))}
+        />
+
+        {!draftValid && (
+          <p className="text-xs font-bold text-arena-yellow">
+            {specialties.length < 1 ? 'اختار مجال واحد على الأقل (لحد 3).' : 'اكتب اسم لشخصيتك واختار قدرتها.'}
+          </p>
+        )}
 
         {characterError && (
           <p className="text-xs font-bold text-arena-red">{characterError}</p>

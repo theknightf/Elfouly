@@ -4,11 +4,16 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import crypto from 'crypto';
-import { pathToFileURL } from 'url';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { CHARACTERS } from '../src/data/characters.js';
 import { PASSWORD_WORDS, AUCTION_TOPICS, PENALTY_CATEGORIES } from '../src/data/questions.js';
 import { TOURNAMENT_STRUCTURE } from '../src/data/tournamentStructure.js';
 import { TurnManager } from '../src/game/TurnManager.js';
+import { buildPlayerCharacter } from '../src/game/characterBuilder.js';
+import { applyPower, resetPowers, takeShield, applyFirewall, applyTurbo, bidLockedMs } from '../src/game/powers.js';
+import { BANK_RULES, PASSWORD_RULES, PENALTY_RULES, passwordCardPoints, isInterceptUnlocked, auctionOutcome, isShootoutOver, needsFinalTieBreak, suddenDeathWinner } from '../src/game/constants.js';
 import { triviaEngine, buildRound1TurnPlan } from '../services/triviaEngine.js';
 import { calculateBonus, isGeneralCategory } from '../src/utils/penaltyRules.js';
 
@@ -77,6 +82,46 @@ function sanitizePlayerName(inputName) {
     .slice(0, 20);
 }
 
+// Room names: no markup/control characters, trimmed, capped.
+function sanitizeTeamName(inputName) {
+  if (typeof inputName !== 'string') return '';
+  return inputName
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[<>\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 30);
+}
+
+// Two players with the same name are indistinguishable in the UI: add " 2", " 3"...
+function uniquePlayerName(room, name, excludeId = null) {
+  const taken = new Set(
+    room.players.filter(p => p.id !== excludeId).map(p => String(p.name).toLowerCase())
+  );
+  let candidate = name;
+  let n = 2;
+  while (taken.has(candidate.toLowerCase())) {
+    const suffix = ` ${n++}`;
+    candidate = name.slice(0, 20 - suffix.length) + suffix;
+  }
+  return candidate;
+}
+
+const CREATE_ATTEMPTS = new Map();
+const CREATE_RATE_LIMIT = 6;
+const MAX_ROOMS = 1000;
+function isCreateRateLimited(socketId) {
+  const now = Date.now();
+  const attempts = (CREATE_ATTEMPTS.get(socketId) || []).filter(t => now - t < JOIN_RATE_WINDOW_MS);
+  if (attempts.length >= CREATE_RATE_LIMIT) {
+    CREATE_ATTEMPTS.set(socketId, attempts);
+    return true;
+  }
+  attempts.push(now);
+  CREATE_ATTEMPTS.set(socketId, attempts);
+  return false;
+}
+
 function createPlayerToken() {
   return crypto.randomUUID();
 }
@@ -112,16 +157,12 @@ function pickTeamForNewPlayer(room, teamPreference) {
 
 // Character selection is NON-EXCLUSIVE: multiple players may use the exact
 // same character. Only the character id itself is validated here.
-function resolveCharacterForPlayer(room, characterId) {
-  if (characterId) {
-    const character = CHARACTERS.find(c => c.id === characterId);
-    if (!character) {
-      return { error: 'الشخصية دي مش موجودة في الساحة! اختار شخصية تانية — Character not found.' };
-    }
-    return { character };
+function resolveCharacterForPlayer(room, characterId, customCharacter = null, specialties = null) {
+  if (customCharacter) {
+    return buildPlayerCharacter({ custom: customCharacter, specialties });
   }
-
-  return { character: CHARACTERS[room.players.length % CHARACTERS.length] || CHARACTERS[0] };
+  const id = characterId || (CHARACTERS[room.players.length % CHARACTERS.length] || CHARACTERS[0]).id;
+  return buildPlayerCharacter({ characterId: id, specialties });
 }
 
 function getStartReadiness(room) {
@@ -397,6 +438,44 @@ function assignReferee(room, roundKey, { rotate = false, reason = 'assign', excl
   return { previousId, refereeId: state.refereePlayerId, fallback, reason };
 }
 
+// Identifies "the same item is still on screen" so a returning judge only gets the seat
+// back while nothing has moved on without them.
+function roleKey(room, roundKey) {
+  const state = room[roundKey] || {};
+  switch (roundKey) {
+    case 'round1': return `${state.currentQuestionIndex}:${state.steal ? 's' : 'n'}`;
+    case 'round2': return `${state.currentWordIndex}`;
+    case 'round3': return `${state.turnIndex}:${state.phase}`;
+    case 'round4': return `${state.currentTopicIndex}:${state.phase}`;
+    default: return '';
+  }
+}
+
+const ROLE_RESTORE_WINDOW_MS = 90 * 1000;
+
+// A judge who reloads the page is replaced after a few seconds (so the game never stalls).
+// If they come back while the same question is still open, they get the seat back.
+function restoreRefereeIfFailedOver(room, player) {
+  const roundKey = room.status;
+  if (!ROUND_KEYS.includes(roundKey)) return false;
+  const state = room[roundKey];
+  const failed = state?.failedOver;
+  if (!failed || failed.token !== player.playerToken) return false;
+
+  const stillValid = Date.now() - failed.at <= ROLE_RESTORE_WINDOW_MS && failed.key === roleKey(room, roundKey);
+  state.failedOver = null;
+  if (!stillValid) return false;
+  if (!getRoundRefereePool(room, roundKey).some(candidate => candidate.id === player.id)) return false;
+
+  const previousId = state.refereePlayerId;
+  state.refereePlayerId = player.id;
+  state.refereeAssignedAt = Date.now();
+  state.refereeLastSeen = Date.now();
+  state.refereeFallback = false;
+  notifyRefereeChange(room, roundKey, previousId, 'restored');
+  return true;
+}
+
 function isReferee(room, roundKey, socketId) {
   return !!socketId && room?.[roundKey]?.refereePlayerId === socketId;
 }
@@ -427,6 +506,13 @@ function notifyRefereeChange(room, roundKey, previousId, reason) {
     refereePlayerId: room[roundKey]?.refereePlayerId || null,
     reason
   });
+
+  if (reason === 'restored') {
+    io.to(room.code).emit('notification', {
+      title: 'رجع الحكم ⚖️',
+      message: `${next?.name || 'الحكم'} رجع بعد الانقطاع واستلم التحكيم تاني.`
+    });
+  }
 
   if (reason === 'failover') {
     io.to(room.code).emit('notification', {
@@ -487,6 +573,7 @@ function sanitizeRoomForViewer(room, socketId) {
       delete snapshot[key].refereeQueue;
       delete snapshot[key].refereeLastSeen;
       delete snapshot[key].refereeAssignedAt;
+      delete snapshot[key].failedOver; // holds a private player token
     }
   }
 
@@ -512,6 +599,94 @@ function generateRoomCode() {
     body += ROOM_CODE_ALPHABET.charAt(crypto.randomInt(0, ROOM_CODE_ALPHABET.length));
   }
   return `QZ-${body}`;
+}
+
+// Back to the lobby after (or during) a match: every score, round state and power starts
+// from zero again. Players, teams' names and the chat stay.
+function resetMatchState(room) {
+  const fresh = createInitialRoomState(room.code, room.hostId);
+  for (const key of ['round1', 'round2', 'round3', 'round4']) room[key] = fresh[key];
+  for (const teamKey of ['team_a', 'team_b']) {
+    room.teams[teamKey] = { ...fresh.teams[teamKey], name: room.teams[teamKey].name };
+  }
+  for (const player of room.players) {
+    player.scoreContribution = 0;
+  }
+  room.singleJudgeId = null;
+  resetPowers(room);
+}
+
+// Takes a player out of a LOBBY for good (left, or did not come back in time).
+// Hands the crown to a human, and deletes the room once no human is left.
+function removePlayerFromLobby(room, player, { reason = 'leave' } = {}) {
+  const index = room.players.indexOf(player);
+  if (index === -1) return;
+  room.players.splice(index, 1);
+
+  const pending = room.disconnectTimers?.get(player.playerToken);
+  if (pending) {
+    clearTimeout(pending);
+    room.disconnectTimers.delete(player.playerToken);
+  }
+
+  const humansLeft = room.players.filter(p => !p.isBot);
+  if (humansLeft.length === 0) {
+    stopCountdown(room);
+    rooms.delete(room.code);
+    console.log(`[Room Deleted] Room ${room.code} was deleted because all players left.`);
+    return;
+  }
+
+  stopCountdown(room, `${player.name} غادر الساحة قبل انطلاق المباراة! تم إلغاء العد التنازلي.`);
+
+  if (player.isHost || !room.players.some(p => p.isHost)) {
+    const nextHost = humansLeft.find(p => p.connected !== false) || humansLeft[0];
+    room.players.forEach(p => { p.isHost = false; });
+    nextHost.isHost = true;
+    room.hostId = nextHost.id;
+    io.to(room.code).emit('notification', {
+      title: 'انتقال شارة القيادة 👑',
+      message: `${nextHost.name} أصبح هو كابتن الغرفة الجديد!`
+    });
+  }
+
+  emitRoomState(room);
+  io.to(room.code).emit('notification', reason === 'kick'
+    ? { title: 'اتشال من الغرفة 🚪', message: `${player.name} اتشال من الغرفة بقرار الهوست.` }
+    : reason === 'leave'
+    ? { title: 'غادر الساحة 👋', message: `${player.name} خرج من الغرفة.` }
+    : { title: 'تفريغ خانة ⚠️', message: `غادر ${player.name} الساحة بعد ${Math.round(DISCONNECT_GRACE_MS / 1000)} ثانية من غير رجوع. تم تفريغ الخانة!` });
+}
+
+// A socket belongs to ONE room at a time. Called before it creates or joins another.
+function leaveOtherRooms(socket, exceptCode = null) {
+  for (const room of [...rooms.values()]) {
+    if (room.code === exceptCode) continue;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) continue;
+    socket.leave(room.code);
+    if (LOBBY_STATUSES.includes(room.status)) {
+      removePlayerFromLobby(room, player, { reason: 'leave' });
+    } else {
+      // Mid-match: keep the seat on the scoreboard, mark it offline (same as a disconnect).
+      player.connected = false;
+      player.lastSeen = Date.now();
+      emitRoomState(room);
+    }
+  }
+}
+
+function requireHost(room, socket, label) {
+  if (socket.id === room.hostId) return true;
+  socket.emit('error_message', `🚫 ${label} للهوست (كابتن الغرفة) بس.`);
+  return false;
+}
+
+function requireHostInLobby(room, socket, label) {
+  if (!requireHost(room, socket, label)) return false;
+  if (LOBBY_STATUSES.includes(room.status)) return true;
+  socket.emit('error_message', `🚫 ${label} متاح في صالة الانتظار قبل بدء الماتش بس.`);
+  return false;
 }
 
 // Flexible room lookup supporting hyphenated and raw codes, with or without QZ prefix
@@ -587,8 +762,8 @@ function createInitialRoomState(roomCode, hostId) {
     tournamentStructure: TOURNAMENT_STRUCTURE,
     players: [],
     teams: {
-      team_a: { id: 'team_a', name: 'فريق الحيتان (Team A)', score: 0, bank: 0, penaltyScore: 0 },
-      team_b: { id: 'team_b', name: 'فريق الوحوش (Team B)', score: 0, bank: 0, penaltyScore: 0 }
+      team_a: { id: 'team_a', name: 'فريق الحيتان', score: 0, bank: 0, penaltyScore: 0 },
+      team_b: { id: 'team_b', name: 'فريق الوحوش', score: 0, bank: 0, penaltyScore: 0 }
     },
     // Round 1: "1 تو" (Bank Mode) - 48 Questions total, 24/team, 4 segments, 2 sub-batches [6, 6] per segment
     round1: {
@@ -605,8 +780,9 @@ function createInitialRoomState(roomCode, hostId) {
       currentQuestionIndex: 0,
       streak: 0, // 0 to 10
       pendingPoints: 0,
+      steal: null,
       lastDecision: null,
-      streakLadder: [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000],
+      streakLadder: BANK_RULES.STREAK_LADDER,
       currentQuestion: null,
       actionToken: null,
       timer: 30,
@@ -708,14 +884,24 @@ io.on('connection', (socket) => {
   });
 
   // Create room
-  socket.on('create_room', ({ playerName, characterId }) => {
+  socket.on('create_room', ({ playerName, characterId, customCharacter, specialties } = {}) => {
+    if (isCreateRateLimited(socket.id)) {
+      emitActionError(socket, 'بتعمل غرف كتير في وقت قصير! استنى دقيقة وجرب تاني.', 'general', 'create_room');
+      return;
+    }
+    if (rooms.size >= MAX_ROOMS) {
+      emitActionError(socket, 'السيرفر مليان غرف دلوقتي! جرب بعد شوية.', 'general', 'create_room');
+      return;
+    }
+    leaveOtherRooms(socket);
+
     let roomCode = generateRoomCode();
     while (rooms.has(roomCode)) {
       roomCode = generateRoomCode();
     }
 
     const room = createInitialRoomState(roomCode, socket.id);
-    const { character, error } = resolveCharacterForPlayer(room, characterId);
+    const { character, error } = resolveCharacterForPlayer(room, characterId, customCharacter, specialties);
     if (error) {
       emitActionError(socket, error, 'character', 'create_room');
       return;
@@ -750,30 +936,43 @@ io.on('connection', (socket) => {
   });
 
   // Join room
-  socket.on('join_room', ({ roomCode, playerName, characterId, teamPreference }) => {
+  socket.on('join_room', ({ roomCode, playerName, characterId, teamPreference, customCharacter, specialties } = {}) => {
+    // Double-tap on "join": the seat already exists, so just confirm it again.
+    const alreadyIn = findRoom(roomCode)?.players.find(p => p.id === socket.id);
+    if (alreadyIn) {
+      const sameRoom = findRoom(roomCode);
+      socket.emit('joined_room', {
+        roomCode: sameRoom.code,
+        playerToken: alreadyIn.playerToken,
+        player: alreadyIn,
+        room: sanitizeRoomForViewer(sameRoom, socket.id)
+      });
+      return;
+    }
+
     if (isJoinRateLimited(socket.id)) {
-      emitActionError(socket, 'محاولات دخول كتير في وقت قصير! استنى دقيقة وجرب تاني — Too many join attempts.', 'roomCode', 'join_room');
+      emitActionError(socket, 'محاولات دخول كتير في وقت قصير! استنى دقيقة وجرب تاني', 'roomCode', 'join_room');
       return;
     }
 
     const room = findRoom(roomCode);
 
     if (!room) {
-      emitActionError(socket, 'كود الغرفة غير موجود يا بطل! اتأكد من الكود — Room not found.', 'roomCode', 'join_room');
+      emitActionError(socket, 'كود الغرفة غير موجود يا بطل! اتأكد من الكود', 'roomCode', 'join_room');
       return;
     }
 
     if (!LOBBY_STATUSES.includes(room.status)) {
-      emitActionError(socket, 'الماتش بدأ بالفعل! مينفعش تنضم دلوقتي — Match already started.', 'roomCode', 'join_room');
+      emitActionError(socket, 'الماتش بدأ بالفعل! مينفعش تنضم دلوقتي', 'roomCode', 'join_room');
       return;
     }
 
     if (room.players.length >= MAX_ROOM_PLAYERS) {
-      emitActionError(socket, `الغرفة ممتلئة بالفعل (${MAX_ROOM_PLAYERS}/${MAX_ROOM_PLAYERS})! — Room is full.`, 'roomCode', 'join_room');
+      emitActionError(socket, `الغرفة ممتلئة بالفعل (${MAX_ROOM_PLAYERS}/${MAX_ROOM_PLAYERS})!`, 'roomCode', 'join_room');
       return;
     }
 
-    const { character, error } = resolveCharacterForPlayer(room, characterId);
+    const { character, error } = resolveCharacterForPlayer(room, characterId, customCharacter, specialties);
     if (error) {
       emitActionError(socket, error, 'character', 'join_room');
       return;
@@ -781,11 +980,12 @@ io.on('connection', (socket) => {
 
     const team = pickTeamForNewPlayer(room, teamPreference);
     if (!team) {
-      emitActionError(socket, `الغرفة ممتلئة بالفعل (${MAX_ROOM_PLAYERS}/${MAX_ROOM_PLAYERS})! — Room is full.`, 'roomCode', 'join_room');
+      emitActionError(socket, `الغرفة ممتلئة بالفعل (${MAX_ROOM_PLAYERS}/${MAX_ROOM_PLAYERS})!`, 'roomCode', 'join_room');
       return;
     }
 
-    const cleanName = sanitizePlayerName(playerName) || `لاعب ${room.players.length + 1}`;
+    const cleanName = uniquePlayerName(room, sanitizePlayerName(playerName) || `لاعب ${room.players.length + 1}`);
+    leaveOtherRooms(socket, room.code);
 
     const player = {
       id: socket.id,
@@ -828,8 +1028,8 @@ io.on('connection', (socket) => {
       : null;
 
     if (!player) {
-      socket.emit('rejoin_failed', { message: 'جلسة الاستعادة مش صالحة! ادخل بكود الغرفة من جديد — Invalid rejoin token.', field: 'roomCode' });
-      socket.emit('error_message', 'جلسة الاستعادة مش صالحة! ادخل بكود الغرفة من جديد — Invalid rejoin token.');
+      socket.emit('rejoin_failed', { message: 'جلسة الاستعادة مش صالحة! ادخل بكود الغرفة من جديد', field: 'roomCode' });
+      socket.emit('error_message', 'جلسة الاستعادة مش صالحة! ادخل بكود الغرفة من جديد');
       return;
     }
 
@@ -851,6 +1051,7 @@ io.on('connection', (socket) => {
     remapPlayerId(room, previousId, socket.id);
 
     socket.join(room.code);
+    restoreRefereeIfFailedOver(room, player);
 
     socket.emit('rejoined_room', {
       roomCode: room.code,
@@ -908,7 +1109,7 @@ io.on('connection', (socket) => {
   });
 
   // Update player character or team in lobby
-  socket.on('update_player_profile', ({ roomCode, characterId, team, playerName }, ack) => {
+  socket.on('update_player_profile', ({ roomCode, characterId, team, playerName, customCharacter, specialties }, ack) => {
     const respond = (payload) => {
       if (typeof ack === 'function') ack(payload);
     };
@@ -933,15 +1134,20 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (characterId) {
-      const character = CHARACTERS.find(c => c.id === characterId);
-      if (!character) {
-        const message = 'الشخصية دي مش موجودة! — Character not found.';
-        emitActionError(socket, message, 'character', 'update_player_profile');
-        respond({ ok: false, error: message });
+    // Characters are shareable; what a player may change is validated by the shared builder.
+    let nextCharacter = null;
+    if (customCharacter || characterId || specialties) {
+      const built = buildPlayerCharacter({
+        characterId: customCharacter ? undefined : (characterId || player.character?.id),
+        custom: customCharacter,
+        specialties
+      });
+      if (built.error) {
+        emitActionError(socket, built.error, 'character', 'update_player_profile');
+        respond({ ok: false, error: built.error });
         return;
       }
-      // Characters are intentionally shareable between players.
+      nextCharacter = built.character;
     }
 
     if (team && team !== player.team) {
@@ -961,17 +1167,61 @@ io.on('connection', (socket) => {
       }
     }
 
-    if (characterId) {
-      player.character = CHARACTERS.find(c => c.id === characterId);
-    }
+    if (nextCharacter) player.character = nextCharacter;
     if (team) player.team = team;
 
     const cleanName = sanitizePlayerName(playerName);
-    if (cleanName) player.name = cleanName;
+    if (cleanName) player.name = uniquePlayerName(room, cleanName, player.id);
 
     emitRoomState(room);
     socket.emit('profile_updated', { player });
     respond({ ok: true, player });
+  });
+
+  // Host removes a player from the lobby.
+  socket.on('kick_player', ({ roomCode, playerId } = {}) => {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room } = context;
+    if (!requireHostInLobby(room, socket, 'طرد لاعب')) return;
+    const target = room.players.find(p => p.id === playerId);
+    if (!target || target.id === socket.id) {
+      socket.emit('error_message', '🚫 مينفعش تطرد الهوست نفسه.');
+      return;
+    }
+    const targetSocket = io.sockets.sockets.get(target.id);
+    if (targetSocket) {
+      targetSocket.leave(room.code);
+      targetSocket.emit('kicked', { roomCode: room.code, reason: 'الهوست شالك من الغرفة.' });
+    }
+    removePlayerFromLobby(room, target, { reason: 'kick' });
+  });
+
+  // Leave the room on purpose (lobby: the seat is freed at once).
+  socket.on('leave_room', ({ roomCode } = {}) => {
+    const room = findRoom(roomCode);
+    const player = room?.players.find(p => p.id === socket.id);
+    if (!room || !player) {
+      socket.emit('left_room', { roomCode: roomCode || null });
+      return;
+    }
+    socket.leave(room.code);
+    if (LOBBY_STATUSES.includes(room.status)) {
+      removePlayerFromLobby(room, player, { reason: 'leave' });
+    } else {
+      player.connected = false;
+      player.lastSeen = Date.now();
+      if (player.isHost) {
+        const nextHost = room.players.find(p => p.id !== socket.id && isConnectedHuman(p));
+        if (nextHost) {
+          room.players.forEach(p => { p.isHost = false; });
+          nextHost.isHost = true;
+          room.hostId = nextHost.id;
+        }
+      }
+      emitRoomState(room);
+    }
+    socket.emit('left_room', { roomCode: room.code });
   });
 
   // Host Team Management: update team names
@@ -979,9 +1229,12 @@ io.on('connection', (socket) => {
     const context = getRoomAndPlayer(roomCode, socket);
     if (!context) return;
     const { room } = context;
+    if (!requireHost(room, socket, 'تغيير أسماء الفرق')) return;
     if (names && typeof names === 'object') {
-      if (names.team_a) room.teams.team_a.name = String(names.team_a).slice(0, 30);
-      if (names.team_b) room.teams.team_b.name = String(names.team_b).slice(0, 30);
+      const nameA = sanitizeTeamName(names.team_a);
+      const nameB = sanitizeTeamName(names.team_b);
+      if (nameA) room.teams.team_a.name = nameA;
+      if (nameB) room.teams.team_b.name = nameB;
       emitRoomState(room);
     }
   });
@@ -991,10 +1244,11 @@ io.on('connection', (socket) => {
     const context = getRoomAndPlayer(roomCode, socket);
     if (!context) return;
     const { room } = context;
+    if (!requireHostInLobby(room, socket, 'نقل اللاعبين بين الفرق')) return;
     const targetPlayer = room.players.find(p => p.id === playerId);
     if (!targetPlayer || !['team_a', 'team_b'].includes(team)) return;
     const targetCount = room.players.filter(p => p.team === team).length;
-    if (targetPlayer.team !== team && targetCount >= 2) {
+    if (targetPlayer.team !== team && targetCount >= TEAM_PLAYERS) {
       socket.emit('error_message', 'الفريق المقابل مكتمل (2/2)!');
       return;
     }
@@ -1007,6 +1261,8 @@ io.on('connection', (socket) => {
     const context = getRoomAndPlayer(roomCode, socket);
     if (!context) return;
     const { room } = context;
+    if (!requireHostInLobby(room, socket, 'ترتيب لاعبين الفريق')) return;
+    if (!['team_a', 'team_b'].includes(team) || !Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return;
     const teamIndices = [];
     room.players.forEach((p, idx) => {
       if (p.team === team) teamIndices.push(idx);
@@ -1026,6 +1282,7 @@ io.on('connection', (socket) => {
     const context = getRoomAndPlayer(roomCode, socket);
     if (!context) return;
     const { room } = context;
+    if (!requireHostInLobby(room, socket, 'تبديل الفرق')) return;
     room.players.forEach(p => {
       p.team = p.team === 'team_a' ? 'team_b' : 'team_a';
     });
@@ -1037,6 +1294,11 @@ io.on('connection', (socket) => {
     const context = getRoomAndPlayer(roomCode, socket);
     if (!context) return;
     const { room } = context;
+    if (!requireHost(room, socket, 'تعيين الحكم')) return;
+    if (judgeId !== null && !room.players.some(p => p.id === judgeId && !p.isBot)) {
+      socket.emit('error_message', '🚫 الحكم لازم يكون لاعب حقيقي موجود في الغرفة.');
+      return;
+    }
     room.singleJudgeId = judgeId;
     emitRoomState(room);
   });
@@ -1085,7 +1347,7 @@ io.on('connection', (socket) => {
     const answeringPlayer = room.players.find(p => p.id === r1.answeringPlayerId);
     const turnKey = getR1TurnKey(room);
     if (!Array.isArray(r1.turnPlan) || r1.turnPlanKey !== turnKey || r1.turnPlanIndex >= r1.turnPlan.length) {
-      r1.turnPlan = buildRound1TurnPlan(answeringPlayer?.character?.id);
+      r1.turnPlan = buildRound1TurnPlan(answeringPlayer?.character?.attributes ?? answeringPlayer?.character?.id);
       r1.turnPlanKey = turnKey;
       r1.turnPlanIndex = 0;
     }
@@ -1095,7 +1357,7 @@ io.on('connection', (socket) => {
 
     const dispatchedQ = triviaEngine.getQuestionBySlot({
       roomId: room.code,
-      characterId: answeringPlayer?.character?.id,
+      characterId: answeringPlayer?.character?.attributes ?? answeringPlayer?.character?.id,
       mode: 'one_two_bank',
       slotType: slot.slotType,
       preferredCategory: slot.category
@@ -1146,6 +1408,7 @@ io.on('connection', (socket) => {
 
   // Helper to initialize Round 1
   function setupRound1(room) {
+    resetPowers(room);
     const teamAPlayers = room.players.filter(p => p.team === 'team_a');
     room.round1.activeTeam = 'team_a';
     room.round1.answeringPlayerId = teamAPlayers[0]?.id || room.players[0]?.id;
@@ -1161,6 +1424,7 @@ io.on('connection', (socket) => {
     room.round1.turnPlanKey = null;
     room.round1.turnPlanIndex = 0;
     room.round1.history = [];
+    room.round1.steal = null;
     room.round1.currentQuestion = null;
     room.round1.actionToken = null;
     room.round1.timer = 30;
@@ -1275,7 +1539,9 @@ io.on('connection', (socket) => {
         topic: dispatchedAuction.question_text,
         validItems: dispatchedAuction.acceptable_answers || [],
         category: dispatchedAuction.category,
-        minBid: 3,
+        minBid: Math.max(1, Math.min(3, (dispatchedAuction.acceptable_answers || []).length - 1)),
+        // A bid above the number of valid answers can never be fulfilled.
+        maxPossible: (dispatchedAuction.acceptable_answers || []).length,
         hint: 'أعلى مزايدة تكسب التحدي!'
       };
       room.round4.topicId = crypto.randomUUID();
@@ -1289,6 +1555,13 @@ io.on('connection', (socket) => {
   }
 
   // Host triggers synchronized 3-second match start countdown
+  socket.on('cancel_match_countdown', ({ roomCode } = {}) => {
+    const room = findRoom(roomCode);
+    if (!room || socket.id !== room.hostId) return;
+    if (!stopCountdown(room, 'الهوست لغى العد التنازلي.')) return;
+    emitRoomState(room);
+  });
+
   socket.on('start_match_countdown', ({ roomCode }) => {
     const room = findRoom(roomCode);
     if (!room) {
@@ -1368,6 +1641,13 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Final tie-break: level on total score after Round 4 -> sudden-death penalties.
+    let finalTieBreak = false;
+    if (targetRound === 'game_over' && needsFinalTieBreak(room.teams, room.status, room.round3)) {
+      targetRound = 'round3';
+      finalTieBreak = true;
+    }
+
     if (room.status === targetRound && targetRound !== 'lobby') {
       socket.emit('error_message', '🚫 الماتش في هذه الجولة بالفعل.');
       return;
@@ -1384,6 +1664,9 @@ io.on('connection', (socket) => {
     }
 
     stopCountdown(room, 'تم إلغاء العد التنازلي بسبب انتقال الجولة.');
+    if (targetRound === 'lobby' && !LOBBY_STATUSES.includes(room.status)) {
+      resetMatchState(room);
+    }
     room.status = targetRound;
 
     if (targetRound === 'round1') {
@@ -1417,6 +1700,18 @@ io.on('connection', (socket) => {
       room.round3.tieBreakActive = false;
       room.round3.tieBreakData = null;
       room.round3.isComplete = false;
+      room.round3.isSuddenDeath = finalTieBreak;
+      room.round3.suddenDeathRound = finalTieBreak ? 1 : 0;
+      room.round3.finalTieBreak = finalTieBreak;
+      room.round3.finalTieBreakDone = false;
+      if (finalTieBreak) {
+        // Skip regulation: one sudden-death kick each, repeated until the totals differ.
+        room.round3.turnIndex = 10;
+        io.to(roomCode).emit('notification', {
+          title: '⚡ تعادل في النتيجة النهائية!',
+          message: 'ركلة حسم لكل فريق — اللي يتقدم يكسب البطولة!'
+        });
+      }
 
       // Random category generated first -> Teams select their duelists -> 1v1 speed shootout
       const randomCategory = PENALTY_CATEGORIES[Math.floor(Math.random() * PENALTY_CATEGORIES.length)];
@@ -1531,6 +1826,54 @@ io.on('connection', (socket) => {
     }
   }
 
+
+  // Steal: after a wrong answer, the same question goes to the other team once.
+  function beginR1Steal(room, roomCode) {
+    const r1 = room.round1;
+    const fromTeam = r1.activeTeam;
+    const stealTeam = fromTeam === 'team_a' ? 'team_b' : 'team_a';
+    const stealers = room.players.filter(p => p.team === stealTeam);
+    r1.steal = { fromTeam, fromPlayerId: r1.answeringPlayerId, team: stealTeam };
+    r1.activeTeam = stealTeam;
+    r1.answeringPlayerId = stealers[0]?.id || null;
+    assignReferee(room, 'round1', { reason: 'steal', excludeIds: [r1.steal.fromPlayerId] });
+    r1.actionToken = crypto.randomUUID();
+    r1.timer = 30;
+    r1.endTime = Date.now() + r1.timer * 1000;
+    r1.isTimerRunning = true;
+    r1.lastResult = { outcome: 'steal_open', team: stealTeam, at: Date.now() };
+    const token = r1.actionToken;
+    setTimeout(() => {
+      const active = room.round1;
+      if (room.status !== 'round1' || active.actionToken !== token || !active.steal) return;
+      resolveR1Steal(room, roomCode, false);
+      emitRoomState(room);
+    }, r1.timer * 1000 + 50);
+  }
+
+  function resolveR1Steal(room, roomCode, correct) {
+    const r1 = room.round1;
+    const steal = r1.steal;
+    if (!steal) return;
+    r1.actionToken = null;
+    r1.steal = null;
+    if (correct) {
+      const points = r1.streakLadder[1];
+      room.teams[steal.team].bank += points;
+      room.teams[steal.team].score += points;
+      r1.lastResult = { outcome: 'steal_correct', team: steal.team, points, at: Date.now() };
+      io.to(roomCode).emit('sound_trigger', { sound: 'correct', streak: 1 });
+    } else {
+      r1.lastResult = { outcome: 'steal_failed', team: steal.team, at: Date.now() };
+      io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
+    }
+    r1.activeTeam = steal.fromTeam;
+    r1.answeringPlayerId = steal.fromPlayerId;
+    assignReferee(room, 'round1', { reason: 'steal_end' });
+    advanceR1Question(room, roomCode);
+    dispatchR1Question(room);
+  }
+
   // =================== ROUND 1 ACTIONS ===================
   // Score / Correct Answer
   socket.on('r1_action_score', ({ roomCode, actionToken }) => {
@@ -1550,6 +1893,11 @@ io.on('connection', (socket) => {
     const r1 = room.round1;
     if (!r1.currentQuestion || !isValidActionToken(r1.actionToken, actionToken)) {
       socket.emit('error_message', '🚫 انتهت صلاحية هذا السؤال أو تم احتسابه بالفعل. انتظر السؤال الجديد.');
+      return;
+    }
+    if (r1.steal) {
+      resolveR1Steal(room, roomCode, true);
+      emitRoomState(room);
       return;
     }
     r1.actionToken = null;
@@ -1586,23 +1934,33 @@ io.on('connection', (socket) => {
       socket.emit('error_message', '🚫 انتهت صلاحية هذا السؤال أو تم حسمه بالفعل. انتظر السؤال الجديد.');
       return;
     }
+    if (r1.steal) {
+      resolveR1Steal(room, roomCode, false);
+      emitRoomState(room);
+      return;
+    }
     r1.actionToken = null;
     const answeringPlayer = room.players.find(p => p.id === r1.answeringPlayerId);
+    let openSteal = false;
 
-    // Check if player has streak shield (El-Touny) or firewall protection (Eyad)
-    if (answeringPlayer?.character?.id === 'abdelrahman_eltouny' && r1.streak > 1) {
-      // El Touny shield saves streak once!
+    // El-Touny's armed shield (active power): the wrong answer costs nothing.
+    if (takeShield(room, r1.activeTeam)) {
       io.to(roomCode).emit('notification', {
         title: 'درع التوني بيلافيتا! 🍦',
-        message: 'تم تفعيل حماية الستريك وإنقاذ النقاط من الضياع!'
+        message: 'الدرع امتص الإجابة الغلط — الستريك والنقاط سليمة!'
       });
-      r1.streak = Math.max(1, r1.streak - 1);
-      r1.pendingPoints = r1.streakLadder[r1.streak];
     } else {
       // Break streak completely
       r1.streak = 0;
       r1.pendingPoints = 0;
       io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
+      openSteal = room.players.some(p => p.team !== r1.activeTeam);
+    }
+
+    if (openSteal) {
+      beginR1Steal(room, roomCode);
+      emitRoomState(room);
+      return;
     }
 
     // Advance Round 1 quota tracking
@@ -1752,8 +2110,10 @@ io.on('connection', (socket) => {
     }
     r2.actionToken = null;
 
-    room.teams[team].score += 500;
-    r2.lastResult = { outcome: 'correct', team, by: caller.id, at: Date.now() };
+    // Speed-based score: faster correct guess = more points.
+    const awarded = applyTurbo(room, team, passwordCardPoints(r2.endTime, r2.timer));
+    room.teams[team].score += awarded;
+    r2.lastResult = { outcome: 'correct', team, points: awarded, by: caller.id, at: Date.now() };
     r2.currentWordIndex += 1;
 
     // Check if 5 cards quota reached
@@ -1879,45 +2239,30 @@ io.on('connection', (socket) => {
       return;
     }
 
+    r2.actionToken = null;
     r2.fouls[team] = (r2.fouls[team] || 0) + 1;
-    // Deduct 200 points on foul
-    room.teams[team].score = Math.max(0, room.teams[team].score - 200);
+    room.teams[team].score = Math.max(0, room.teams[team].score - applyFirewall(room, team, PASSWORD_RULES.FOUL_PENALTY));
 
-    // A foul passes the turn to the other team for this card
+    // A foul ends the card (same as the other providers).
     r2.lastResult = { outcome: 'foul', team, by: caller.id, at: Date.now() };
-    setR2CardRoles(room, { toggleTurn: true, reason: 'foul' });
-    r2.actionToken = crypto.randomUUID();
+    r2.currentWordIndex += 1;
+    if (r2.currentWordIndex >= 5) {
+      r2.isComplete = true;
+      r2.currentWord = null;
+      r2.isTimerRunning = false;
+      r2.endTime = null;
+    } else {
+      setR2CardRoles(room, { toggleTurn: true, reason: 'foul' });
+      dispatchR2Card(room);
+    }
 
     io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
     emitRoomState(room);
   });
 
+  // Legacy event name: now fires El-Fondoqy's once-per-match power.
   socket.on('r2_time_freeze', ({ roomCode }) => {
-    const context = getRoomAndPlayer(roomCode, socket);
-    if (!context) return;
-    const { room } = context;
-
-    if (!requireRoundStatus(room, 'round2', socket, 'تجميد الوقت')) return;
-    if (!requireReferee(room, 'round2', socket, 'تجميد الوقت')) return;
-
-    const r2 = room.round2;
-    if (r2.isComplete || r2.currentWordIndex >= 5 || !r2.currentWord) {
-      socket.emit('error_message', '🚫 لا توجد بطاقة نشطة لتجميد وقتها.');
-      return;
-    }
-    if (r2.timeFreezeUsed) {
-      socket.emit('error_message', '🚫 تم استخدام تجميد الوقت لهذه البطاقة بالفعل.');
-      return;
-    }
-    r2.timeFreezeUsed = true;
-
-    // Ziad's bonus: +10s time freeze
-    room.round2.timer += 10;
-    io.to(roomCode).emit('notification', {
-      title: 'تجميد الوقت الفندقي 🛎️',
-      message: 'زياد الفندقي مد الوقت +10 ثواني كاملة بروقان!'
-    });
-    emitRoomState(room);
+    handleUsePower(roomCode);
   });
 
   // Select Duelists for Penalty Shootout
@@ -1929,7 +2274,7 @@ io.on('connection', (socket) => {
     if (!requireRoundStatus(room, 'round3', socket, 'اختيار المبارزين')) return;
 
     const r3 = room.round3;
-    if (r3.isComplete || r3.turnIndex >= 10) {
+    if (isShootoutOver(r3)) {
       socket.emit('error_message', '🚫 انتهت ركلات الجزاء بالفعل.');
       return;
     }
@@ -1984,7 +2329,7 @@ io.on('connection', (socket) => {
     if (!requireRoundStatus(room, 'round3', socket, 'بدء ركلة الجزاء')) return;
 
     const r3 = room.round3;
-    if (r3.isComplete || r3.turnIndex >= 10) {
+    if (isShootoutOver(r3)) {
       socket.emit('error_message', '🚫 انتهت ركلات الجزاء بالفعل.');
       return;
     }
@@ -2042,6 +2387,13 @@ io.on('connection', (socket) => {
       return;
     }
     if (r3.interceptBuzzedBy) return;
+    // Keeper delay: a correct answer in the first seconds is a safe goal.
+    // Latency-compensate so a slow connection cannot lose the unlock.
+    const unlockCompensation = getPlayerCompensation(socket.id);
+    if (!isInterceptUnlocked(r3.shotStartedAt, Date.now() + unlockCompensation)) {
+      socket.emit('error_message', `🚫 الصد يفتح بعد ${PENALTY_RULES.INTERCEPT_DELAY_SECONDS} ثواني من بداية الركلة.`);
+      return;
+    }
 
     r3.interceptBuzzedBy = socket.id;
     r3.interceptAt = Date.now();
@@ -2150,15 +2502,16 @@ io.on('connection', (socket) => {
       } else {
         // Evaluated at the end of complete 2-kick sudden death rounds (A then B)
         if (r3.turnIndex % 2 === 0) {
-          const lastTwo = r3.shotsHistory.slice(-2);
-          const shotA = lastTwo.find(s => s.team === 'team_a');
-          const shotB = lastTwo.find(s => s.team === 'team_b');
-          const roundPtsA = (shotA?.result === 'goal' ? 1 : 0) + (shotB?.result === 'saved' ? 1 : 0);
-          const roundPtsB = (shotB?.result === 'goal' ? 1 : 0) + (shotA?.result === 'saved' ? 1 : 0);
+          const winnerTeam = suddenDeathWinner({
+            lastTwoShots: r3.shotsHistory.slice(-2),
+            finalTieBreak: !!r3.finalTieBreak,
+            scoreA: room.teams.team_a.score,
+            scoreB: room.teams.team_b.score
+          });
 
-          if (roundPtsA !== roundPtsB) {
+          if (winnerTeam) {
             r3.isComplete = true;
-            const winner = roundPtsA > roundPtsB ? (room.teams.team_a?.name || 'فريق A') : (room.teams.team_b?.name || 'فريق B');
+            const winner = room.teams[winnerTeam]?.name || winnerTeam;
             io.to(roomCode).emit('notification', {
               title: '🏆 حُسمت في الموت المفاجئ!',
               message: `فاز ${winner} بركلات الترجيح!`
@@ -2180,10 +2533,13 @@ io.on('connection', (socket) => {
         r3.currentQuestion = null;
         r3.currentKickerId = null;
         r3.currentGoalieId = null;
+        if (r3.finalTieBreak) r3.finalTieBreakDone = true;
         io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
         io.to(roomCode).emit('notification', {
-          title: '🏁 انتهت ركلات الجزاء الترجيحية!',
-          message: 'تم حسم ركلات الجزاء! الانتقال لجولة المزاد مين يزوّد.'
+          title: r3.finalTieBreak ? '🏁 انحسمت البطولة بركلة الحسم!' : '🏁 انتهت ركلات الجزاء الترجيحية!',
+          message: r3.finalTieBreak
+            ? 'تم حسم التعادل! الانتقال لتتويج بطل الساحة 👑'
+            : 'تم حسم ركلات الجزاء! الانتقال لجولة المزاد مين يزوّد.'
         });
         emitRoomState(room);
         return true;
@@ -2360,6 +2716,17 @@ io.on('connection', (socket) => {
     }
     if (r4.highestBidderTeam === player.team) {
       socket.emit('error_message', '🚫 فريقك صاحب أعلى مزايدة بالفعل.');
+      return;
+    }
+    const lockedMs = bidLockedMs(room, player.team);
+    if (lockedMs > 0) {
+      socket.emit('error_message', `🔒 فريقك مقفول عن المزايدة ${Math.ceil(lockedMs / 1000)} ثواني بسبب قدرة الخصم.`);
+      return;
+    }
+
+    const maxPossible = r4.currentTopic?.maxPossible;
+    if (Number.isInteger(maxPossible) && r4.highestBid + increment > maxPossible) {
+      socket.emit('error_message', `🚫 الحد الأقصى للمزايدة في الموضوع ده ${maxPossible} (عدد الإجابات الصحيحة المتاحة).`);
       return;
     }
 
@@ -2560,20 +2927,29 @@ io.on('connection', (socket) => {
     r4.isTimerRunning = false;
     r4.endTime = null;
 
+    const rivalTeam = winningTeam === 'team_a' ? 'team_b' : 'team_a';
+    const outcome = auctionOutcome({
+      bid: r4.highestBid,
+      success,
+      winnerScore: room.teams[winningTeam].score,
+      rivalScore: room.teams[rivalTeam].score
+    });
+    if (outcome.delta > 0) outcome.delta = applyTurbo(room, winningTeam, outcome.delta);
+    else if (outcome.delta < 0) outcome.delta = -applyFirewall(room, winningTeam, -outcome.delta);
+    room.teams[winningTeam].score += outcome.delta;
+    r4.lastResult = { team: winningTeam, success, ...outcome, at: Date.now() };
     if (success) {
-      const reward = r4.highestBid * 400;
-      room.teams[winningTeam].score += reward;
       io.to(roomCode).emit('sound_trigger', { sound: 'goal_roar' });
       io.to(roomCode).emit('confetti_trigger');
       io.to(roomCode).emit('notification', {
         title: 'أنا قدها ونص! 🏆',
-        message: `${room.teams[winningTeam].name} حقق الرقم المطلوب وكسب ${reward} نقطة!`
+        message: `${room.teams[winningTeam].name} حقق الرقم المطلوب وكسب ${outcome.delta} نقطة${outcome.multiplier > 1 ? ' (×2 للفريق المتأخر 🔥)' : ''}!`
       });
     } else {
       io.to(roomCode).emit('sound_trigger', { sound: 'buzzer' });
       io.to(roomCode).emit('notification', {
         title: 'المزاد لم يكتمل',
-        message: `${room.teams[winningTeam].name} لم يوفِ بالمزاد. لا توجد نقاط مخصومة.`
+        message: `${room.teams[winningTeam].name} لم يوفِ بالمزاد وخسر ${-outcome.delta} نقطة.`
       });
     }
 
@@ -2603,6 +2979,60 @@ io.on('connection', (socket) => {
     }
 
     emitRoomState(room);
+  });
+
+  // Character powers: one active power per player, once per match.
+  function handleUsePower(roomCode) {
+    const context = getRoomAndPlayer(roomCode, socket);
+    if (!context) return;
+    const { room, player } = context;
+
+    const hooks = {
+      rerollR1: (r) => {
+        const r1 = r.round1;
+        const backup = {
+          currentQuestion: r1.currentQuestion,
+          actionToken: r1.actionToken,
+          endTime: r1.endTime,
+          timer: r1.timer,
+          isTimerRunning: r1.isTimerRunning,
+          turnPlanIndex: r1.turnPlanIndex,
+          currentQuestionIndex: r1.currentQuestionIndex
+        };
+        r1.turnPlanIndex = Math.max(0, r1.turnPlanIndex - 1);
+        r1.currentQuestionIndex = Math.max(0, r1.currentQuestionIndex - 1);
+        if (dispatchR1Question(r)) return true;
+        Object.assign(r1, backup);
+        return false;
+      },
+      rerollR3: (r) => {
+        const r3 = r.round3;
+        const previous = r3.currentQuestion;
+        if (!dispatchR3PenaltyQuestion(r)) {
+          r3.currentQuestion = previous;
+          return false;
+        }
+        r3.shotStartedAt = Date.now();
+        r3.endTime = r3.shotStartedAt + (r3.timer || 20) * 1000;
+        return true;
+      }
+    };
+
+    const result = applyPower(room, socket.id, hooks);
+    if (!result.ok) {
+      socket.emit('error_message', `🚫 ${result.reason}`);
+      return;
+    }
+    io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
+    io.to(roomCode).emit('notification', {
+      title: `${result.power.icon} قدرة خاصة!`,
+      message: `${player.name} استخدم "${result.power.title}"`
+    });
+    emitRoomState(room);
+  }
+
+  socket.on('use_power', ({ roomCode }) => {
+    handleUsePower(roomCode);
   });
 
   // Chat message & Taunts
@@ -2646,6 +3076,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log(`[Socket] Disconnected: ${socket.id}`);
     JOIN_ATTEMPTS.delete(socket.id);
+    CREATE_ATTEMPTS.delete(socket.id);
     LAST_CHAT_AT.delete(socket.id);
 
     for (const [code, room] of rooms.entries()) {
@@ -2684,35 +3115,7 @@ io.on('connection', (socket) => {
           const player = currentRoom.players[index];
           if (player.connected) return;
 
-          currentRoom.players.splice(index, 1);
-
-          // Transfer host authority only after the grace period expires.
-          if (player.isHost && currentRoom.players.length > 0) {
-            const nextHost =
-              currentRoom.players.find(p => !p.isBot && p.connected !== false) ||
-              currentRoom.players.find(p => !p.isBot) ||
-              currentRoom.players[0];
-
-            currentRoom.players.forEach(p => { p.isHost = false; });
-            nextHost.isHost = true;
-            currentRoom.hostId = nextHost.id;
-
-            io.to(currentRoom.code).emit('notification', {
-              title: 'انتقال شارة القيادة 👑',
-              message: `${nextHost.name} أصبح هو كابتن الغرفة الجديد!`
-            });
-          }
-
-          if (currentRoom.players.length === 0) {
-            rooms.delete(code);
-            console.log(`[Room Deleted] Room ${code} was deleted because all players left.`);
-          } else {
-            emitRoomState(currentRoom);
-            io.to(currentRoom.code).emit('notification', {
-              title: 'تفريغ خانة ⚠️',
-              message: `غادر ${player.name} الساحة بعد ${Math.round(DISCONNECT_GRACE_MS / 1000)} ثانية من غير رجوع. تم تفريغ الخانة!`
-            });
-          }
+          removePlayerFromLobby(currentRoom, player, { reason: 'timeout' });
         }, DISCONNECT_GRACE_MS);
 
         removalTimer.unref?.();
@@ -2753,6 +3156,24 @@ io.on('connection', (socket) => {
     }
   });
 });
+
+// =================== STALE ROOM SWEEP ===================
+// A match whose humans all disconnected never reaches the lobby cleanup, so the room
+// would live in memory forever. Drop rooms nobody has touched for 30 minutes.
+const STALE_ROOM_MS = 30 * 60 * 1000;
+const staleRoomSweep = setInterval(() => {
+  const now = Date.now();
+  for (const [code, room] of rooms.entries()) {
+    const humans = room.players.filter(p => !p.isBot);
+    if (humans.some(p => p.connected !== false)) continue;
+    const lastSeen = Math.max(0, ...humans.map(p => p.lastSeen || 0));
+    if (now - lastSeen < STALE_ROOM_MS) continue;
+    stopCountdown(room);
+    rooms.delete(code);
+    console.log(`[Room Deleted] Room ${code} was idle with no connected players.`);
+  }
+}, 5 * 60 * 1000);
+staleRoomSweep.unref?.();
 
 // =================== REFEREE FAILOVER WATCHDOG ===================
 // Runs continuously. A referee that stops heartbeating for REFEREE_FAILOVER_MS
@@ -2795,6 +3216,7 @@ const refereeWatchdog = setInterval(() => {
     if (alternatives.length === 0) continue;
 
     const previousId = state.refereePlayerId;
+    state.failedOver = { token: currentRef.playerToken, key: roleKey(room, roundKey), at: now };
     assignReferee(room, roundKey, {
       rotate: true,
       reason: 'failover',
@@ -2809,6 +3231,25 @@ const refereeWatchdog = setInterval(() => {
 }, REFEREE_WATCHDOG_MS);
 
 refereeWatchdog.unref?.();
+
+// Crash reports from players' browsers (the React error screen and uncaught errors).
+const CLIENT_ERROR_ATTEMPTS = new Map();
+app.post('/api/client-error', (req, res) => {
+  const now = Date.now();
+  const key = req.ip || 'unknown';
+  const recent = (CLIENT_ERROR_ATTEMPTS.get(key) || []).filter(t => now - t < 60000);
+  if (recent.length >= 20) {
+    res.status(429).end();
+    return;
+  }
+  recent.push(now);
+  CLIENT_ERROR_ATTEMPTS.set(key, recent);
+
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const clean = (value, max) => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, max);
+  console.error(`[ClientError] ${clean(body.message, 300)} | ${clean(body.url, 200)} | ${clean(body.stack, 600)}`);
+  res.status(204).end();
+});
 
 app.get('/api/health', (req, res) => {
   res.json({
@@ -2832,10 +3273,91 @@ app.get('/api/trivia/stats', (req, res) => {
   });
 });
 
+// =================== ROOM PERSISTENCE ===================
+// Rooms live in memory, so a restart used to end every match. With a snapshot file the
+// rooms come back after a restart; players rejoin with the private token their browser
+// already holds. Off in tests unless ROOM_SNAPSHOT_PATH is set.
+const __serverDir = path.dirname(fileURLToPath(import.meta.url));
+const SNAPSHOT_PATH = process.env.ROOM_SNAPSHOT_PATH
+  || (process.env.NODE_ENV === 'test' ? '' : path.resolve(__serverDir, '../data/rooms-snapshot.json'));
+const SNAPSHOT_INTERVAL_MS = Number(process.env.ROOM_SNAPSHOT_INTERVAL_MS) || 10000;
+const SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000;
+let lastSnapshotJson = '';
+
+function serializeRooms() {
+  const list = [];
+  for (const room of rooms.values()) {
+    const copy = { ...room, countdownInterval: null, countdown: null, disconnectTimers: undefined };
+    list.push(copy);
+  }
+  return JSON.stringify({ savedAt: Date.now(), rooms: list });
+}
+
+function saveRoomsSnapshot() {
+  if (!SNAPSHOT_PATH) return;
+  try {
+    const json = serializeRooms();
+    const normalize = (text) => text.replace(/"savedAt":\d+/, '"savedAt":0');
+    if (normalize(json) === normalize(lastSnapshotJson)) return;
+    fs.mkdirSync(path.dirname(SNAPSHOT_PATH), { recursive: true });
+    const temp = `${SNAPSHOT_PATH}.tmp`;
+    fs.writeFileSync(temp, json);
+    fs.renameSync(temp, SNAPSHOT_PATH);
+    lastSnapshotJson = json;
+  } catch (error) {
+    console.error('[Snapshot] could not save rooms:', error.message);
+  }
+}
+
+function restoreRoomsSnapshot() {
+  if (!SNAPSHOT_PATH || !fs.existsSync(SNAPSHOT_PATH)) return 0;
+  try {
+    const { rooms: saved = [] } = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, 'utf8'));
+    const now = Date.now();
+    let restored = 0;
+    for (const room of saved) {
+      if (!room?.code || !Array.isArray(room.players)) continue;
+      const humans = room.players.filter(p => !p.isBot);
+      const lastSeen = Math.max(0, ...humans.map(p => p.lastSeen || 0));
+      if (humans.length === 0 || now - lastSeen > SNAPSHOT_MAX_AGE_MS) continue;
+      room.disconnectTimers = new Map();
+      room.countdownInterval = null;
+      room.countdown = null;
+      for (const player of room.players) {
+        if (!player.isBot) {
+          player.connected = false; // everyone must rejoin with their token
+          player.lastSeen = now;
+        }
+      }
+      rooms.set(room.code, room);
+      restored += 1;
+    }
+    if (restored) console.log(`[Snapshot] restored ${restored} room(s) from ${SNAPSHOT_PATH}`);
+    return restored;
+  } catch (error) {
+    console.error('[Snapshot] could not restore rooms:', error.message);
+    return 0;
+  }
+}
+
+function startRoomPersistence() {
+  if (!SNAPSHOT_PATH) return;
+  restoreRoomsSnapshot();
+  const timer = setInterval(saveRoomsSnapshot, SNAPSHOT_INTERVAL_MS);
+  timer.unref?.();
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.once(signal, () => {
+      saveRoomsSnapshot();
+      process.exit(0);
+    });
+  }
+}
+
 const isMainModule = process.argv[1]
   && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isMainModule) {
+  startRoomPersistence();
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`🎮 Quiz Arena Real-Time Game Server running on 0.0.0.0:${PORT}`);
   });

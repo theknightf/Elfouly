@@ -1,8 +1,9 @@
-import { StrictMode, useEffect, useState } from 'react'
+import { StrictMode, Suspense, lazy, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import { reportClientError } from './utils/reportClientError'
 import App from './App.jsx'
-import PenaltyShootout from './penalty/ui/PenaltyShootout'
+const PenaltyShootout = lazy(() => import('./penalty/ui/PenaltyShootout'))
 
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash)
@@ -16,10 +17,13 @@ function useHashRoute() {
   return hash
 }
 
+window.addEventListener('error', event => reportClientError(event.error || event.message, { source: 'window.onerror' }));
+window.addEventListener('unhandledrejection', event => reportClientError(event.reason, { source: 'unhandledrejection' }));
+
 function Root() {
   const hash = useHashRoute()
   if (hash.startsWith('#penalty')) {
-    return <PenaltyShootout />
+    return <Suspense fallback={null}><PenaltyShootout /></Suspense>
   }
   return <App />
 }

@@ -1,4 +1,5 @@
 import React from 'react';
+import { BANK_RULES } from '../game/constants';
 import { useGame } from '../context/GameContext';
 import { ArrowRight } from 'lucide-react';
 import BankTurnView from './views/BankTurnView';
@@ -12,7 +13,7 @@ export default function Round1Bank() {
   } = useGame();
 
   const r1 = roomState?.round1 || {};
-  const streakLadder = r1.streakLadder || [0, 100, 250, 500, 1000, 2000, 4000, 7500, 12000, 20000, 35000];
+  const streakLadder = r1.streakLadder || BANK_RULES.STREAK_LADDER;
   const currentStreak = r1.streak || 0;
 
   const viewerId = roomState?.viewerId || currentPlayer?.id;

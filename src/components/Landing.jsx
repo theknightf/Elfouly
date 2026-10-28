@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { CHARACTERS } from '../data/characters';
+import { POWERS } from '../game/powers';
+import RulesModal from './RulesModal';
 import { sounds } from '../utils/soundEffects';
 import {
   ClipboardPaste,
@@ -43,6 +45,7 @@ export default function Landing() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [activeModal, setActiveModal] = useState(null); // 'create' | 'join' | 'info' | 'characters' | null
   const [isCreating, setIsCreating] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
   const [selectedHero, setSelectedHero] = useState(CHARACTERS[0].id);
 
   const nameInputRef = useRef(null);
@@ -62,9 +65,18 @@ export default function Landing() {
     }
   }, []);
 
+  // Esc closes whatever dialog is open
+  useEffect(() => {
+    if (!activeModal) return undefined;
+    const onKey = (event) => { if (event.key === 'Escape') setActiveModal(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeModal]);
+
   useEffect(() => {
     if (actionError) {
       setIsCreating(false);
+      setIsJoining(false);
     }
   }, [actionError]);
 
@@ -89,6 +101,7 @@ export default function Landing() {
   };
 
   const handleCreate = (nameOverride) => {
+    if (isCreating) return; // ignore double-taps while the first request is in flight
     const rawCandidate = typeof nameOverride === 'string' ? nameOverride : playerName;
     const trimmed = rawCandidate.trim();
     const heroName = CHARACTERS.find(c => c.id === selectedHero)?.name.split(' ')[0] || 'فولي';
@@ -117,9 +130,12 @@ export default function Landing() {
       return;
     }
 
+    if (isJoining) return;
     setFormError(null);
     clearActionError();
     sounds?.playTap?.();
+    setIsJoining(true);
+    setTimeout(() => setIsJoining(false), 3000); // failsafe so the button can never stay stuck
     joinRoom(`QZ-${joinCode}`, cleanName, selectedHero);
   };
 
@@ -166,7 +182,7 @@ export default function Landing() {
       {/* ========================================================================= */}
       {/* 16-BIT RETRO EGYPTIAN ARCADE CABINET FRAME (STITCH SCREEN 4)              */}
       {/* ========================================================================= */}
-      <div className="relative w-full max-w-4xl min-h-[640px] md:min-h-[720px] rounded-[24px] md:rounded-[32px] overflow-hidden border-[4px] md:border-[6px] border-[#090614] shadow-[0_16px_48px_rgba(0,0,0,0.9)] bg-slate-950 flex flex-col justify-between">
+      <div className="relative w-full max-w-4xl min-h-[640px] md:min-h-[720px] rounded-[28px] md:rounded-[36px] overflow-hidden border border-white/10 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.9)] bg-[#070B18] flex flex-col justify-between">
         
         {/* Authentic Pixel Art Recreation Scene Background */}
         <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
@@ -186,17 +202,17 @@ export default function Landing() {
             <button
               onClick={toggleSound}
               aria-label="تبديل الصوت"
-              className="w-10 h-10 rounded-xl bg-black/80 border-2 border-amber-500/80 text-amber-300 flex items-center justify-center backdrop-blur-md active:scale-95 shadow-md transition-transform cursor-pointer hover:border-amber-400"
+              className="w-10 h-10 rounded-xl bg-white/5 border border-white/15 text-amber-300 flex items-center justify-center backdrop-blur-md active:scale-95 shadow-md transition-transform cursor-pointer hover:border-amber-400"
             >
               {soundEnabled ? <Volume2 className="w-5 h-5 text-amber-300" /> : <VolumeX className="w-5 h-5 text-gray-400" />}
             </button>
             <div className="flex flex-col text-right">
-              <span className="font-pixel text-[9px] text-arena-cyan tracking-wider">KENZ ELFOLY</span>
+              <span className="text-[10px] font-black text-arena-cyan tracking-[0.2em]">KENZ ELFOLY</span>
               <span className="text-[11px] font-bold text-amber-200">سهرة الصعيد 🕹️</span>
             </div>
           </div>
 
-          <div className="bg-black/80 border-2 border-amber-400/80 px-3.5 py-1.5 rounded-full text-xs font-bold text-amber-200 tracking-wider flex items-center gap-2 shadow-lg backdrop-blur-md">
+          <div className="bg-white/5 border border-white/15 px-3.5 py-1.5 rounded-full text-xs font-bold text-amber-200 tracking-wider flex items-center gap-2 shadow-lg backdrop-blur-md">
             <span className="inline-block w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
             <span className="font-rubik font-black text-xs sm:text-sm">عروس الصعيد - ساحة المنيا</span>
           </div>
@@ -206,11 +222,11 @@ export default function Landing() {
         <div className="relative z-10 px-4 sm:px-8 py-4 sm:py-6 text-center space-y-2">
           <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-black/70 border border-arena-yellow/60 text-arena-yellow text-xs font-black backdrop-blur-sm shadow-md">
             <Sparkles className="w-3.5 h-3.5 text-arena-yellow" />
-            <span>بكسل آرت مصري أصيل 🕹️ دوري المحافظات</span>
+            <span>ليالي الصعيد 🌙 دوري المحافظات</span>
           </div>
 
           <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight text-white drop-shadow-[0_5px_0_#090614] font-rubik leading-tight">
-            كنز <span className="text-arena-cyan">الفولي</span>
+            كنز <span className="bg-gradient-to-l from-arena-yellow to-arena-cyan bg-clip-text text-transparent">الفولي</span>
           </h1>
 
           <p className="text-xs sm:text-sm md:text-base text-amber-100/90 font-bold max-w-lg mx-auto drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
@@ -543,53 +559,8 @@ export default function Landing() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL 2: GAMEPLAY RULES INFO                                              */}
-      {/* ========================================================================= */}
-      {activeModal === 'info' && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="w-full max-w-md bg-slate-900 border-[3.5px] border-[#090614] rounded-2xl p-5 shadow-[0_8px_0_0_#090614] relative space-y-3 max-h-[85vh] overflow-y-auto">
-            <button
-              onClick={() => setActiveModal(null)}
-              className="absolute top-3 left-3 text-gray-400 hover:text-white cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="text-center space-y-1">
-              <span className="text-2xl">📜</span>
-              <h2 className="font-rubik font-black text-lg text-arena-yellow">قواعد كنز الفولي (Kenz Elfoly)</h2>
-              <p className="text-xs text-gray-300">ماتش 2 ضد 2.. 4 جولات ملحمية لا مجال فيها للتعادل</p>
-            </div>
-
-            <div className="space-y-2 text-xs">
-              <div className="bg-black/50 p-3 rounded-xl border border-white/10">
-                <span className="font-bold text-arena-yellow block">1️⃣ جولة "1 تو" (Bank Mode):</span>
-                <span>12 سؤال لكل فريق، اللاعبين بيتبادلوا الإجابة سؤال بسؤال. أمّن النقاط في الخزنة قبل ما تغلط وتصفر!</span>
-              </div>
-              <div className="bg-black/50 p-3 rounded-xl border border-white/10">
-                <span className="font-bold text-arena-cyan block">2️⃣ جولة "اديني في سري" (Password):</span>
-                <span>5 كلمات سر لكل فريق، ملقيين التلميحات بيشوفوا الكلمة والـ 4 كلمات الممنوعة مع تحكيم متبادل ضد الغش.</span>
-              </div>
-              <div className="bg-black/50 p-3 rounded-xl border border-white/10">
-                <span className="font-bold text-emerald-400 block">3️⃣ جولة "في المقص" (Penalty Shootout):</span>
-                <span>10 ركلات جزاء كرة قدم بعد 2010. مواجهة 1 ضد 1 بين المسدد وحارس المرمى مع زر الصد المتوهج!</span>
-              </div>
-              <div className="bg-black/50 p-3 rounded-xl border border-white/10">
-                <span className="font-bold text-purple-400 block">4️⃣ جولة "مين يزوّد؟" (Blind Auction):</span>
-                <span>مزاد علني بين الكباتن على موضوعات تافهة وعامة. أعلى مزايدة بينزل ينفذ التحدي أمام الخصم!</span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setActiveModal(null)}
-              className="w-full py-2.5 rounded-xl bg-arena-yellow font-rubik font-black text-sm text-black cursor-pointer hover:brightness-110 active:scale-95 transition-transform"
-            >
-              فهمت يا كابتن 👍
-            </button>
-          </div>
-        </div>
-      )}
+      {/* MODAL 2: GAMEPLAY RULES INFO (shared with the in-match top bar) */}
+      {activeModal === 'info' && <RulesModal onClose={() => setActiveModal(null)} />}
 
       {/* ========================================================================= */}
       {/* MODAL 3: CHARACTERS ROSTER PREVIEW                                        */}
@@ -618,6 +589,11 @@ export default function Landing() {
                     <div className="font-bold text-white">{char.name}</div>
                     <div className="text-[10px] text-arena-cyan font-bold">{char.badge}</div>
                     <div className="text-[10px] text-gray-400 italic">"{char.catchphrase}"</div>
+                    {POWERS[char.id] && (
+                      <div className="mt-1 text-[10px] text-arena-yellow font-bold leading-snug">
+                        {POWERS[char.id].icon} {POWERS[char.id].title}: <span className="text-gray-300 font-normal">{POWERS[char.id].description}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

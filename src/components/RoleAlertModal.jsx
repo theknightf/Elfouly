@@ -31,6 +31,13 @@ function writeAcks(acks) {
  * The alert is acknowledged per question/round, so it never blocks the same
  * turn twice.
  */
+const TITLE_AR = {
+  "It's your turn to answer!": 'دورك تجاوب! 🎤',
+  'You are the judge for this round.': 'إنت الحكم في الجولة دي ⚖️',
+  'You are shooting!': 'إنت المسدد! ⚽'
+};
+const arTitle = (title) => TITLE_AR[title] || title;
+
 export default function RoleAlertModal() {
   const { roomState, currentPlayer } = useGame();
   const [acks, setAcks] = useState(readAcks);
@@ -117,15 +124,16 @@ export default function RoleAlertModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div role="alertdialog" aria-modal="true" aria-label="تنبيه دورك" className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <div className={`w-full max-w-sm bg-arena-card border-[3px] rounded-3xl p-6 text-center ${toneClasses}`}>
         <div className={`w-14 h-14 mx-auto rounded-2xl border-2 border-[#090614] flex items-center justify-center ${iconClasses}`}>
           <Icon className="w-7 h-7" />
         </div>
-        <h2 className="mt-4 text-lg font-black text-white leading-snug">{alert.title}</h2>
+        <h2 className="mt-4 text-lg font-black text-white leading-snug">{arTitle(alert.title)}</h2>
         <p className="mt-2 text-xs font-bold text-gray-400 leading-relaxed">{alert.body}</p>
         <button
           onClick={acknowledge}
+          autoFocus
           className="mt-5 w-full btn-arcade-yellow py-3 rounded-2xl font-black text-sm cursor-pointer shadow-xl hover:scale-[1.02]"
         >
           تمام، فهمت 👌

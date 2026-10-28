@@ -32,6 +32,7 @@ export default function HostTeamManager() {
     isHost,
     updateTeamNames,
     reassignPlayerTeam,
+    kickPlayer,
     reorderTeamPlayers,
     swapTeams,
     setMatchJudge
@@ -144,7 +145,7 @@ export default function HostTeamManager() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-bold text-arena-cyan mb-1">اسم الفريق الأول (Team A):</label>
+              <label className="block text-[11px] font-bold text-arena-cyan mb-1">اسم الفريق الأول:</label>
               <input
                 type="text"
                 value={nameA}
@@ -156,7 +157,7 @@ export default function HostTeamManager() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-arena-red mb-1">اسم الفريق الثاني (Team B):</label>
+              <label className="block text-[11px] font-bold text-arena-red mb-1">اسم الفريق الثاني:</label>
               <input
                 type="text"
                 value={nameB}
@@ -189,6 +190,7 @@ export default function HostTeamManager() {
           players={teamAPlayers}
           accentColor="cyan"
           singleJudgeId={singleJudgeId}
+          onKick={(pId) => { if (window.confirm('تشيل اللاعب ده من الغرفة؟')) kickPlayer(pId); }}
           onReassign={(pId) => reassignPlayerTeam(pId, 'team_b')}
           onMoveUp={(idx) => reorderTeamPlayers('team_a', idx, idx - 1)}
           onMoveDown={(idx) => reorderTeamPlayers('team_a', idx, idx + 1)}
@@ -202,6 +204,7 @@ export default function HostTeamManager() {
           players={teamBPlayers}
           accentColor="red"
           singleJudgeId={singleJudgeId}
+          onKick={(pId) => { if (window.confirm('تشيل اللاعب ده من الغرفة؟')) kickPlayer(pId); }}
           onReassign={(pId) => reassignPlayerTeam(pId, 'team_a')}
           onMoveUp={(idx) => reorderTeamPlayers('team_b', idx, idx - 1)}
           onMoveDown={(idx) => reorderTeamPlayers('team_b', idx, idx + 1)}
@@ -251,6 +254,7 @@ function TeamCard({
   accentColor,
   singleJudgeId,
   onReassign,
+  onKick,
   onMoveUp,
   onMoveDown,
   onToggleJudge
@@ -360,6 +364,19 @@ function TeamCard({
                   >
                     <Gavel className="w-3.5 h-3.5" />
                   </button>
+
+                  {/* Kick (never the host) */}
+                  {!player.isHost && (
+                    <button
+                      type="button"
+                      onClick={() => onKick(player.id)}
+                      className="p-1.5 rounded-lg bg-arena-darker text-arena-red text-[10px] font-bold border border-arena-red/30 hover:bg-arena-red/15 cursor-pointer transition-all"
+                      title="طرد اللاعب من الغرفة"
+                      aria-label="طرد اللاعب من الغرفة"
+                    >
+                      ✖
+                    </button>
+                  )}
                 </div>
               </div>
             );

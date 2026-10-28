@@ -11,7 +11,14 @@
  * 7. Room cleanup
  */
 
-import { supabase } from '../src/services/supabaseClient';
+import { supabase, isSupabaseConfigured } from '../src/services/supabaseClient';
+
+// These suites talk to a REAL Supabase project (they create and delete rooms), so they only
+// run when you provide your own keys: VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.
+if (!isSupabaseConfigured) {
+  console.log('SKIPPED: set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to run the Supabase tests.');
+  process.exit(0);
+}
 import { createSupabaseSocket } from '../src/services/supabaseMultiplayerService';
 
 function assert(condition: unknown, message: string): asserts condition {

@@ -4,6 +4,8 @@ import { useTriviaRoom } from '../../hooks/useTriviaRoom';
 import { sounds } from '../../utils/soundEffects';
 import { Gavel, Timer, PhoneCall, HelpCircle, Check, X, Flame, ShieldAlert, Award, Phone, Lightbulb, ArrowLeftRight } from 'lucide-react';
 import { RoundTimer } from '../../game/RoundTimer';
+import { auctionOutcome } from '../../game/constants';
+import { categoryLabel } from '../../utils/categoryLabels';
 
 const RETRO_CAFE_BANNER = "https://lh3.googleusercontent.com/aida-public/AB6AXuCrDCsQhP4tYwQtRCYeFh_UxpZk3pnfiel0F6bIl5gYR_m8Ln6iOuJwjzlhRfk1te6pM9ChaHXXzl_LwRgzcByvtEJz-GJaZM_z4YGJfrQgAj5tjMTV6c3FrEl1R2DfGvjPkHO9u7taIW0-_CHVGgFv6L8FB7624KXlfDzhPgNXis-ZDVAx_Ivd9NgG_O7nFwdKzvZW-1jYYW7V7pQWh-Bnm-GHklbKMkX-55YuCoTMc_kVkdP3gX680A";
 
@@ -48,6 +50,12 @@ export default function AuctionBiddingView({ isMobile = false }) {
   const highestBidderTeam = roomState?.teams?.[highestBidderTeamKey] || { name: 'فريق الحيتان', score: 0 };
   const opposingTeamKey = highestBidderTeamKey === 'team_a' ? 'team_b' : 'team_a';
   const opposingTeam = roomState?.teams?.[opposingTeamKey] || { name: 'فريق الوحوش', score: 0 };
+  const stake = auctionOutcome({
+    bid: r4.highestBid || 0,
+    success: true,
+    winnerScore: highestBidderTeam.score,
+    rivalScore: opposingTeam.score
+  });
 
   const [timeLeft, setTimeLeft] = useState(() => RoundTimer.remaining(r4.endTime));
   const timerRef = useRef(null);
@@ -157,10 +165,10 @@ export default function AuctionBiddingView({ isMobile = false }) {
         <div className="p-4 bg-surface-container-low border-t-[3px] border-[#090614] space-y-2">
           <div className="flex items-center justify-between">
             <span className="bg-surface-container-highest px-2.5 py-0.5 rounded-full text-xs font-bold text-arena-cyan border border-arena-cyan/30">
-              {activeQuestion.categoryName || 'تحدي المزاد'}
+              {categoryLabel(activeQuestion.categoryName, 'تحدي المزاد')}
             </span>
             <span className="bg-primary-container text-on-primary-container text-xs font-black px-2 py-0.5 rounded border border-[#090614] shadow-[0_2px_0_0_#6b4c00]">
-              موضوع {((r4.currentTopicIndex || 0) + 1)}/4 (+{highestBid * 400} نقطة) ⚡
+              موضوع {((r4.currentTopicIndex || 0) + 1)}/4 (+{stake.delta}{stake.multiplier > 1 ? ' ×2' : ''} / -{stake.base} نقطة) ⚡
             </span>
           </div>
 
@@ -186,7 +194,7 @@ export default function AuctionBiddingView({ isMobile = false }) {
             <div>
               <div className="text-xs font-bold text-gray-300">صاحب أعلى مزاد الآن:</div>
               <div className="text-xs text-arena-yellow font-black">
-                {highestBidderTeam.name}
+                {r4.highestBidderTeam ? highestBidderTeam.name.split('(')[0].trim() : 'لسه مفيش مزايدة'}
               </div>
             </div>
           </div>

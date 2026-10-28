@@ -27,3 +27,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# runtime room snapshot (server restarts keep running matches)
+data/rooms-snapshot.json
+data/rooms-snapshot.json.tmp

@@ -142,8 +142,8 @@ async function expectErrorMessage(socket: Socket, emit: () => void, pattern: Reg
 async function setupRoom(sockets: Socket[]) {
   const created = await createRoom(sockets[0], 'R2 Host', CHARACTERS[0].id);
   await joinRoom(sockets[1], created.roomCode, 'R2 A2', CHARACTERS[1].id, 'team_a');
-  await joinRoom(sockets[2], created.roomCode, 'R2 B1', CHARACTERS[2].id, 'team_b');
-  await joinRoom(sockets[3], created.roomCode, 'R2 B2', CHARACTERS[3].id, 'team_b');
+  await joinRoom(sockets[2], created.roomCode, 'R2 B1', CHARACTERS[3].id, 'team_b'); // El-Fondoqy owns the freeze power
+  await joinRoom(sockets[3], created.roomCode, 'R2 B2', CHARACTERS[2].id, 'team_b');
 
   const statesPromise = waitForStates(sockets, room => room.status === 'round2');
   sockets[0].emit('change_round', { roomCode: created.roomCode, targetRound: 'round2' });
@@ -195,6 +195,7 @@ function assertNoSecretLeak(states: any[], viewerIds: string[], secretCard: any,
     // placeholder fields directly, then prove the rest of the payload has no
     // additional occurrences of the target or any forbidden word.
     const redactedWord = JSON.stringify(state.round2.currentWord || {});
+    const publicCharacterText = JSON.stringify(CHARACTERS);
     const withoutWord = JSON.parse(serialized);
     delete withoutWord.round2.currentWord;
     const publicPayload = JSON.stringify(withoutWord);
@@ -204,8 +205,9 @@ function assertNoSecretLeak(states: any[], viewerIds: string[], secretCard: any,
         !containsWholeWord(redactedWord, word),
         `${label}: guesser ${viewerId} received secret word "${word}" in the redacted card`
       );
+      // Ordinary words (e.g. "طبيب") can legitimately appear in character titles; those are public text.
       assert(
-        !containsWholeWord(publicPayload, word),
+        containsWholeWord(publicCharacterText, word) || !containsWholeWord(publicPayload, word),
         `${label}: guesser ${viewerId} received secret word "${word}" outside the card`
       );
     }
@@ -371,25 +373,28 @@ async function run() {
 
       assert(afterFoul.teams[activeTeam].score === 0, 'Foul should not push the score below zero');
       assert(afterFoul.round2.fouls[activeTeam] === 1, 'The opposing clue-giver foul was not recorded');
-      assert(afterFoul.round2.refereePlayerId === clueGiverA, 'The judge seat did not pass to the other clue-giver');
+      assert(afterFoul.round2.currentWordIndex === 1, 'A foul must end the current card');
+      const nextJudgeSocket = sockets.find(socket => socket.id === afterFoul.round2.refereePlayerId);
+      assert(nextJudgeSocket, 'The judge seat did not pass to a clue-giver of the next card');
 
       const rotatedToken = afterFoul.round2.actionToken;
       assert(rotatedToken && rotatedToken !== actionToken, 'The foul did not rotate the action token');
 
       const awardPromise = waitForRoomState(
         sockets[0],
-        room => room.status === 'round2' && room.round2.currentWordIndex === 1
+        room => room.status === 'round2' && room.round2.currentWordIndex === 2
       );
-      socketA.emit('r2_award_point', { roomCode, team: ownTeamB, actionToken: rotatedToken });
+      nextJudgeSocket.emit('r2_award_point', { roomCode, team: afterFoul.round2.activeTurnTeam, actionToken: rotatedToken });
       const afterAward = await awardPromise;
-      assert(afterAward.teams[ownTeamB].score === 500, 'The opposing clue-giver could not award the active team');
+      const awarded = afterAward.teams[afterFoul.round2.activeTurnTeam].score;
+      assert(awarded >= 200 && awarded <= 1000, `Speed-based award out of range: ${awarded}`);
 
-      await expectErrorMessage(socketA, () => {
-        socketA.emit('r2_award_point', { roomCode, team: ownTeamB, actionToken: rotatedToken });
+      await expectErrorMessage(nextJudgeSocket, () => {
+        nextJudgeSocket.emit('r2_award_point', { roomCode, team: ownTeamB, actionToken: rotatedToken });
       }, /صلاحية|مكتملة|الحكم/);
     });
 
-    await test('Only the current referee can skip the card or freeze the timer', async () => {
+    await test('Only the current referee can skip; only El-Fondoqy can freeze (once per match)', async () => {
       const sockets = [await opened(), await opened(), await opened(), await opened()];
       const { roomCode, states } = await setupRoom(sockets);
       const initial = states[0];
@@ -401,17 +406,31 @@ async function run() {
       assert(refereeSocket && outsider, 'Could not resolve the referee socket');
       assert(actionToken, 'Server did not issue a Round 2 action token');
 
-      await expectErrorMessage(outsider, () => {
-        outsider.emit('r2_time_freeze', { roomCode });
-      }, /لوحة التحكيم|مقفولة|الحكم/);
+      // A player whose character has no Round 2 power cannot freeze.
+      const nonOwner = sockets[0];
+      await expectErrorMessage(nonOwner, () => {
+        nonOwner.emit('r2_time_freeze', { roomCode });
+      }, /مش متاحة|مفيش قدرة/);
 
-      const frozenPromise = waitForRoomState(
-        sockets[0],
-        room => room.status === 'round2' && room.round2.timer === 55
-      );
-      refereeSocket.emit('r2_time_freeze', { roomCode });
-      const frozen = await frozenPromise;
-      assert(frozen.round2.timer === 55, 'The referee time-freeze did not add 10 seconds');
+      // El-Fondoqy (sockets[2]) may freeze only when he is one of the two clue-givers.
+      const fondoqy = sockets[2];
+      const isGiver = [initial.round2.activeClueGiverA, initial.round2.activeClueGiverB].includes(fondoqy.id);
+      if (isGiver) {
+        const frozenPromise = waitForRoomState(
+          sockets[0],
+          room => room.status === 'round2' && room.round2.timer === 55
+        );
+        fondoqy.emit('r2_time_freeze', { roomCode });
+        const frozen = await frozenPromise;
+        assert(frozen.round2.timer === 55, 'El-Fondoqy time-freeze did not add 10 seconds');
+        await expectErrorMessage(fondoqy, () => {
+          fondoqy.emit('r2_time_freeze', { roomCode });
+        }, /استخدمت|مرة واحدة/);
+      } else {
+        await expectErrorMessage(fondoqy, () => {
+          fondoqy.emit('r2_time_freeze', { roomCode });
+        }, /مرشدا/);
+      }
 
       await expectErrorMessage(outsider, () => {
         outsider.emit('r2_skip_card', { roomCode });

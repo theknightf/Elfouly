@@ -221,9 +221,15 @@ export function isServableQuestion(question) {
   return true;
 }
 
+// A player's own chosen categories (array) win over the per-character defaults (id).
+export function resolveSpecialties(characterIdOrCategories) {
+  if (Array.isArray(characterIdOrCategories) && characterIdOrCategories.length) return characterIdOrCategories;
+  return CHARACTER_ATTRIBUTES[characterIdOrCategories] || ['general_knowledge'];
+}
+
 export function buildRound1TurnPlan(characterId) {
   const characterCategories = [...new Set(
-    (CHARACTER_ATTRIBUTES[characterId] || ['general_knowledge']).filter(Boolean)
+    resolveSpecialties(characterId).filter(Boolean)
   )];
   const shuffledCategories = shuffleArray(characterCategories);
   const specialtySlots = [0, 1, 2].map(index => ({
@@ -407,7 +413,19 @@ export class TriviaEngine {
     } else {
       question = queue.pop();
     }
-    if (question) this.getServedSet(roomId).add(question.id);
+    const servedSet = this.getServedSet(roomId);
+    const modePool = this.inMemoryBank.filter(item => item.mode === mode && isServableQuestion(item));
+    if (!question && modePool.length > 0 && modePool.every(item => servedSet.has(item.id))) {
+      // Every question of this mode has been used once in this room: start a fresh pass
+      // rather than freezing the match.
+      for (const item of this.inMemoryBank) {
+        if (item.mode === mode) servedSet.delete(item.id);
+      }
+      this.questionQueuesByRoom.delete(key);
+      console.warn(`[TriviaEngine] ${mode} pool used up in room ${roomId}; starting a fresh pass.`);
+      return this.drawQueued(mode, roomId, candidates);
+    }
+    if (question) servedSet.add(question.id);
     return question;
   }
 
@@ -461,12 +479,16 @@ export class TriviaEngine {
     const { roomId, characterId, mode, preferredCategory } = options;
     const servedSet = this.getServedSet(roomId);
 
-    const charCats = CHARACTER_ATTRIBUTES[characterId] || ['general_knowledge'];
+    const charCats = resolveSpecialties(characterId);
     const searchCategories = preferredCategory
       ? [preferredCategory, ...charCats]
       : [...charCats];
 
-    let chosenQuestion = this.drawQueued(mode, roomId, this.inMemoryBank.filter(question => question.mode === mode && searchCategories.some(category => this.matchesCategory(question, category)) && isServableQuestion(question)));
+    const drawFrom = (categories) => this.drawQueued(mode, roomId, this.inMemoryBank.filter(question => question.mode === mode && categories.some(category => this.matchesCategory(question, category)) && isServableQuestion(question)));
+
+    // The requested category comes first; the player's own categories are the fallback.
+    let chosenQuestion = preferredCategory ? drawFrom([preferredCategory]) : null;
+    if (!chosenQuestion) chosenQuestion = drawFrom(searchCategories);
 
     if (!chosenQuestion && searchCategories.includes('general_knowledge')) {
       chosenQuestion = this.drawQueued(mode, roomId, this.inMemoryBank.filter(question => question.mode === mode && this.matchesCategory(question, 'general_knowledge') && isServableQuestion(question)));
@@ -494,7 +516,7 @@ export class TriviaEngine {
       preferredCategory
     } = options;
     const servedSet = this.getServedSet(roomId);
-    const charCats = CHARACTER_ATTRIBUTES[characterId] || ['general_knowledge'];
+    const charCats = resolveSpecialties(characterId);
     const primaryCategory = preferredCategory || charCats[0] || 'general_knowledge';
 
     let chosenQuestion = null;

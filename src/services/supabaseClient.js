@@ -1,16 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
-  'https://bhdxlmusufwwioghahec.supabase.co';
+// The project URL and publishable key come from the environment only (never from source code):
+//   VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY   (see .env.example)
+const viteEnv = (typeof import.meta !== 'undefined' && import.meta.env) || {};
+const nodeEnv = (typeof process !== 'undefined' && process.env) || {};
 
+const supabaseUrl = viteEnv.VITE_SUPABASE_URL || nodeEnv.VITE_SUPABASE_URL || '';
 const supabaseKey =
-  (typeof import.meta !== 'undefined' &&
-    (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY ||
-      import.meta.env?.VITE_SUPABASE_ANON_KEY)) ||
-  'sb_publishable_9FM2lJPZNQk7ur8A0glUdg_54MA2wHZ';
+  viteEnv.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  viteEnv.VITE_SUPABASE_ANON_KEY ||
+  nodeEnv.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  '';
+
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
 
 export function createSupabaseClient() {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured: set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.');
+  }
   return createClient(supabaseUrl, supabaseKey, {
     realtime: {
       params: {
@@ -20,4 +27,5 @@ export function createSupabaseClient() {
   });
 }
 
-export const supabase = createSupabaseClient();
+// null when unconfigured, so importing this module can never crash the app.
+export const supabase = isSupabaseConfigured ? createSupabaseClient() : null;
