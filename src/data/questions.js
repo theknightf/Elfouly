@@ -649,7 +649,7 @@ export const AUCTION_TOPICS = [
     topic: 'ماركات سيارات عالمية مشهورة',
     category: 'سيارات ومحركات',
     minBid: 5,
-    maxPossible: 30,
+    maxPossible: 24,
     validItems: [
       'تويوتا', 'مرسيدس', 'بي إم دبليو', 'فيراري', 'بورشه', 'هوندا',
       'نيسان', 'فورد', 'شيفروليه', 'أودي', 'هيونداي', 'كيا',
@@ -663,7 +663,7 @@ export const AUCTION_TOPICS = [
     topic: 'لغات برمجة معتمدة في هندسة البرمجيات',
     category: 'علوم حاسب وتطوير',
     minBid: 4,
-    maxPossible: 20,
+    maxPossible: 14,
     validItems: [
       'بايثون (Python)', 'جافاسكريبت (JavaScript)', 'سي بلس بلس (C++)', 'جافا (Java)',
       'سي شارب (C#)', 'بي إتش بي (PHP)', 'تايب سكريبت (TypeScript)', 'روبي (Ruby)',

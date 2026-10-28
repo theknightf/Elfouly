@@ -789,14 +789,14 @@ function createInitialRoomState(roomCode, hostId) {
       isTimerRunning: false,
       history: []
     },
-    // Round 2: "اديني في سري" (Password Mode) - 5 Secret Cards
+    // Round 2: "اديني في سري" (Password Mode) - 6 Secret Cards (3 per team)
     round2: {
       ...createRefereeSlot(),
       activeClueGiverA: null,
       activeClueGiverB: null,
       activeTurnTeam: 'team_a',
       currentWordIndex: 0,
-      totalQuestions: 5,
+      totalQuestions: PASSWORD_RULES.CARDS,
       currentWord: null,
       currentGiverIndex: 0,
       actionToken: null,
@@ -1440,6 +1440,7 @@ io.on('connection', (socket) => {
     const teamAPlayers = room.players.filter(p => p.team === 'team_a');
     const teamBPlayers = room.players.filter(p => p.team === 'team_b');
     const cardIndex = Math.max(0, r2.currentWordIndex || 0);
+    const teamTurn = Math.floor(cardIndex / 2);
 
     if (toggleTurn) {
       r2.activeTurnTeam = getR2ActiveTurnTeam(room) === 'team_a' ? 'team_b' : 'team_a';
@@ -1448,10 +1449,10 @@ io.on('connection', (socket) => {
     }
 
     r2.activeClueGiverA = teamAPlayers.length > 0
-      ? teamAPlayers[cardIndex % teamAPlayers.length].id
+      ? teamAPlayers[teamTurn % teamAPlayers.length].id
       : null;
     r2.activeClueGiverB = teamBPlayers.length > 0
-      ? teamBPlayers[cardIndex % teamBPlayers.length].id
+      ? teamBPlayers[teamTurn % teamBPlayers.length].id
       : null;
     r2.currentGiverIndex = cardIndex;
 
@@ -2100,7 +2101,7 @@ io.on('connection', (socket) => {
       socket.emit('error_message', '🚫 الحكم يحسم دور الفريق اللي بيلمّح دلوقتي فقط.');
       return;
     }
-    if (r2.isComplete || r2.currentWordIndex >= 5) {
+    if (r2.isComplete || r2.currentWordIndex >= PASSWORD_RULES.CARDS) {
       socket.emit('error_message', '🚫 اكتملت بطاقات الجولة الخمسة بالفعل.');
       return;
     }
@@ -2116,16 +2117,16 @@ io.on('connection', (socket) => {
     r2.lastResult = { outcome: 'correct', team, points: awarded, by: caller.id, at: Date.now() };
     r2.currentWordIndex += 1;
 
-    // Check if 5 cards quota reached
-    if (r2.currentWordIndex >= 5) {
+    // Check if card quota reached
+    if (r2.currentWordIndex >= PASSWORD_RULES.CARDS) {
       r2.isComplete = true;
       r2.currentWord = null;
       r2.isTimerRunning = false;
       r2.endTime = null;
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
       io.to(roomCode).emit('notification', {
-        title: '🏁 اكتملت جولة "اديني في سري" (5 بطاقات)!',
-        message: 'تم إنجاز الـ 5 بطاقات السرية! جاهزون للانتقال لجولة ركلات الجزاء.'
+        title: '🏁 اكتملت جولة "اديني في سري" (6 بطاقات)!',
+        message: 'تم إنجاز الـ 6 بطاقات السرية! جاهزون للانتقال لجولة ركلات الجزاء.'
       });
     } else {
       // Rotate the clue-giver pair for the next card and hand the judge seat
@@ -2147,7 +2148,7 @@ io.on('connection', (socket) => {
     if (!requireReferee(room, 'round2', socket, 'تخطي كلمة سرية')) return;
 
     const r2 = room.round2;
-    if (r2.isComplete || r2.currentWordIndex >= 5) {
+    if (r2.isComplete || r2.currentWordIndex >= PASSWORD_RULES.CARDS) {
       socket.emit('error_message', '🚫 اكتملت بطاقات الجولة الخمسة بالفعل.');
       return;
     }
@@ -2159,15 +2160,15 @@ io.on('connection', (socket) => {
     r2.currentWordIndex += 1;
     r2.lastResult = { outcome: 'skipped', at: Date.now() };
 
-    if (r2.currentWordIndex >= 5) {
+    if (r2.currentWordIndex >= PASSWORD_RULES.CARDS) {
       r2.isComplete = true;
       r2.currentWord = null;
       r2.isTimerRunning = false;
       r2.endTime = null;
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
       io.to(roomCode).emit('notification', {
-        title: '🏁 اكتملت جولة "اديني في سري" (5 بطاقات)!',
-        message: 'تم إنجاز الـ 5 بطاقات السرية! جاهزون للانتقال لجولة ركلات الجزاء.'
+        title: '🏁 اكتملت جولة "اديني في سري" (6 بطاقات)!',
+        message: 'تم إنجاز الـ 6 بطاقات السرية! جاهزون للانتقال لجولة ركلات الجزاء.'
       });
     } else {
       setR2CardRoles(room, { toggleTurn: true, reason: 'card_skipped' });
@@ -2186,7 +2187,7 @@ io.on('connection', (socket) => {
     if (!requireRoundStatus(room, 'round2', socket, 'الانتقال للبطاقة التالية')) return;
 
     const r2 = room.round2;
-    if (r2.isComplete || r2.currentWordIndex >= 5) {
+    if (r2.isComplete || r2.currentWordIndex >= PASSWORD_RULES.CARDS) {
       r2.isComplete = true;
       r2.currentWord = null;
       emitRoomState(room);
@@ -2195,14 +2196,14 @@ io.on('connection', (socket) => {
     r2.actionToken = null;
     r2.currentWordIndex += 1;
 
-    if (r2.currentWordIndex >= 5) {
+    if (r2.currentWordIndex >= PASSWORD_RULES.CARDS) {
       r2.isComplete = true;
       r2.currentWord = null;
       r2.isTimerRunning = false;
       io.to(roomCode).emit('sound_trigger', { sound: 'whistle' });
       io.to(roomCode).emit('notification', {
-        title: '🏁 اكتملت جولة "اديني في سري" (5 بطاقات)!',
-        message: 'تم إنجاز الـ 5 بطاقات السرية! جاهزون للانتقال لجولة ركلات الجزاء.'
+        title: '🏁 اكتملت جولة "اديني في سري" (6 بطاقات)!',
+        message: 'تم إنجاز الـ 6 بطاقات السرية! جاهزون للانتقال لجولة ركلات الجزاء.'
       });
     } else {
       setR2CardRoles(room, { toggleTurn: true, reason: 'card_complete' });
@@ -2226,7 +2227,7 @@ io.on('connection', (socket) => {
     if (!requireReferee(room, 'round2', socket, 'احتساب مخالفة')) return;
 
     const r2 = room.round2;
-    if (r2.isComplete || r2.currentWordIndex >= 5) {
+    if (r2.isComplete || r2.currentWordIndex >= PASSWORD_RULES.CARDS) {
       socket.emit('error_message', '🚫 اكتملت بطاقات الجولة الخمسة بالفعل.');
       return;
     }
@@ -2246,7 +2247,7 @@ io.on('connection', (socket) => {
     // A foul ends the card (same as the other providers).
     r2.lastResult = { outcome: 'foul', team, by: caller.id, at: Date.now() };
     r2.currentWordIndex += 1;
-    if (r2.currentWordIndex >= 5) {
+    if (r2.currentWordIndex >= PASSWORD_RULES.CARDS) {
       r2.isComplete = true;
       r2.currentWord = null;
       r2.isTimerRunning = false;
@@ -2387,6 +2388,11 @@ io.on('connection', (socket) => {
       return;
     }
     if (r3.interceptBuzzedBy) return;
+    // The keeper only gets a say when the shooter has not answered correctly.
+    if (r3.pendingAnswer?.isCorrect) {
+      socket.emit('error_message', '🚫 المسدد جاوب صح — مفيش صد للحارس.');
+      return;
+    }
     // Keeper delay: a correct answer in the first seconds is a safe goal.
     // Latency-compensate so a slow connection cannot lose the unlock.
     const unlockCompensation = getPlayerCompensation(socket.id);

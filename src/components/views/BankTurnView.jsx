@@ -311,11 +311,11 @@ export default function BankTurnView({ isMobile = false }) {
       </div>
 
       {/* ================= THE CORE '1 تو' ACTION HUBS: BANK vs DOUBLE ================= */}
-      {isAnsweringTeam && !r1.steal && (
+      {isDefendingTeam && !isAnswering && !r1.steal && (
         <div className="space-y-2.5">
           <div className="text-center">
             <p className="font-pixel text-[9px] text-arena-yellow uppercase tracking-wider">
-              ⚡ قرار الفريق المستحوذ (دورك دلوقتي يا كابتن) ⚡
+              ⚡ قرار الخزنة بإيد الفريق الخصم ⚡
             </p>
           </div>
 

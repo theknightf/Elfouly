@@ -61,7 +61,7 @@ const R1_TOTAL_QUESTIONS = 48;
 const R1_SUB_BATCH_SIZE = 6;
 const R1_SEGMENT_SIZE = 12;
 const R1_STREAK_LADDER = [...BANK_RULES.STREAK_LADDER];
-const R2_TOTAL_CARDS = 5;
+const R2_TOTAL_CARDS = PASSWORD_RULES.CARDS;
 const R2_TIME_FREEZE_SECONDS = 10;
 const R3_TOTAL_SHOTS = 10;
 const R4_TOTAL_TOPICS = 4;
@@ -836,19 +836,17 @@ export function createSupabaseSocket(customClient = null) {
     const teamA = room.players.filter(player => player.team === 'team_a');
     const teamB = room.players.filter(player => player.team === 'team_b');
     const cardIndex = Math.max(0, r2.currentWordIndex || 0);
-    const previousGiverA = r2.activeClueGiverA;
-    const previousGiverB = r2.activeClueGiverB;
 
     if (toggleTurn) {
       r2.activeTurnTeam = r2.activeTurnTeam === 'team_a' ? 'team_b' : 'team_a';
     }
-    const giverSwap = toggleTurn
-      ? TurnManager.swapClueGivers(room.players, previousGiverA, previousGiverB, cardIndex)
-      : {
-          activeClueGiverA: teamA[cardIndex % Math.max(1, teamA.length)]?.id || null,
-          activeClueGiverB: teamB[cardIndex % Math.max(1, teamB.length)]?.id || null,
-          currentGiverIndex: cardIndex
-        };
+    // Teams alternate card by card, so each team rotates on its own turn count.
+    const teamTurn = Math.floor(cardIndex / 2);
+    const giverSwap = {
+      activeClueGiverA: teamA[teamTurn % Math.max(1, teamA.length)]?.id || null,
+      activeClueGiverB: teamB[teamTurn % Math.max(1, teamB.length)]?.id || null,
+      currentGiverIndex: cardIndex
+    };
     r2.activeClueGiverA = giverSwap.activeClueGiverA;
     r2.activeClueGiverB = giverSwap.activeClueGiverB;
     r2.currentGiverIndex = giverSwap.currentGiverIndex;

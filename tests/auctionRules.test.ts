@@ -35,3 +35,14 @@ test('failure never drives the score below zero', () => {
 });
 
 console.log(`\nAll ${passed} auction rule tests passed.`);
+
+import { AUCTION_TOPICS } from '../src/data/questions';
+
+test('every auction topic caps bids at its real number of valid answers', () => {
+  for (const topic of AUCTION_TOPICS) {
+    const unique = new Set(topic.validItems.map((item: string) => item.trim()));
+    assert.equal(unique.size, topic.validItems.length, `${topic.id}: duplicate valid items`);
+    assert.equal(topic.maxPossible, topic.validItems.length, `${topic.id}: maxPossible must equal validItems.length`);
+    assert.ok(topic.minBid <= topic.maxPossible, `${topic.id}: minBid above the cap`);
+  }
+});

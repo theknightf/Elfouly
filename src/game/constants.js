@@ -50,7 +50,7 @@ export const ROUND_TIMERS = Object.freeze({
   passwordSeconds: 45,
   penaltySeconds: 20,
   mazatSeconds: 60,
-  passwordCards: 5,
+  passwordCards: 6,
   mazatTopics: 4
 });
 
@@ -66,7 +66,9 @@ export const otherTeam = (team) => (team === TEAM_A ? TEAM_B : TEAM_A);
 export const PASSWORD_RULES = Object.freeze({
   MAX_POINTS: 1000,
   MIN_POINTS: 200,
-  FOUL_PENALTY: 300
+  FOUL_PENALTY: 300,
+  CARDS: 6, // 3 per team, clue-givers alternate card by card
+  CARDS_PER_TEAM: 3
 });
 
 /**

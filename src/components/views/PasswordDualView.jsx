@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { PASSWORD_RULES } from '../../game/constants';
 import { useGame } from '../../context/GameContext';
 import { canFreezeNow } from '../../game/powers';
 import { useTriviaRoom } from '../../hooks/useTriviaRoom';
@@ -141,7 +142,7 @@ export default function PasswordDualView({ isMobile = false }) {
             </span>
           </div>
           <span className="font-pixel text-[9px] bg-surface-container-highest px-2 py-1 rounded-lg text-gray-300 border border-[#090614]">
-            كرت {((r2.cardIndex || 0) + 1)}/5
+            كرت {((r2.cardIndex || 0) + 1)}/{PASSWORD_RULES.CARDS}
           </span>
         </div>
       </div>

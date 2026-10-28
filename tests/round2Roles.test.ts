@@ -3,7 +3,7 @@
  *
  * These tests boot the real socket server and verify the Password-mode role
  * model: only the two clue-givers receive the secret card, the opposing
- * clue-giver judges each clue turn, and clue-givers rotate across all 5 cards.
+ * clue-giver judges each clue turn, and clue-givers rotate across all 6 cards.
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
@@ -265,7 +265,7 @@ async function run() {
     console.log('🔐 QUIZ ARENA - ROUND 2 ROLE / PRIVACY TEST SUITE');
     console.log('================================================================================\n');
 
-    await test('Only the two clue-givers see the card and pairs rotate across 5 cards', async () => {
+    await test('Only the two clue-givers see the card and pairs rotate across 6 cards', async () => {
       const sockets = [await opened(), await opened(), await opened(), await opened()];
       const viewerIds = sockets.map(socket => socket.id as string);
       const { roomCode, states: initialStates } = await setupRoom(sockets);
@@ -277,12 +277,12 @@ async function run() {
 
       let currentStates = initialStates;
 
-      for (let cardIndex = 0; cardIndex < 5; cardIndex += 1) {
+      for (let cardIndex = 0; cardIndex < 6; cardIndex += 1) {
         const state = currentStates[0];
         assert(state.round2.currentWordIndex === cardIndex, `Expected card ${cardIndex + 1}, got index ${state.round2.currentWordIndex}`);
 
-        const expectedA = teamA[cardIndex % 2].id;
-        const expectedB = teamB[cardIndex % 2].id;
+        const expectedA = teamA[Math.floor(cardIndex / 2) % 2].id;
+        const expectedB = teamB[Math.floor(cardIndex / 2) % 2].id;
         const clueGiverA = state.round2.activeClueGiverA;
         const clueGiverB = state.round2.activeClueGiverB;
 
@@ -309,7 +309,7 @@ async function run() {
           clueGiverB
         }, `Card ${cardIndex + 1}`);
 
-        if (cardIndex < 4) {
+        if (cardIndex < 5) {
           const refereeSocket = sockets.find(socket => socket.id === expectedReferee);
           assert(refereeSocket, `Card ${cardIndex + 1}: referee socket not found`);
           const nextStatesPromise = waitForStates(
@@ -443,8 +443,8 @@ async function run() {
       refereeSocket.emit('r2_skip_card', { roomCode, actionToken });
       const skipped = await skippedPromise;
       assert(skipped.round2.currentWordIndex === 1, 'The referee could not skip the card');
-      assert(skipped.round2.activeClueGiverA !== initial.round2.activeClueGiverA, 'Team A clue-giver did not rotate after skip');
-      assert(skipped.round2.activeClueGiverB !== initial.round2.activeClueGiverB, 'Team B clue-giver did not rotate after skip');
+      assert(skipped.round2.activeClueGiverA === initial.round2.activeClueGiverA, "Team A giver must stay for its own next turn pair (rotation is per team turn)");
+      assert(skipped.round2.activeClueGiverB === initial.round2.activeClueGiverB, "Team B giver must stay for its own next turn pair (rotation is per team turn)");
     });
 
   } finally {

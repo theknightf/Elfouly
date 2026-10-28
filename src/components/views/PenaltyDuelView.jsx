@@ -7,6 +7,7 @@ import { calculateBonus, isGeneralCategory } from '../../utils/penaltyRules';
 import { RoundTimer } from '../../game/RoundTimer';
 import { PENALTY_RULES } from '../../game/constants';
 import { categoryLabel } from '../../utils/categoryLabels';
+import CategoryReel from './CategoryReel';
 
 /**
  * PenaltyDuelView
@@ -175,6 +176,8 @@ export default function PenaltyDuelView({ isMobile = false }) {
           </div>
         </div>
       </div>
+
+      <CategoryReel category={r3.currentCategory} />
 
       {/* Main Question Card (Visible to all) */}
       {(!isKicker || r3.phase !== 'shootout') && <div className="bg-arena-card rounded-3xl p-4 sm:p-6 md:p-8 border-[3.5px] border-[#090614] shadow-[0_6px_0_0_#090614] relative overflow-hidden">

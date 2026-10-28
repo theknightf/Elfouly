@@ -111,9 +111,9 @@ function nextLocalR2Card(r2, players) {
     ...r2,
     currentWordIndex: nextIndex,
     timeFreezeUsed: false,
-    isComplete: nextIndex >= 5
+    isComplete: nextIndex >= PASSWORD_RULES.CARDS
   };
-  if (nextIndex < 5) {
+  if (nextIndex < PASSWORD_RULES.CARDS) {
     const swappedGivers = TurnManager.swapClueGivers(
       players,
       r2.activeClueGiverA,
@@ -152,10 +152,12 @@ function buildLocalR2Roles(players, cardIndex, { toggleTurn = false, activeTurnT
     ? (activeTurnTeam === 'team_a' ? 'team_b' : 'team_a')
     : activeTurnTeam;
 
-  const activeClueGiverA = teamARoster[cardIndex % teamARoster.length].id;
-  const activeClueGiverB = teamBRoster[cardIndex % teamBRoster.length].id;
+  // Teams alternate card by card, so each team rotates on its own turn count.
+  const teamTurn = Math.floor(cardIndex / 2);
+  const activeClueGiverA = teamARoster[teamTurn % teamARoster.length].id;
+  const activeClueGiverB = teamBRoster[teamTurn % teamBRoster.length].id;
   const activeRoster = nextTurn === 'team_a' ? teamARoster : teamBRoster;
-  const activeGiver = activeRoster[cardIndex % activeRoster.length]?.id;
+  const activeGiver = activeRoster[teamTurn % activeRoster.length]?.id;
 
   return {
     activeClueGiverA,
@@ -274,7 +276,7 @@ export function GameProvider({ children }) {
     round2: {
       ...buildLocalR2Roles([], 0),
       currentWordIndex: 0,
-      totalQuestions: 5,
+      totalQuestions: PASSWORD_RULES.CARDS,
       currentWord: null,
       currentGiverIndex: 0,
       isComplete: false,
@@ -1152,7 +1154,7 @@ export function GameProvider({ children }) {
     } else {
       sounds.playCorrect();
       setRoomState(prev => {
-        if (prev.round2.isComplete || (prev.round2.currentWordIndex || 0) >= 5) return prev;
+        if (prev.round2.isComplete || (prev.round2.currentWordIndex || 0) >= PASSWORD_RULES.CARDS) return prev;
       if (team !== (prev.round2.activeTurnTeam || 'team_a')) {
         showToast('🚫 دور الفريق الآخر', 'المرشد يحسم دور الفريق المخمّن الحالي.');
         return prev;
@@ -1162,9 +1164,9 @@ export function GameProvider({ children }) {
         const r2 = nextLocalR2Card(prev.round2, prev.players);
         const teams = { ...prev.teams };
         teams[team] = { ...teams[team], score: teams[team].score + awarded };
-        if (r2.currentWordIndex >= 5) {
+        if (r2.currentWordIndex >= PASSWORD_RULES.CARDS) {
           sounds.playWhistle();
-          showToast('🏁 اكتملت جولة "اديني في سري"!', 'تم إنجاز 5 بطاقات سرية!');
+          showToast('🏁 اكتملت جولة "اديني في سري"!', 'تم إنجاز 6 بطاقات سرية!');
         }
         return { ...prev, teams, round2: r2, powerEffects: powerHolder.powerEffects };
       });
@@ -1177,11 +1179,11 @@ export function GameProvider({ children }) {
     } else {
       sounds.playBuzzer();
       setRoomState(prev => {
-        if (prev.round2.isComplete || (prev.round2.currentWordIndex || 0) >= 5) return prev;
+        if (prev.round2.isComplete || (prev.round2.currentWordIndex || 0) >= PASSWORD_RULES.CARDS) return prev;
         const r2 = nextLocalR2Card(prev.round2, prev.players);
-        if (r2.currentWordIndex >= 5) {
+        if (r2.currentWordIndex >= PASSWORD_RULES.CARDS) {
           sounds.playWhistle();
-          showToast('🏁 اكتملت جولة "اديني في سري"!', 'تم إنجاز 5 بطاقات سرية!');
+          showToast('🏁 اكتملت جولة "اديني في سري"!', 'تم إنجاز 6 بطاقات سرية!');
         }
         return { ...prev, round2: r2 };
       });

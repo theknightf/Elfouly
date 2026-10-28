@@ -1,4 +1,5 @@
 import React from 'react';
+import { PASSWORD_RULES } from '../game/constants';
 import { useGame } from '../context/GameContext';
 import {
   ChevronRight,
@@ -53,7 +54,7 @@ export default function GameProgressionControls() {
 
   // Check if round questions are exhausted
   const isR1Exhausted = isR1 && (r1.totalQuestionsAnswered >= 48 || r1.isComplete);
-  const isR2Exhausted = isR2 && (r2.isComplete || (r2.currentWordIndex >= 5));
+  const isR2Exhausted = isR2 && (r2.isComplete || (r2.currentWordIndex >= PASSWORD_RULES.CARDS));
   const isR3Exhausted = isR3 && (r3.isComplete || (r3.turnIndex >= 10 && !r3.isSuddenDeath && (r3.phase === 'complete' || r3.shotState === 'complete')));
   const isExhausted = isR1 ? isR1Exhausted : (isR2 ? isR2Exhausted : (isR3 ? isR3Exhausted : false));
 
