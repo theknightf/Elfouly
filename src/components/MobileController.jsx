@@ -70,8 +70,13 @@ export default function MobileController() {
   const kickingTeamKeyInR3 = r3.kickerTeam || 'team_a';
   const kickingTeamPlayersInR3 = (roomState?.players || []).filter(p => p.team === kickingTeamKeyInR3);
   const isKickingTeamInR3 = player?.team === kickingTeamKeyInR3;
-  const isR3Representative = !!player && kickingTeamPlayersInR3[0]?.id === player.id;
-  const canStartR3 = (isKickingTeamInR3 && isR3Representative) || false;
+  const defendingTeamKeyInR3 = kickingTeamKeyInR3 === 'team_a' ? 'team_b' : 'team_a';
+  const defendingTeamPlayersInR3 = (roomState?.players || []).filter(p => p.team === defendingTeamKeyInR3);
+  const isDefendingTeamInR3 = player?.team === defendingTeamKeyInR3;
+  // Each team picks its own duelist: kicking team the shooter, the other team the keeper.
+  const canPickShooterInR3 = isKickingTeamInR3;
+  const canPickGoalieInR3 = isDefendingTeamInR3;
+  const canStartR3 = !!player && !!r3.currentKickerId && !!r3.currentGoalieId && isKickingTeamInR3;
   const currentCategoryInR3 = r3.currentCategory || { name: 'برشلونة وأوروبا (بعد 2010)', icon: '⚽', hint: 'تخصص كروي' };
 
   // Round 4 Roles
@@ -392,21 +397,21 @@ export default function MobileController() {
                   <div className="text-[10px] text-gray-400">{currentCategoryInR3.hint}</div>
                 </div>
 
-                {/* Shooter picker — representative of the kicking team only */}
+                {/* Shooter picker: the kicking team chooses */}
                 <div className="space-y-2">
                   <div className="text-[11px] font-bold text-gray-300">
-                    {isR3Representative
-                      ? '🎯 أنت ممثل الفريق — اختر المسدد:'
-                      : `🎯 ممثل ${roomState?.teams?.[kickingTeamKeyInR3]?.name || 'الفريق'} هو من يختار المسدد.`}
+                    {canPickShooterInR3
+                      ? '🎯 فريقك بيشوط — اختار المسدد:'
+                      : `🎯 ${roomState?.teams?.[kickingTeamKeyInR3]?.name || 'الفريق الضارب'} بيختار المسدد.`}
                   </div>
-                  {isR3Representative && (
+                  {canPickShooterInR3 && (
                     <div className="space-y-1.5">
                       {kickingTeamPlayersInR3.map(p => {
                         const isSelected = p.id === r3.currentKickerId;
                         return (
                           <button
                             key={p.id}
-                            onClick={() => r3SelectDuelists(p.id, r3.currentGoalieId || null)}
+                            onClick={() => r3SelectDuelists(p.id, null)}
                             className={`w-full p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
                               isSelected
                                 ? 'bg-arena-cyan/20 border-arena-cyan text-white shadow-sm'
@@ -424,6 +429,47 @@ export default function MobileController() {
                         );
                       })}
                     </div>
+                  )}
+                  {!canPickShooterInR3 && r3.currentKickerId && (
+                    <div className="text-[11px] font-black text-white">المختار: {(roomState?.players || []).find(p => p.id === r3.currentKickerId)?.name}</div>
+                  )}
+                </div>
+
+                {/* Goalie picker: the defending team chooses */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-gray-300">
+                    {canPickGoalieInR3
+                      ? '🧤 فريقك بيدافع — اختار الحارس:'
+                      : `🧤 ${roomState?.teams?.[defendingTeamKeyInR3]?.name || 'فريق الحارس'} بيختار الحارس.`}
+                  </div>
+                  {canPickGoalieInR3 && (
+                    <div className="space-y-1.5">
+                      {defendingTeamPlayersInR3.map(p => {
+                        const isSelected = p.id === r3.currentGoalieId;
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => r3SelectDuelists(null, p.id)}
+                            className={`w-full p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-arena-cyan/20 border-arena-cyan text-white shadow-sm'
+                                : 'bg-arena-card border-white/10 text-gray-400'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>{p.character?.avatar}</span>
+                              <span>{p.name}</span>
+                            </div>
+                            {isSelected && (
+                              <span className="text-[10px] text-arena-yellow font-black">الحارس ✔️</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {!canPickGoalieInR3 && r3.currentGoalieId && (
+                    <div className="text-[11px] font-black text-white">المختار: {(roomState?.players || []).find(p => p.id === r3.currentGoalieId)?.name}</div>
                   )}
                 </div>
 

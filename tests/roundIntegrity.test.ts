@@ -432,7 +432,9 @@ async function run() {
 
       const settledPromise = waitForRoomState(sockets[0], room => room.round3.turnIndex === 1);
       judge.emit('r3_record_shot', { roomCode, result: 'goal' });
-      await settledPromise;
+      const settled = await settledPromise;
+      assert(settled.round3.phase === 'duelist_selection', 'After the judge decides, the next kick must open its selection without a manual Next Shot');
+      assert(settled.round3.lastShotResult?.result === 'goal', 'The last result must stay visible during the next selection');
     });
 
     await test('Powers: Foly re-roll and Touny shield work once in Round 1', async () => {

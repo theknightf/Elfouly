@@ -2334,10 +2334,10 @@ io.on('connection', (socket) => {
       socket.emit('error_message', '🚫 انتهت ركلات الجزاء بالفعل.');
       return;
     }
-    const kickingRepresentative = room.players.find(p => p.team === r3.kickerTeam);
-    const isKickingRepresentative = kickingRepresentative?.id === socket.id;
-    if (socket.id !== room.hostId && !isReferee(room, 'round3', socket.id) && !isKickingRepresentative) {
-      socket.emit('error_message', '🚫 بدء الركلة يتم من ممثل الفريق الضارب أو الحكم فقط.');
+    const starter = room.players.find(p => p.id === socket.id);
+    const onKickingTeam = starter?.team === r3.kickerTeam;
+    if (socket.id !== room.hostId && !isReferee(room, 'round3', socket.id) && !onKickingTeam) {
+      socket.emit('error_message', '🚫 بدء الركلة يتم من الفريق الضارب أو الحكم فقط.');
       return;
     }
 
@@ -2357,6 +2357,8 @@ io.on('connection', (socket) => {
     }
 
     r3.phase = 'shootout';
+    r3.shotState = 'shootout';
+    r3.lastShotResult = null;
     r3.interceptBuzzedBy = null;
     r3.interceptAt = null;
     r3.interceptCompensatedAt = null;
@@ -2553,8 +2555,9 @@ io.on('connection', (socket) => {
     }
 
     // Retain resolution state on screen until manual next shot trigger
-    r3.shotState = 'resolved';
-    r3.phase = 'shot_resolved';
+    // The previous result stays on screen (lastShotResult) while the teams pick for the next kick.
+    r3.shotState = 'selection';
+    r3.phase = 'duelist_selection';
     r3.lastShotResult = {
       result,
       bonusAwarded,

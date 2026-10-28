@@ -338,12 +338,12 @@ export default function PenaltyDuelView({ isMobile = false }) {
                   : 'الركلة ضاعت خارج المرمى! Missed! ❌'}
               </span>
               <p className="text-xs text-gray-400">
-                اضغط على زر الركلة التالية للمتابعة دون أي تأخير
+                كل فريق يختار لاعبه للركلة الجاية
               </p>
             </div>
           </div>
 
-          {(isHost || isPenaltyReferee) && (
+          {(isHost || isPenaltyReferee) && r3.phase === 'shot_resolved' && (
             <button
               type="button"
               onClick={handleNextShot}
